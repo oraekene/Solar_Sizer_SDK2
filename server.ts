@@ -107,6 +107,9 @@ if (useSupabase) {
       { id: 'd9', name: 'Refrigerator (Small)', category: 'compressor', watts: 120, tags: ['kitchen', 'essential'] },
       { id: 'd10', name: 'Air Conditioner (1HP)', category: 'compressor', watts: 850, tags: ['luxury', 'office'] },
       { id: 'd11', name: 'Television (43")', category: 'electronics', watts: 80, tags: ['entertainment'] },
+      { id: 'd12', name: 'Huawei B818-263', category: 'internet', watts: 20, tags: ['internet', 'tier-a'] },
+      { id: 'd13', name: 'ZTE MC888', category: 'internet', watts: 25, tags: ['internet', 'tier-a'] },
+      { id: 'd14', name: 'TP-Link ER605', category: 'internet', watts: 15, tags: ['internet', 'tier-b'] },
     ];
     const insert = db.prepare("INSERT INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
     seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags)));
@@ -120,7 +123,7 @@ if (useSupabase) {
       {
         id: 'p1',
         name: 'SolarOne A300 Plug-and-Play Power Box',
-        description: 'True plug-and-play "Setup in a Box". 300W Pure Sine Wave inverter and 390Wh deep cycle battery.',
+        description: 'True plug-and-play "Setup in a Box" — unbox, plug in, and power up with zero installation labor fees.',
         type: 'combination',
         combination_data: {
           inverter: '300W Pure Sine Wave',
@@ -139,7 +142,7 @@ if (useSupabase) {
       {
         id: 'p2',
         name: 'SolarOne A500 Pro Power Box',
-        description: 'Whole-house power without the installation. Premium 600Wh LiFePO4 battery and 500W Pure Sine Wave inverter.',
+        description: 'Whole-house power without the installation: custom generator-style outlet plugs directly into your home wiring.',
         type: 'combination',
         combination_data: {
           inverter: '500W Pure Sine Wave',
@@ -158,7 +161,7 @@ if (useSupabase) {
       {
         id: 'p3',
         name: 'Itel Energy iESS 320T + 200W Panel Kit',
-        description: 'Portable 320Wh LiFePO4 battery and 130W pure sine wave inverter.',
+        description: 'True plug-and-play setup: 130W pure sine wave inverter and 320Wh LiFePO4 battery in a compact, portable case.',
         type: 'combination',
         combination_data: {
           inverter: '130W Pure Sine Wave',
@@ -177,7 +180,7 @@ if (useSupabase) {
       {
         id: 'p4',
         name: 'Itel 1000W Powerstation + 450W Panel',
-        description: 'Massive 1000Wh LiFePO4 battery paired with a 500W pure sine wave inverter.',
+        description: 'Massive 1000Wh LiFePO4 battery paired with a 500W pure sine wave inverter for clean, stable studio power.',
         type: 'combination',
         combination_data: {
           inverter: '500W Pure Sine Wave',
@@ -196,7 +199,7 @@ if (useSupabase) {
       {
         id: 'p5',
         name: '500W Powerstation + 350W Panel Combo',
-        description: '600Wh LiFePO4 battery and 500W modified sine wave AC output.',
+        description: 'Accessible off-grid power featuring a 600Wh LiFePO4 battery and 500W modified sine wave AC output.',
         type: 'combination',
         combination_data: {
           inverter: '500W Modified Sine',
@@ -253,27 +256,33 @@ if (useSupabase) {
         description: 'Premium wiring for flexible panel connectivity. Weatherproof.',
         data: { name: 'Heavy-Duty Solar Extension Cables', price: 4500 }
       },
-      // Internet Hardware
       {
-        id: 'i1',
-        type: 'internet',
-        tags: ['internet', 'tier-a'],
-        description: 'Cat19 LTE with 8x8 MIMO. Theoretical 1.6Gbps DL.',
-        data: { name: 'Huawei B818-263', price: 100000, category: '4G LTE Cat19' }
+        id: 'h6',
+        type: 'powerstation',
+        tags: ['flagship', 'portable', 'pure-sine'],
+        description: 'True plug-and-play Setup in a Box.',
+        data: { name: 'SolarOne A300', capacity_wh: 390, max_output_w: 300, max_pv_input_w: 250, price: 185000, battery_type: 'lithium', inverter_type: 'pure-sine' }
       },
       {
-        id: 'i2',
-        type: 'internet',
-        tags: ['internet', 'tier-a'],
-        description: '5G NR bands n78 / n77 / n28. WiFi 6 AX3600.',
-        data: { name: 'ZTE MC888', price: 110000, category: '5G Indoor CPE' }
+        id: 'h7',
+        type: 'powerstation',
+        tags: ['flagship', 'pro', 'pure-sine'],
+        description: 'Whole-house power without the installation.',
+        data: { name: 'SolarOne A500 Pro', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 300000, battery_type: 'lithium', inverter_type: 'pure-sine' }
       },
       {
-        id: 'i3',
-        type: 'internet',
-        tags: ['internet', 'tier-b'],
-        description: 'Multi-WAN Load Balancing Router. Gigabit ports.',
-        data: { name: 'TP-Link ER605 (V2)', price: 75000, category: 'Load Balancer' }
+        id: 'h8',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'Smart Bluetooth Monitoring. Integrated BMS.',
+        data: { name: 'Taico 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 210000 }
+      },
+      {
+        id: 'h9',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'Modular design. DIY-friendly expansion.',
+        data: { name: 'Cworth 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 230000 }
       }
     ];
     const insertHardware = db.prepare("INSERT INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");
@@ -361,6 +370,102 @@ async function startServer() {
       const devices = db.prepare("SELECT * FROM devices_master").all();
       res.json(devices.map((d: any) => ({ ...d, tags: JSON.parse(d.tags) })));
     }
+  });
+
+  app.get("/api/hardware", async (req, res) => {
+    if (useSupabase) {
+      const { data } = await supabase.from("hardware").select("*").eq("user_id", "system");
+      res.json(data || []);
+    } else {
+      const hardware = db.prepare("SELECT * FROM hardware WHERE user_id = 'system'").all();
+      res.json(hardware.map((h: any) => ({
+        ...h,
+        data: JSON.parse(h.data),
+        tags: JSON.parse(h.tags)
+      })));
+    }
+  });
+
+  app.post("/api/hardware", async (req, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+
+    const { id, type, data, tags, description } = req.body;
+    if (useSupabase) {
+      const { error } = await supabase.from("hardware").upsert({
+        id, user_id: "system", type, data, tags, description
+      });
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      const upsert = db.prepare(`
+        INSERT INTO hardware (id, user_id, type, data, tags, description)
+        VALUES (?, 'system', ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          type = excluded.type,
+          data = excluded.data,
+          tags = excluded.tags,
+          description = excluded.description
+      `);
+      upsert.run(id, type, JSON.stringify(data), JSON.stringify(tags), description);
+    }
+    res.json({ success: true });
+  });
+
+  app.delete("/api/hardware/:id", async (req, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+
+    const { id } = req.params;
+    if (useSupabase) {
+      const { error } = await supabase.from("hardware").delete().eq("id", id);
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      db.prepare("DELETE FROM hardware WHERE id = ?").run(id);
+    }
+    res.json({ success: true });
+  });
+
+  app.post("/api/devices", async (req, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+
+    const { id, name, category, default_watts, tags } = req.body;
+    if (useSupabase) {
+      const { error } = await supabase.from("devices_master").upsert({
+        id, name, category, default_watts, tags
+      });
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      const upsert = db.prepare(`
+        INSERT INTO devices_master (id, name, category, default_watts, tags)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          category = excluded.category,
+          default_watts = excluded.default_watts,
+          tags = excluded.tags
+      `);
+      upsert.run(id, name, category, default_watts, JSON.stringify(tags));
+    }
+    res.json({ success: true });
+  });
+
+  app.delete("/api/devices/:id", async (req, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+
+    const { id } = req.params;
+    if (useSupabase) {
+      const { error } = await supabase.from("devices_master").delete().eq("id", id);
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      db.prepare("DELETE FROM devices_master WHERE id = ?").run(id);
+    }
+    res.json({ success: true });
   });
 
   app.get("/api/products", async (req, res) => {

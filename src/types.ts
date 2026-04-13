@@ -60,6 +60,11 @@ export interface Powerstation {
   max_pv_input_w: number;
   price: number;
   tags: string[];
+  battery_type?: "lithium" | "lead-acid";
+  inverter_type?: "pure-sine" | "modified-sine";
+  max_charge_amps?: number;
+  system_vdc?: number;
+  description?: string;
 }
 
 export interface Hardware {

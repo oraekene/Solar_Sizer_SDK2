@@ -64,83 +64,82 @@ export const INVERTERS: Inverter[] = [
 ];
 
 export const PANELS: Panel[] = [
-  {
-    id: "p-1",
-    name: "9solar 350W Mono",
-    watts: 350,
-    voc: 46.5,
-    isc: 9.5,
-    price: 95000,
-  },
-  {
-    id: "p-2",
-    name: "Jinko 550W Mono",
-    watts: 550,
-    voc: 49.9,
-    isc: 14.0,
-    price: 140000,
-  },
+  { id: "p-1", name: "Kulpower 100W Mono", watts: 100, voc: 22.5, isc: 5.8, price: 32000 },
+  { id: "p-2", name: "9Solar 190W Mono", watts: 190, voc: 24.2, isc: 10.1, price: 45000 },
+  { id: "p-3", name: "Kulpower 200W Mono", watts: 200, voc: 24.5, isc: 10.5, price: 43000 },
+  { id: "p-4", name: "Kulpower 250W Mono", watts: 250, voc: 30.5, isc: 10.8, price: 50000 },
+  { id: "p-5", name: "Kulpower 340W Mono", watts: 340, voc: 41.5, isc: 10.5, price: 70000 },
+  { id: "p-6", name: "Kulpower 450W Mono", watts: 450, voc: 49.5, isc: 11.5, price: 85000 },
+  { id: "p-7", name: "9Solar 330W Mono", watts: 330, voc: 40.5, isc: 10.2, price: 73000 },
+  { id: "p-8", name: "9Solar 430W Mono", watts: 430, voc: 48.5, isc: 11.2, price: 95000 },
+  { id: "p-9", name: "9Solar 550W Mono", watts: 550, voc: 49.9, isc: 14.0, price: 103000 },
+  { id: "p-10", name: "9Solar 600W Mono", watts: 600, voc: 52.5, isc: 14.5, price: 105000 },
 ];
 
 export const BATTERIES: Battery[] = [
-  {
-    id: "b-1",
-    name: "Tubular Lead-Acid 12V 200Ah",
-    voltage: 12,
-    capacity_ah: 200,
-    type: "lead-acid",
-    max_parallel_strings: 4,
-    min_c_rate: 0.1,
-    price: 250000,
-  },
-  {
-    id: "b-2",
-    name: "Lithium LiFePO4 24V 100Ah",
-    voltage: 24,
-    capacity_ah: 100,
-    type: "lithium",
-    max_parallel_strings: 8,
-    min_c_rate: 0.2,
-    price: 600000,
-  },
-  {
-    id: "b-3",
-    name: "Lithium Rack 48V 100Ah",
-    voltage: 48,
-    capacity_ah: 100,
-    type: "lithium",
-    max_parallel_strings: 15,
-    min_c_rate: 0.2,
-    price: 1100000,
-  },
+  { id: "b-1", name: "PowMr 50A LiFePO4", voltage: 12.8, capacity_ah: 50, type: "lithium", max_parallel_strings: 10, min_c_rate: 0.1, price: 110000 },
+  { id: "b-2", name: "Taico 12V 100Ah LiFePO4", voltage: 12.8, capacity_ah: 100, type: "lithium", max_parallel_strings: 10, min_c_rate: 0.1, price: 210000 },
+  { id: "b-3", name: "Taico 12V 200Ah LiFePO4", voltage: 12.8, capacity_ah: 200, type: "lithium", max_parallel_strings: 10, min_c_rate: 0.1, price: 375000 },
+  { id: "b-4", name: "Cworth 12V 100Ah LiFePO4", voltage: 12.8, capacity_ah: 100, type: "lithium", max_parallel_strings: 10, min_c_rate: 0.1, price: 230000 },
+  { id: "b-5", name: "Cworth 12V 200Ah LiFePO4", voltage: 12.8, capacity_ah: 200, type: "lithium", max_parallel_strings: 10, min_c_rate: 0.1, price: 390000 },
 ];
 
 export const POWERSTATIONS: Powerstation[] = [
   {
     id: "ps-1",
-    name: "EcoFlow Delta Pro",
-    capacity_wh: 3600,
-    max_output_w: 3600,
-    max_pv_input_w: 1600,
-    price: 2800000,
-    tags: ["premium", "portable"]
+    name: "SolarOne A300",
+    capacity_wh: 390,
+    max_output_w: 300,
+    max_pv_input_w: 250,
+    price: 185000,
+    tags: ["flagship", "portable", "pure-sine"],
+    battery_type: "lithium",
+    inverter_type: "pure-sine",
+    description: "True plug-and-play Setup in a Box."
   },
   {
     id: "ps-2",
-    name: "Bluetti AC200MAX",
-    capacity_wh: 2048,
-    max_output_w: 2200,
-    max_pv_input_w: 900,
-    price: 1850000,
-    tags: ["mid-range", "reliable"]
+    name: "SolarOne A500 Pro",
+    capacity_wh: 600,
+    max_output_w: 500,
+    max_pv_input_w: 350,
+    price: 300000,
+    tags: ["flagship", "pro", "pure-sine"],
+    battery_type: "lithium",
+    inverter_type: "pure-sine",
+    description: "Whole-house power without the installation."
   },
   {
     id: "ps-3",
-    name: "Itel 500W Powerstation",
-    capacity_wh: 512,
+    name: "Itel Energy iESS 320T",
+    capacity_wh: 320,
+    max_output_w: 130,
+    max_pv_input_w: 200,
+    price: 140000,
+    tags: ["budget", "student", "pure-sine"],
+    battery_type: "lithium",
+    inverter_type: "pure-sine"
+  },
+  {
+    id: "ps-4",
+    name: "500W Powerstation",
+    capacity_wh: 600,
     max_output_w: 500,
-    max_pv_input_w: 120,
-    price: 350000,
-    tags: ["budget", "entry-level"]
+    max_pv_input_w: 350,
+    price: 265000,
+    tags: ["mid-range", "modified-sine"],
+    battery_type: "lithium",
+    inverter_type: "modified-sine"
+  },
+  {
+    id: "ps-5",
+    name: "Itel 1000W Powerstation",
+    capacity_wh: 1000,
+    max_output_w: 500,
+    max_pv_input_w: 450,
+    price: 340000,
+    tags: ["pro", "high-capacity"],
+    battery_type: "lithium",
+    inverter_type: "pure-sine"
   }
 ];

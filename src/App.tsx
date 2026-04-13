@@ -569,9 +569,22 @@ export default function App() {
 
   // Fetch public master data — no auth needed
   useEffect(() => {
+    // Fetch public master data — no auth needed
     sdk.getDevices().then(setMasterDevices).catch(console.error);
     sdk.getProducts().then(setProducts).catch(console.error);
-    // User-specific server sync removed until OAuth is enabled
+    
+    // Fetch global hardware
+    sdk.getHardware().then(data => {
+      const globalInverters = data.filter((h: any) => h.type === 'inverter').map((h: any) => h.data);
+      const globalPanels = data.filter((h: any) => h.type === 'panel').map((h: any) => h.data);
+      const globalBatteries = data.filter((h: any) => h.type === 'battery').map((h: any) => h.data);
+      const globalPowerstations = data.filter((h: any) => h.type === 'powerstation').map((h: any) => h.data);
+
+      if (globalInverters.length > 0) setInverters(globalInverters);
+      if (globalPanels.length > 0) setPanels(globalPanels);
+      if (globalBatteries.length > 0) setBatteries(globalBatteries);
+      if (globalPowerstations.length > 0) setPowerstations(globalPowerstations);
+    }).catch(console.error);
   }, []); // Empty dependency array — runs once on mount
   
   // Hardware State
@@ -742,6 +755,9 @@ export default function App() {
   // Hardware Form State
   const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | "powerstation" | null>(null);
   const [editingHardware, setEditingHardware] = useState<{ type: "inverter" | "panel" | "battery" | "powerstation", id: string } | null>(null);
+
+  const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
+  const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
 
   // Profile State
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
@@ -1419,15 +1435,79 @@ export default function App() {
   };
 
   const deleteHardware = async (type: "inverter" | "panel" | "battery" | "powerstation", id: string) => {
+    if (isDeveloper) {
+      const adminKey = sessionStorage.getItem("ss_admin_key");
+      if (adminKey) {
+        try {
+          await sdk.deleteHardware(id, adminKey);
+        } catch (e) {
+          console.error("Failed to delete global hardware:", e);
+        }
+      }
+    }
+
     if (type === "inverter") setInverters(inverters.filter(i => i.id !== id));
     if (type === "panel") setPanels(panels.filter(p => p.id !== id));
     if (type === "battery") setBatteries(batteries.filter(b => b.id !== id));
     if (type === "powerstation") setPowerstations(powerstations.filter(ps => ps.id !== id));
   };
 
+  const deleteMasterDevice = async (id: string) => {
+    if (!isDeveloper) return;
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) return;
+    if (!confirm("Are you sure you want to delete this master device?")) return;
+
+    try {
+      await sdk.deleteMasterDevice(id, adminKey);
+      setMasterDevices(prev => prev.filter(d => d.id !== id));
+    } catch (e) {
+      console.error(e);
+      alert("Failed to delete master device.");
+    }
+  };
+
+  const startEditingMasterDevice = (device: MasterDevice) => {
+    setEditingMasterDevice(device);
+    setShowAddMasterDevice(true);
+  };
+
   const startEditing = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
     setEditingHardware({ type, id: item.id });
     setShowAddHardware(type);
+  };
+
+  const saveMasterDevice = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) return;
+
+    const fd = new FormData(e.currentTarget);
+    const device = {
+      id: editingMasterDevice?.id || crypto.randomUUID(),
+      name: fd.get("name") as string,
+      category: fd.get("category") as DeviceCategory,
+      default_watts: Number(fd.get("default_watts")),
+      tags: (fd.get("tags") as string)?.split(",").map(t => t.trim()).filter(Boolean) || [],
+    };
+
+    try {
+      await sdk.saveMasterDevice(device, adminKey);
+      setMasterDevices(prev => {
+        const idx = prev.findIndex(d => d.id === device.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = device as MasterDevice;
+          return updated;
+        }
+        return [device as MasterDevice, ...prev];
+      });
+      setShowAddMasterDevice(false);
+      setEditingMasterDevice(null);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save master device.");
+    }
   };
 
   const duplicateHardware = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
@@ -2482,9 +2562,15 @@ export default function App() {
                 </h3>
                 <div className="space-y-3">
                   {masterDevices.map((md) => (
-                    <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm">
+                    <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold text-sm">{md.name}</p>
+                        {isDeveloper && (
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
+                            <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                          </div>
+                        )}
                         <div className="flex gap-1 flex-wrap">
                           {md.tags.map(tag => (
                             <span key={tag} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
@@ -2498,6 +2584,14 @@ export default function App() {
                       </div>
                     </div>
                   ))}
+                  {isDeveloper && (
+                    <button 
+                      onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
+                      className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                    >
+                      + Add Master Device
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2603,6 +2697,10 @@ export default function App() {
                         <span>{ps.capacity_wh}Wh</span>
                         <span>Output: {ps.max_output_w}W</span>
                         <span>PV In: {ps.max_pv_input_w}W</span>
+                        {ps.battery_type && <span>Bat: {ps.battery_type}</span>}
+                        {ps.inverter_type && <span>Inv: {ps.inverter_type}</span>}
+                        {ps.system_vdc && <span>VDC: {ps.system_vdc}V</span>}
+                        {ps.max_charge_amps && <span>Charge: {ps.max_charge_amps}A</span>}
                         <span>Price: ₦{ps.price.toLocaleString()}</span>
                       </div>
                     </div>
@@ -3290,7 +3388,7 @@ export default function App() {
                     <p className="text-sm text-stone-500">Energy Storage Bank</p>
                     <div className="mt-4 space-y-2 text-xs">
                       <div className="flex justify-between"><span>Wiring</span><span className="font-bold">Series-Parallel</span></div>
-                      <div className="flex justify-between"><span>Usable Capacity</span><span className="font-bold">{(selectedSystemDetails.daily_yield / 0.8).toFixed(0)}Wh</span></div>
+                      <div className="flex justify-between"><span>Usable Capacity</span><span className="font-bold">{((selectedSystemDetails.daily_yield || selectedSystemDetails.battery_wh || 0) / 0.8).toFixed(0)}Wh</span></div>
                       <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-blue-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.battery_price || 0).toLocaleString()}</span></div>
                     </div>
                   </div>
@@ -3299,8 +3397,8 @@ export default function App() {
                     <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.panel_config}</h3>
                     <p className="text-sm text-stone-500">Photovoltaic Array</p>
                     <div className="mt-4 space-y-2 text-xs">
-                      <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w}W</span></div>
-                      <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{selectedSystemDetails.daily_yield.toFixed(0)}Wh</span></div>
+                      <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w || selectedSystemDetails.panel_w || 0}W</span></div>
+                      <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{(selectedSystemDetails.daily_yield || 0).toFixed(0)}Wh</span></div>
                       <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-amber-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.panel_price || 0).toLocaleString()}</span></div>
                     </div>
                   </div>
@@ -3338,6 +3436,52 @@ export default function App() {
       </AnimatePresence>
 
       {/* Add Hardware Modal */}
+      <AnimatePresence>
+        {showAddMasterDevice && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between">
+                <h2 className="font-bold text-xl">{editingMasterDevice ? "Edit" : "Add"} Master Device</h2>
+                <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
+              </div>
+              <form className="p-6 space-y-4" onSubmit={saveMasterDevice}>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Name</label>
+                  <input name="name" defaultValue={editingMasterDevice?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
+                    <select name="category" defaultValue={editingMasterDevice?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                      <option value="electronics">Electronics</option>
+                      <option value="motor">Motor</option>
+                      <option value="compressor">Compressor</option>
+                      <option value="heating">Heating</option>
+                      <option value="internet">Internet</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
+                    <input name="default_watts" type="number" defaultValue={editingMasterDevice?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
+                  <input name="tags" defaultValue={editingMasterDevice?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />
+                </div>
+                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4">
+                  {editingMasterDevice ? "Update Device" : "Save Device"}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
       <AnimatePresence>
         {showAddHardware && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
@@ -3416,11 +3560,39 @@ export default function App() {
                       capacity_wh: Number(fd.get("capacity_wh")),
                       max_output_w: Number(fd.get("max_output_w")),
                       max_pv_input_w: Number(fd.get("max_pv_input_w")),
+                      battery_type: fd.get("battery_type") as any,
+                      inverter_type: fd.get("inverter_type") as any,
+                      max_charge_amps: Number(fd.get("max_charge_amps")),
+                      system_vdc: Number(fd.get("system_vdc")),
                     };
                     if (editingHardware) {
                       setPowerstations(powerstations.map(ps => ps.id === editingHardware.id ? data : ps));
                     } else {
                       setPowerstations([...powerstations, data]);
+                    }
+
+                    if (isDeveloper) {
+                      const adminKey = sessionStorage.getItem("ss_admin_key");
+                      if (adminKey) {
+                        sdk.saveHardware({ id: data.id, type: "powerstation", data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
+                      }
+                    }
+                  }
+
+                  // Global sync for other types if developer
+                  if (isDeveloper && showAddHardware !== "powerstation") {
+                    const adminKey = sessionStorage.getItem("ss_admin_key");
+                    if (adminKey) {
+                      const id = editingHardware?.id || crypto.randomUUID();
+                      let data: any;
+                      if (showAddHardware === "inverter") {
+                        data = { id, ...commonData, max_ac_w: Number(fd.get("max_ac_w")), cc_max_pv_w: Number(fd.get("cc_max_pv_w")), cc_max_voc: Number(fd.get("cc_max_voc")), cc_max_amps: Number(fd.get("cc_max_amps")), system_vdc: Number(fd.get("system_vdc")), max_charge_amps: Number(fd.get("max_charge_amps")), cc_type: fd.get("cc_type"), max_parallel_units: Number(fd.get("max_parallel_units") || 1) };
+                      } else if (showAddHardware === "panel") {
+                        data = { id, ...commonData, watts: Number(fd.get("watts")), voc: Number(fd.get("voc")), isc: Number(fd.get("isc")) };
+                      } else if (showAddHardware === "battery") {
+                        data = { id, ...commonData, voltage: Number(fd.get("voltage")), capacity_ah: Number(fd.get("capacity_ah")), type: fd.get("type"), max_parallel_strings: Number(fd.get("max_parallel_strings") || 10), min_c_rate: Number(fd.get("min_c_rate") || 0.1) };
+                      }
+                      sdk.saveHardware({ id, type: showAddHardware, data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
                     }
                   }
                   setShowAddHardware(null);
@@ -3483,6 +3655,10 @@ export default function App() {
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Type</label><select name="battery_type" defaultValue={(currentItem as Powerstation)?.battery_type || "lithium"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>

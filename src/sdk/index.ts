@@ -18,6 +18,39 @@ export class SolarSizerSDK {
     return res.data;
   }
 
+  async getHardware() {
+    const res = await axios.get(`${this.baseUrl}/hardware`);
+    return res.data;
+  }
+
+  async saveHardware(item: any, adminKey: string) {
+    const res = await axios.post(`${this.baseUrl}/hardware`, item, {
+      headers: { "x-admin-key": adminKey }
+    });
+    return res.data;
+  }
+
+  async deleteHardware(id: string, adminKey: string) {
+    const res = await axios.delete(`${this.baseUrl}/hardware/${id}`, {
+      headers: { "x-admin-key": adminKey }
+    });
+    return res.data;
+  }
+
+  async saveMasterDevice(device: any, adminKey: string) {
+    const res = await axios.post(`${this.baseUrl}/devices`, device, {
+      headers: { "x-admin-key": adminKey }
+    });
+    return res.data;
+  }
+
+  async deleteMasterDevice(id: string, adminKey: string) {
+    const res = await axios.delete(`${this.baseUrl}/devices/${id}`, {
+      headers: { "x-admin-key": adminKey }
+    });
+    return res.data;
+  }
+
   async calculate(params: {
     location: Region;
     devices: Device[];
