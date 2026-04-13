@@ -3,14 +3,9 @@ import { Device, Region, Hardware, BatteryPreference, SystemCombination } from '
 
 export class SolarSizerSDK {
   private baseUrl: string;
-  private sessionId: string | null = null;
 
   constructor(baseUrl: string = '/api') {
     this.baseUrl = baseUrl;
-  }
-
-  setSession(id: string) {
-    this.sessionId = id;
   }
 
   async getDevices() {
@@ -34,9 +29,12 @@ export class SolarSizerSDK {
     return res.data;
   }
 
-  async saveProduct(product: any, adminKey?: string) {
-    const headers = adminKey ? { 'x-admin-key': adminKey } : {};
-    const res = await axios.post(`${this.baseUrl}/products`, product, { headers });
+  async saveProduct(product: any, adminKey: string) {
+    const res = await axios.post(`${this.baseUrl}/products`, product, {
+      headers: {
+        "x-admin-key": adminKey,
+      },
+    });
     return res.data;
   }
 }

@@ -318,6 +318,15 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  app.post("/api/admin/verify", (req, res) => {
+    const { password } = req.body;
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    if (!ADMIN_PASSWORD) {
+      return res.status(500).json({ error: "Admin password not configured." });
+    }
+    res.json({ valid: password === ADMIN_PASSWORD });
+  });
+
   // Google OAuth routes removed — add later when ready
 
   // --- User Data Routes (Auth Disabled) ---

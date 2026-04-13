@@ -534,12 +534,39 @@ export default function App() {
   }, []);
   
   // Developer Access Check
-  const adminKey = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('admin');
-  }, []);
+  const [isDeveloper, setIsDeveloper] = useState<boolean>(() => {
+    return sessionStorage.getItem("ss_admin_unlocked") === "true";
+  });
 
-  const isDeveloper = !!adminKey;
+  // Unlock admin mode via URL param: ?admin=true
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("admin") === "true") {
+      const password = prompt("Enter admin password to unlock developer features:");
+      if (!password) return;
+
+      // Verify the password with the server before unlocking
+      fetch("/api/admin/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.valid) {
+            sessionStorage.setItem("ss_admin_unlocked", "true");
+            sessionStorage.setItem("ss_admin_key", password);
+            setIsDeveloper(true);
+            // Clean the URL so the param doesn't stay visible
+            window.history.replaceState({}, "", window.location.pathname);
+            alert("✅ Admin mode unlocked for this session.");
+          } else {
+            alert("❌ Incorrect password.");
+          }
+        })
+        .catch(() => alert("Could not verify password with server."));
+    }
+  }, []);
 
   // Fetch public master data — no auth needed
   useEffect(() => {
@@ -589,42 +616,79 @@ export default function App() {
   const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
   const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
   const saveAsProduct = async (system: SystemCombination) => {
-    const name = prompt("Enter a name for this product combination:", `${system.inverter} System`);
-    if (!name) return;
-    
-    const tagInput = prompt("Enter tags (comma separated):", "featured,residential");
-    const tags = tagInput ? tagInput.split(',').map(t => t.trim()) : ['residential'];
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
 
-    const product: Partial<Product> = {
+    const name = prompt(
+      "Enter a name for this product combination:",
+      `${system.inverter} System`
+    );
+    if (!name) return;
+
+    const tagInput = prompt("Enter tags (comma separated):", "featured,residential");
+    const tags = tagInput
+      ? tagInput.split(",").map((t) => t.trim()).filter(Boolean)
+      : ["residential"];
+
+    const product = {
       id: Math.random().toString(36).substr(2, 9),
       name,
       description: `Complete solar system with ${system.panel_config} and ${system.battery_config}.`,
-      type: 'combination',
+      type: "combination",
       combination_data: system,
       tags,
-      price: system.total_price
+      price: system.total_price,
     };
 
     try {
-      await sdk.saveProduct(product, adminKey || undefined);
-      alert("Product saved successfully!");
+      await sdk.saveProduct(product, adminKey);
+      alert("✅ Product saved successfully!");
       sdk.getProducts().then(setProducts);
-    } catch (err) {
-      console.error("Failed to save product:", err);
-      alert("Failed to save product.");
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        alert("❌ Admin session rejected by server. Unlock again via ?admin=true.");
+        sessionStorage.removeItem("ss_admin_unlocked");
+        sessionStorage.removeItem("ss_admin_key");
+        setIsDeveloper(false);
+      } else {
+        console.error("Failed to save product:", err);
+        alert("Failed to save product. Check console.");
+      }
     }
   };
 
   const deleteProduct = async (id: string) => {
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
+
     if (!confirm("Are you sure you want to delete this product?")) return;
     try {
-      await fetch(`/api/products/${id}`, { 
+      const res = await fetch(`/api/products/${id}`, { 
         method: 'DELETE',
-        headers: adminKey ? { 'x-admin-key': adminKey } : {}
+        headers: { 'x-admin-key': adminKey }
       });
+      
+      if (res.status === 403) {
+        alert("❌ Admin session rejected by server. Unlock again via ?admin=true.");
+        sessionStorage.removeItem("ss_admin_unlocked");
+        sessionStorage.removeItem("ss_admin_key");
+        setIsDeveloper(false);
+        return;
+      }
+
+      if (!res.ok) throw new Error("Delete failed");
+
       setProducts(prev => prev.filter(p => p.id !== id));
+      alert("✅ Product deleted.");
     } catch (err) {
       console.error("Failed to delete product:", err);
+      alert("Failed to delete product.");
     }
   };
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
@@ -1432,8 +1496,6 @@ export default function App() {
     if (type === "inverter") setInverters([...inverters, newItem]);
     if (type === "panel") setPanels([...panels, newItem]);
     if (type === "battery") setBatteries([...batteries, newItem]);
-    
-    if (user) saveHardwareToServer(type, newItem);
   };
 
   const generateQuote = (sys: SystemCombination) => {
@@ -3243,7 +3305,6 @@ export default function App() {
                     } else {
                       setInverters([...inverters, data]);
                     }
-                    if (user) saveHardwareToServer("inverter", data);
                   } else if (showAddHardware === "panel") {
                     const data: Panel = {
                       id: editingHardware?.id || crypto.randomUUID(),
@@ -3257,7 +3318,6 @@ export default function App() {
                     } else {
                       setPanels([...panels, data]);
                     }
-                    if (user) saveHardwareToServer("panel", data);
                   } else if (showAddHardware === "battery") {
                     const data: Battery = {
                       id: editingHardware?.id || crypto.randomUUID(),
@@ -3273,7 +3333,6 @@ export default function App() {
                     } else {
                       setBatteries([...batteries, data]);
                     }
-                    if (user) saveHardwareToServer("battery", data);
                   }
                   setShowAddHardware(null);
                   setEditingHardware(null);
