@@ -1,4 +1,4 @@
-import { Battery, DeviceCategory, Inverter, Panel, Region } from "./types";
+import { Battery, DeviceCategory, Inverter, Panel, Powerstation, Region } from "./types";
 
 export const LOCATION_PSH: Record<Region, number> = {
   SE_SS: 2.2,
@@ -17,6 +17,8 @@ export const SURGE_MULTIPLIERS: Record<DeviceCategory, number> = {
   motor: 2.0,
   heating: 1.2,
   electronics: 1.0,
+  internet: 1.0,
+  powerstation: 1.0,
 };
 
 export const INVERTERS: Inverter[] = [
@@ -111,4 +113,34 @@ export const BATTERIES: Battery[] = [
     min_c_rate: 0.2,
     price: 1100000,
   },
+];
+
+export const POWERSTATIONS: Powerstation[] = [
+  {
+    id: "ps-1",
+    name: "EcoFlow Delta Pro",
+    capacity_wh: 3600,
+    max_output_w: 3600,
+    max_pv_input_w: 1600,
+    price: 2800000,
+    tags: ["premium", "portable"]
+  },
+  {
+    id: "ps-2",
+    name: "Bluetti AC200MAX",
+    capacity_wh: 2048,
+    max_output_w: 2200,
+    max_pv_input_w: 900,
+    price: 1850000,
+    tags: ["mid-range", "reliable"]
+  },
+  {
+    id: "ps-3",
+    name: "Itel 500W Powerstation",
+    capacity_wh: 512,
+    max_output_w: 500,
+    max_pv_input_w: 120,
+    price: 350000,
+    tags: ["budget", "entry-level"]
+  }
 ];

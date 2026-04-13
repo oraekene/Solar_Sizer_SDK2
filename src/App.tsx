@@ -54,12 +54,12 @@ import {
   User, 
   SavedResult,
   MasterDevice,
-  Product
+  Product,
+  Powerstation
 } from "./types";
 import { buildCombinations } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES } from "./constants";
+import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
 import InteractiveBridge from "./components/InteractiveBridge";
-import Auth from "./components/Auth";
 import { sdk } from "./sdk";
 
 const CATEGORIES: { value: DeviceCategory; label: string }[] = [
@@ -511,7 +511,6 @@ export default function App() {
   const [batteryPreference, setBatteryPreference] = useState<BatteryPreference>("any");
   const [tolerance, setTolerance] = useState<number>(20);
   const [devices, setDevices] = useState<Device[]>([]);
-  const [user, setUser] = useState<User | null>(null);
   const [savedResults, setSavedResults] = useState<SavedResult[]>(() => {
     const saved = localStorage.getItem("ss_results");
     return saved ? JSON.parse(saved) : [];
@@ -595,6 +594,11 @@ export default function App() {
     const saved = localStorage.getItem("ss_batteries");
     const data: Battery[] = saved ? JSON.parse(saved) : DEFAULT_BATTERIES;
     return data.map((item, idx) => ({ ...item, id: item.id || `b-legacy-${idx}` }));
+  });
+  const [powerstations, setPowerstations] = useState<Powerstation[]>(() => {
+    const saved = localStorage.getItem("ss_powerstations");
+    const data: Powerstation[] = saved ? JSON.parse(saved) : (typeof POWERSTATIONS !== 'undefined' ? POWERSTATIONS : []);
+    return data.map((item, idx) => ({ ...item, id: item.id || `ps-legacy-${idx}` }));
   });
 
   // Internal Logs State
@@ -735,27 +739,9 @@ export default function App() {
     );
   };
 
-  const saveHardwareToServer = async (type: "inverter" | "panel" | "battery", item: any) => {
-    if (!user) return;
-    try {
-      await fetch("/api/user/hardware", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          ...item, 
-          type,
-          tags: item.tags || [],
-          description: item.description || ""
-        }),
-      });
-    } catch (err) {
-      console.error("Failed to save hardware:", err);
-    }
-  };
-
   // Hardware Form State
-  const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | null>(null);
-  const [editingHardware, setEditingHardware] = useState<{ type: "inverter" | "panel" | "battery", id: string } | null>(null);
+  const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | "powerstation" | null>(null);
+  const [editingHardware, setEditingHardware] = useState<{ type: "inverter" | "panel" | "battery" | "powerstation", id: string } | null>(null);
 
   // Profile State
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
@@ -767,7 +753,7 @@ export default function App() {
 
   const results = useMemo(() => {
     if (devices.length === 0) return null;
-    const res = buildCombinations(region, devices, { inverters, panels, batteries }, batteryPreference, tolerance);
+    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations }, batteryPreference, tolerance, products);
     
     // Sort systems: Optimal -> Conditional -> High Risk, then by price
     res.systems.sort((a, b) => {
@@ -803,8 +789,9 @@ export default function App() {
     localStorage.setItem("ss_inverters", JSON.stringify(inverters));
     localStorage.setItem("ss_panels", JSON.stringify(panels));
     localStorage.setItem("ss_batteries", JSON.stringify(batteries));
+    localStorage.setItem("ss_powerstations", JSON.stringify(powerstations));
     localStorage.setItem("ss_profiles", JSON.stringify(profiles));
-  }, [inverters, panels, batteries, profiles]);
+  }, [inverters, panels, batteries, powerstations, profiles]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) return;
@@ -830,26 +817,7 @@ export default function App() {
     
     setProfiles(updated);
     setCurrentProfileId(newProfile.id);
-    
-    if (user) {
-      try {
-        await fetch("/api/user/profiles", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: newProfile.id,
-            name: newProfile.name,
-            region: newProfile.region,
-            battery_preference: newProfile.batteryPreference,
-            devices: newProfile.devices
-          })
-        });
-      } catch (err) {
-        console.error("Failed to save profile to server:", err);
-      }
-    } else {
-      localStorage.setItem("ss_profiles", JSON.stringify(updated));
-    }
+    localStorage.setItem("ss_profiles", JSON.stringify(updated));
 
     setProfileName("");
     setShowSaveProfile(false);
@@ -858,16 +826,7 @@ export default function App() {
   const deleteProfile = async (id: string) => {
     const updated = profiles.filter((p) => p.id !== id);
     setProfiles(updated);
-    
-    if (user) {
-      try {
-        await fetch(`/api/user/profile/${id}`, { method: "DELETE" });
-      } catch (err) {
-        console.error("Failed to delete profile from server:", err);
-      }
-    } else {
-      localStorage.setItem("ss_profiles", JSON.stringify(updated));
-    }
+    localStorage.setItem("ss_profiles", JSON.stringify(updated));
   };
 
   const saveResult = async (system: SystemCombination) => {
@@ -1207,9 +1166,6 @@ export default function App() {
             });
             return merged;
           });
-          if (user) {
-            sanitizedInverters.forEach(inv => saveHardwareToServer("inverter", inv));
-          }
           importedCount++;
         }
 
@@ -1234,9 +1190,6 @@ export default function App() {
             });
             return merged;
           });
-          if (user) {
-            sanitizedPanels.forEach(p => saveHardwareToServer("panel", p));
-          }
           importedCount++;
         }
 
@@ -1261,9 +1214,6 @@ export default function App() {
             });
             return merged;
           });
-          if (user) {
-            sanitizedBatteries.forEach(b => saveHardwareToServer("battery", b));
-          }
           importedCount++;
         }
 
@@ -1468,26 +1418,19 @@ export default function App() {
     setDevices(devices.filter((d) => d.id !== id));
   };
 
-  const deleteHardware = async (type: "inverter" | "panel" | "battery", id: string) => {
+  const deleteHardware = async (type: "inverter" | "panel" | "battery" | "powerstation", id: string) => {
     if (type === "inverter") setInverters(inverters.filter(i => i.id !== id));
     if (type === "panel") setPanels(panels.filter(p => p.id !== id));
     if (type === "battery") setBatteries(batteries.filter(b => b.id !== id));
-    
-    if (user) {
-      try {
-        await fetch(`/api/user/hardware/${id}`, { method: "DELETE" });
-      } catch (err) {
-        console.error("Failed to delete hardware from server:", err);
-      }
-    }
+    if (type === "powerstation") setPowerstations(powerstations.filter(ps => ps.id !== id));
   };
 
-  const startEditing = (type: "inverter" | "panel" | "battery", item: any) => {
+  const startEditing = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
     setEditingHardware({ type, id: item.id });
     setShowAddHardware(type);
   };
 
-  const duplicateHardware = (type: "inverter" | "panel" | "battery", item: any) => {
+  const duplicateHardware = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
     const newItem = {
       ...item,
       id: crypto.randomUUID(),
@@ -1496,9 +1439,86 @@ export default function App() {
     if (type === "inverter") setInverters([...inverters, newItem]);
     if (type === "panel") setPanels([...panels, newItem]);
     if (type === "battery") setBatteries([...batteries, newItem]);
+    if (type === "powerstation") setPowerstations([...powerstations, newItem]);
+  };
+
+  const generateUsageProfile = () => {
+    if (devices.length === 0) return;
+    const doc = new jsPDF();
+    const date = new Date().toLocaleDateString();
+    const profileId = `UP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    // Header
+    doc.setFontSize(22);
+    doc.setTextColor(16, 185, 129); // emerald-600
+    doc.text("LOAD USAGE PROFILE", 105, 20, { align: "center" });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Profile ID: ${profileId}`, 20, 35);
+    doc.text(`Date: ${date}`, 20, 40);
+    doc.text(`Location: ${REGIONS.find(r => r.value === region)?.label}`, 20, 45);
+
+    // Load Analysis Summary
+    if (results) {
+      doc.setFontSize(14);
+      doc.setTextColor(0);
+      doc.text("LOAD ANALYSIS SUMMARY", 20, 60);
+      
+      doc.setFontSize(10);
+      const summary = [
+        ["Peak Surge Load", `${results.analysis.max_surge.toFixed(0)}W`],
+        ["Total Daily Consumption", `${results.analysis.total_daily_wh.toFixed(0)}Wh`],
+        ["Nighttime Consumption (6PM-7AM)", `${results.analysis.nighttime_wh.toFixed(0)}Wh`],
+        ["Average Hourly Load", `${(results.analysis.total_daily_wh / 24).toFixed(0)}W`]
+      ];
+
+      autoTable(doc, {
+        startY: 65,
+        head: [["Metric", "Value"]],
+        body: summary,
+        theme: "striped",
+        headStyles: { fillColor: [16, 185, 129] }
+      });
+    }
+
+    // Itemized Device List
+    const finalY = (doc as any).lastAutoTable?.finalY || 100;
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("ITEMIZED DEVICE LIST", 20, finalY + 15);
+
+    const deviceData = devices.map((d, idx) => [
+      (idx + 1).toString(),
+      d.name,
+      d.qty.toString(),
+      `${d.watts}W`,
+      `${d.watts * d.qty}W`,
+      d.ranges.map(r => `${r.start}:00-${r.end}:00`).join(", ")
+    ]);
+
+    autoTable(doc, {
+      startY: finalY + 20,
+      head: [["#", "Device", "Qty", "Watts", "Total W", "Schedule"]],
+      body: deviceData,
+      theme: "grid",
+      headStyles: { fillColor: [16, 185, 129] }
+    });
+
+    // Footer
+    const footerY = (doc as any).lastAutoTable.finalY + 20;
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text("This usage profile is based on the data provided by the user.", 105, footerY, { align: "center" });
+    doc.text("Actual usage may vary based on device efficiency and environmental factors.", 105, footerY + 5, { align: "center" });
+
+    doc.save(`SolarSizer_UsageProfile_${profileId}.pdf`);
   };
 
   const generateQuote = (sys: SystemCombination) => {
+    // Generate usage profile first
+    generateUsageProfile();
+    
     const doc = new jsPDF();
     const date = new Date().toLocaleDateString();
     const quoteId = `QT-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1670,11 +1690,6 @@ export default function App() {
                 <Save className="w-4 h-4" /> Save Profile
               </button>
               <div className="hidden md:block h-6 w-px bg-stone-200" />
-              <Auth 
-                onUserChange={setUser} 
-                onTabChange={setActiveTab}
-                isDeveloper={isDeveloper || false}
-              />
             </div>
           </div>
         </header>
@@ -2343,6 +2358,37 @@ export default function App() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {/* List Internet Master Devices */}
+              {masterDevices
+                .filter(md => md.category === 'internet' || md.tags.includes('internet'))
+                .map(md => (
+                  <motion.div
+                    key={md.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
+                  >
+                    <div className="p-8 flex-1">
+                      <div className="flex justify-between items-start mb-6">
+                        <span className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-black uppercase rounded-full border border-stone-200">
+                          Hardware
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-black text-stone-900 mb-3">{md.name}</h3>
+                      <p className="text-sm text-stone-500 mb-4">Standard {md.name} for high-speed connectivity.</p>
+                      <div className="flex items-center gap-2 text-xs font-bold text-stone-400">
+                        <Zap className="w-4 h-4" /> {md.default_watts}W Consumption
+                      </div>
+                    </div>
+                    <div className="p-6 border-t border-stone-100">
+                      <button className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all">
+                        View Details
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+
+              {/* List Internet Products */}
               {products
                 .filter(p => p.tags.includes('internet'))
                 .map(product => (
@@ -2422,10 +2468,13 @@ export default function App() {
                 <button onClick={() => setShowAddHardware("battery")} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
                   <Plus className="w-4 h-4" /> Add Battery
                 </button>
+                <button onClick={() => setShowAddHardware("powerstation")} className="bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all">
+                  <Plus className="w-4 h-4" /> Add Powerstation
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
               {/* Master Devices */}
               <div className="space-y-4">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
@@ -2528,6 +2577,33 @@ export default function App() {
                         <span>Type: {b.type}</span>
                         <span>C-Rate: {b.min_c_rate}</span>
                         <span>Price: ₦{b.price.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Powerstations */}
+              <div className="space-y-4">
+                <h3 className="font-bold flex items-center gap-2 text-stone-700">
+                  <Zap className="w-5 h-5 text-stone-900" /> Powerstations
+                </h3>
+                <div className="space-y-3">
+                  {powerstations.map((ps) => (
+                    <div key={ps.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="font-bold">{ps.name}</p>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                        <span>{ps.capacity_wh}Wh</span>
+                        <span>Output: {ps.max_output_w}W</span>
+                        <span>PV In: {ps.max_pv_input_w}W</span>
+                        <span>Price: ₦{ps.price.toLocaleString()}</span>
                       </div>
                     </div>
                   ))}
@@ -3205,7 +3281,7 @@ export default function App() {
                     <div className="mt-4 space-y-2 text-xs">
                       <div className="flex justify-between"><span>AC Output</span><span className="font-bold">Pure Sine Wave</span></div>
                       <div className="flex justify-between"><span>Efficiency</span><span className="font-bold">~93%</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-emerald-600 font-bold">Price</span><span className="font-bold">₦{selectedSystemDetails.inverter_price.toLocaleString()}</span></div>
+                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-emerald-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.inverter_price || 0).toLocaleString()}</span></div>
                     </div>
                   </div>
                   <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
@@ -3215,7 +3291,7 @@ export default function App() {
                     <div className="mt-4 space-y-2 text-xs">
                       <div className="flex justify-between"><span>Wiring</span><span className="font-bold">Series-Parallel</span></div>
                       <div className="flex justify-between"><span>Usable Capacity</span><span className="font-bold">{(selectedSystemDetails.daily_yield / 0.8).toFixed(0)}Wh</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-blue-600 font-bold">Price</span><span className="font-bold">₦{selectedSystemDetails.battery_price.toLocaleString()}</span></div>
+                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-blue-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.battery_price || 0).toLocaleString()}</span></div>
                     </div>
                   </div>
                   <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
@@ -3225,7 +3301,7 @@ export default function App() {
                     <div className="mt-4 space-y-2 text-xs">
                       <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w}W</span></div>
                       <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{selectedSystemDetails.daily_yield.toFixed(0)}Wh</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-amber-600 font-bold">Price</span><span className="font-bold">₦{selectedSystemDetails.panel_price.toLocaleString()}</span></div>
+                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-amber-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.panel_price || 0).toLocaleString()}</span></div>
                     </div>
                   </div>
                 </>
@@ -3246,7 +3322,7 @@ export default function App() {
                 <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">Total System Investment</p>
-                    <p className="text-3xl font-black text-emerald-900">₦{selectedSystemDetails.total_price.toLocaleString()}</p>
+                    <p className="text-3xl font-black text-emerald-900">₦{(selectedSystemDetails.total_price || 0).toLocaleString()}</p>
                   </div>
                   <button 
                     onClick={() => generateQuote(selectedSystemDetails)}
@@ -3333,6 +3409,19 @@ export default function App() {
                     } else {
                       setBatteries([...batteries, data]);
                     }
+                  } else if (showAddHardware === "powerstation") {
+                    const data: Powerstation = {
+                      id: editingHardware?.id || crypto.randomUUID(),
+                      ...commonData,
+                      capacity_wh: Number(fd.get("capacity_wh")),
+                      max_output_w: Number(fd.get("max_output_w")),
+                      max_pv_input_w: Number(fd.get("max_pv_input_w")),
+                    };
+                    if (editingHardware) {
+                      setPowerstations(powerstations.map(ps => ps.id === editingHardware.id ? data : ps));
+                    } else {
+                      setPowerstations([...powerstations, data]);
+                    }
                   }
                   setShowAddHardware(null);
                   setEditingHardware(null);
@@ -3342,7 +3431,8 @@ export default function App() {
                   const currentItem = editingHardware 
                     ? (editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
                       : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
-                      : batteries.find(b => b.id === editingHardware.id))
+                      : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
+                      : powerstations.find(ps => ps.id === editingHardware.id))
                     : null;
                   
                   return (
@@ -3386,6 +3476,13 @@ export default function App() {
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Type</label><select name="type" defaultValue={(currentItem as Battery)?.type} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="0.01" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                          </>
+                        )}
+                        {showAddHardware === "powerstation" && (
+                          <>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>

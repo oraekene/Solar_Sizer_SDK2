@@ -37,12 +37,12 @@ async function main() {
     });
 
     // Use default hardware for CLI quick check
-    const { INVERTERS, PANELS, BATTERIES } = await import('./src/constants');
+    const { INVERTERS, PANELS, BATTERIES, POWERSTATIONS } = await import('./src/constants');
     
     const result = await sdk.calculate({
       location,
       devices,
-      hardware: { inverters: INVERTERS, panels: PANELS, batteries: BATTERIES }
+      hardware: { inverters: INVERTERS, panels: PANELS, batteries: BATTERIES, powerstations: POWERSTATIONS }
     });
 
     console.log(`\nCalculation Results for ${location}:`);

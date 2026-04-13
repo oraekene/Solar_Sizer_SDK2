@@ -1,5 +1,5 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES } from "../constants";
-import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product } from "../types";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation } from "../types";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -184,7 +184,7 @@ export function getLoadSheddingAdvice(devices: Device[], deficit: number): strin
 export function buildCombinations(
   location: Region,
   devices: Device[],
-  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[] },
+  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[] },
   batteryPreference: BatteryPreference = "any",
   tolerance: number = 20,
   products: Product[] = []
@@ -248,11 +248,11 @@ export function buildCombinations(
 
     validSystems.push({
       inverter: data.inverter,
-      inverter_price: 0, // Price is bundled
+      inverter_price: data.inverter_price || 0,
       battery_config: data.battery_config,
-      battery_price: 0,
+      battery_price: data.battery_price || 0,
       panel_config: data.panel_config,
-      panel_price: 0,
+      panel_price: data.panel_price || 0,
       array_size_w: panW,
       battery_total_wh: batWh,
       total_price: prod.price,
@@ -265,6 +265,70 @@ export function buildCombinations(
       product_id: prod.id
     });
     allLogs.push(prodLog);
+  }
+
+  // --- 1.5 Check Powerstations ---
+  for (const ps of hardware.powerstations) {
+    const psLog: string[] = [];
+    psLog.push(`Checking Powerstation: ${ps.name} (${ps.capacity_wh}Wh, ${ps.max_output_w}W)`);
+
+    // Surge Check
+    if (ps.max_output_w < max_surge) {
+      psLog.push(`❌ Rejected: Powerstation output (${ps.max_output_w}W) is less than peak surge (${max_surge}W).`);
+      allLogs.push(psLog);
+      continue;
+    }
+    psLog.push(`✅ Powerstation output (${ps.max_output_w}W) matches surge requirements.`);
+
+    // Simulation (assuming 1 panel of 350W for now or just the max PV input)
+    // Let's assume we pair it with panels up to its max PV input
+    const maxPanels = Math.floor(ps.max_pv_input_w / 350); // Using 350W as standard
+    const actualPanW = maxPanels * 350;
+    const dailyYield = actualPanW * psh * 0.8;
+
+    const sim = simulateHourlySoC(
+      analysis.hourly_consumption,
+      dailyYield,
+      ps.capacity_wh * 0.9, // 90% usable for lithium powerstations
+      ps.max_output_w,
+      "mppt",
+      location
+    );
+
+    let status: "Optimal" | "Conditional" | "High Risk" | null = null;
+    let advice = "";
+    const simDeficit = sim.finalDeficitWh;
+    const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
+
+    if (sim.passed) {
+      status = "Optimal";
+      advice = `This powerstation covers your load when paired with ${maxPanels}x 350W panels.`;
+    } else if (deficitPercentage <= tolerance) {
+      status = "Conditional";
+      advice = `⚠️ Blackout Risk: Powerstation will drain at ${sim.failureTime}. Short by ${simDeficit.toFixed(0)}Wh.`;
+    } else {
+      status = "High Risk";
+      advice = `🚨 High Blackout Risk: This powerstation is undersized for your current load.`;
+    }
+
+    validSystems.push({
+      inverter: `${ps.name} (Built-in Inverter)`,
+      inverter_price: ps.price,
+      battery_config: `${ps.name} (Built-in Battery)`,
+      battery_price: 0,
+      panel_config: maxPanels > 0 ? `${maxPanels}x 350W Panels` : "No Panels",
+      panel_price: maxPanels * 95000,
+      array_size_w: actualPanW,
+      battery_total_wh: ps.capacity_wh,
+      total_price: ps.price + (maxPanels * 95000),
+      daily_yield: dailyYield,
+      deficit: Math.max(0, simDeficit),
+      status,
+      advice,
+      log: psLog,
+      is_preconfigured: true
+    });
+    allLogs.push(psLog);
   }
 
   // --- 2. Build Custom Combinations from Hardware ---

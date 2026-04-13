@@ -1,6 +1,6 @@
 export type Region = "SE_SS" | "SW" | "North";
 
-export type DeviceCategory = "compressor" | "motor" | "heating" | "electronics";
+export type DeviceCategory = "compressor" | "motor" | "heating" | "electronics" | "internet" | "powerstation";
 
 export interface TimeRange {
   start: number;
@@ -52,10 +52,21 @@ export interface Battery {
   price: number;
 }
 
+export interface Powerstation {
+  id: string;
+  name: string;
+  capacity_wh: number;
+  max_output_w: number;
+  max_pv_input_w: number;
+  price: number;
+  tags: string[];
+}
+
 export interface Hardware {
   inverters: Inverter[];
   panels: Panel[];
   batteries: Battery[];
+  powerstations: Powerstation[];
 }
 
 export interface LoadAnalysis {
