@@ -344,6 +344,104 @@ async function startServer() {
 
   // --- Master Data & Product Routes ---
 
+  app.get("/api/devices", async (req, res) => {
+    if (useSupabase) {
+      const { data } = await supabase.from("devices_master").select("*");
+      res.json(data || []);
+    } else {
+      const devices = db.prepare("SELECT * FROM devices_master").all();
+      res.json(devices.map((d: any) => ({ ...d, tags: JSON.parse(d.tags) })));
+    }
+  });
+
+  app.get("/api/products", async (req, res) => {
+    const { tag } = req.query;
+    if (useSupabase) {
+      let query = supabase.from("products").select("*");
+      if (tag) query = query.contains("tags", [tag]);
+      const { data } = await query;
+      res.json(data || []);
+    } else {
+      let products = db.prepare("SELECT * FROM products").all();
+      products = products.map((p: any) => ({
+        ...p,
+        combination_data: JSON.parse(p.combination_data),
+        tags: JSON.parse(p.tags)
+      }));
+      if (tag) {
+        products = products.filter((p: any) => p.tags.includes(tag));
+      }
+      res.json(products);
+    }
+  });
+
+  app.post("/api/products", async (req, res) => {
+    // Validate admin password from request header
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+    if (!ADMIN_PASSWORD) {
+      return res.status(500).json({ error: "Admin password not configured on server." });
+    }
+
+    if (adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Invalid admin credentials." });
+    }
+
+    const { id, name, description, type, combination_data, tags, price } = req.body;
+
+    if (useSupabase) {
+      const { error } = await supabase.from("products").upsert({
+        id, name, description, type, combination_data, tags, price
+      });
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      const upsert = db.prepare(`
+        INSERT INTO products (id, name, description, type, combination_data, tags, price)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          description = excluded.description,
+          type = excluded.type,
+          combination_data = excluded.combination_data,
+          tags = excluded.tags,
+          price = excluded.price
+      `);
+      upsert.run(
+        id, name, description, type,
+        JSON.stringify(combination_data),
+        JSON.stringify(tags),
+        price
+      );
+    }
+    res.json({ success: true });
+  });
+
+  app.delete("/api/products/:id", async (req, res) => {
+    // Validate admin password from request header
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+    if (!ADMIN_PASSWORD) {
+      return res.status(500).json({ error: "Admin password not configured on server." });
+    }
+
+    if (adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Invalid admin credentials." });
+    }
+
+    const { id } = req.params;
+
+    if (useSupabase) {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) return res.status(500).json({ error: error.message });
+    } else {
+      const del = db.prepare("DELETE FROM products WHERE id = ?");
+      del.run(id);
+    }
+    res.json({ success: true });
+  });
+
   // --- Calculation API ---
   app.post("/api/calculate", async (req, res) => {
     const { location, devices, hardware, batteryPreference, tolerance } = req.body;

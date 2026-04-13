@@ -34,8 +34,9 @@ export class SolarSizerSDK {
     return res.data;
   }
 
-  async saveProduct(product: any) {
-    const res = await axios.post(`${this.baseUrl}/products`, product);
+  async saveProduct(product: any, adminKey?: string) {
+    const headers = adminKey ? { 'x-admin-key': adminKey } : {};
+    const res = await axios.post(`${this.baseUrl}/products`, product, { headers });
     return res.data;
   }
 }

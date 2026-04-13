@@ -534,8 +534,12 @@ export default function App() {
   }, []);
   
   // Developer Access Check
-  const DEVELOPER_EMAILS = ["oraelosikeny@gmail.com", "oraelosikenny@gmail.com"];
-  const isDeveloper = user && DEVELOPER_EMAILS.includes(user.email.toLowerCase().trim());
+  const adminKey = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('admin');
+  }, []);
+
+  const isDeveloper = !!adminKey;
 
   // Fetch public master data — no auth needed
   useEffect(() => {
@@ -602,7 +606,7 @@ export default function App() {
     };
 
     try {
-      await sdk.saveProduct(product);
+      await sdk.saveProduct(product, adminKey || undefined);
       alert("Product saved successfully!");
       sdk.getProducts().then(setProducts);
     } catch (err) {
@@ -614,7 +618,10 @@ export default function App() {
   const deleteProduct = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return;
     try {
-      await fetch(`/api/user/product/${id}`, { method: 'DELETE' });
+      await fetch(`/api/products/${id}`, { 
+        method: 'DELETE',
+        headers: adminKey ? { 'x-admin-key': adminKey } : {}
+      });
       setProducts(prev => prev.filter(p => p.id !== id));
     } catch (err) {
       console.error("Failed to delete product:", err);
