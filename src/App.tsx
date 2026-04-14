@@ -200,7 +200,7 @@ function ComparisonModal({
   analysis: LoadAnalysis;
   hasGenerator: boolean;
   setHasGenerator: (val: boolean) => void;
-  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null) => void;
+  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null, savedAnalysis?: LoadAnalysis) => void;
   onSave?: () => void;
   onClose: () => void 
 }) {
@@ -231,7 +231,7 @@ function ComparisonModal({
   const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
   const exportToPDF = () => {
-    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, true, genHours, fuelPriceOverride);
+    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, true, genHours, fuelPriceOverride, analysis);
   };
 
   return (
@@ -916,7 +916,14 @@ export default function App() {
     URL.revokeObjectURL(a.href);
   };
 
-  const exportComparisonToPDF = (profileName: string, systems: SystemCombination[], hasGen: boolean = false, genHours: number = 6, fuelPriceOverride: number | null = null) => {
+  const exportComparisonToPDF = (
+    profileName: string, 
+    systems: SystemCombination[], 
+    hasGen: boolean = false, 
+    genHours: number = 6, 
+    fuelPriceOverride: number | null = null,
+    savedAnalysis?: LoadAnalysis
+  ) => {
     const doc = new jsPDF('l', 'mm', 'a4');
     const timestamp = new Date().toLocaleString();
     
@@ -928,52 +935,30 @@ export default function App() {
     doc.setTextColor(100);
     doc.text(`Generated on: ${timestamp}`, 14, 28);
 
+    const activeAnalysis = savedAnalysis || results?.analysis;
+    const peakWatts = activeAnalysis?.max_surge || 0;
+    const requiredVA = peakWatts / 0.8;
+    const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
+    const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
+    const consumption = selectedGen.fuel_consumption_l_hr;
+    const maintenance = selectedGen.maintenance_mo;
+    const initialCost = 0; 
+    const monthlyFuel = fuelPrice * consumption * genHours * 30; 
+    const monthlyTotal = monthlyFuel + maintenance;
+    const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
+
     const headers = ["Feature", ...systems.map((s, i) => s.inverter || `Option ${i+1}`)];
     if (hasGen) headers.push("Generator");
 
     const rows = [
       ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`)],
-      ["Solar Array", ...systems.map(s => s.panel_config)],
-      ["Battery Bank", ...systems.map(s => s.battery_config)],
-      ["Daily Yield", ...systems.map(s => `${s.daily_yield.toFixed(0)}Wh`)],
-      ["Status", ...systems.map(s => s.status)],
-      ["Amortized (25yr Std)", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})}`)],
-      ["Amortized (10yr Cons)", ...systems.map(s => `N${(s.total_price/120).toLocaleString(undefined, {maximumFractionDigits: 0})}`)],
-      ["Reliability", ...systems.map(_ => "Silent, Automatic")]
+      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), `N${monthlyTotal.toLocaleString()}`],
+      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), `N${fiveYearTotal.toLocaleString()}`],
+      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), `N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`],
+      ["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type],
+      ["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`],
+      ["Reliability", ...systems.map(_ => "Silent, Automatic"), "Noisy, Fumes, Manual"]
     ];
-
-    if (systems.length === 2) {
-      rows.push(["Best For", 
-        "Student & Entry-Level: Most affordable entry into solar energy. Food Vendor & Home Cooling: High battery autonomy for freezers.", 
-        "Executive & Senior Level: Premium capacity for large homes. Coldroom & Frozen Food: Maximum storage for 24/7 cooling."
-      ]);
-    }
-
-    if (hasGen) {
-      const peakWatts = results?.analysis.max_surge || 0;
-      const requiredVA = peakWatts / 0.8;
-      const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
-      
-      const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
-      const consumption = selectedGen.fuel_consumption_l_hr;
-      const maintenance = selectedGen.maintenance_mo;
-      const initialCost = 0; 
-      const monthlyFuel = fuelPrice * consumption * genHours * 30; 
-      const monthlyTotal = monthlyFuel + maintenance;
-
-      rows[0].push("Owned");
-      rows[1].push("N/A");
-      rows[2].push("N/A");
-      rows[3].push("N/A");
-      rows[4].push("N/A");
-      rows[5].push("N/A");
-      rows[6].push(`N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`);
-      rows[7].push("Noisy, Fumes, Manual");
-      if (systems.length === 2) rows[8].push("High CO2 emissions and noise pollution.");
-      
-      rows.push(["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type]);
-      rows.push(["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`]);
-    }
 
     autoTable(doc, {
       startY: 35,
@@ -982,7 +967,7 @@ export default function App() {
       theme: "grid",
       headStyles: { fillColor: [16, 185, 129] },
       styles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 35 } }
     });
 
     if (hasGen) {
@@ -991,12 +976,6 @@ export default function App() {
       doc.setTextColor(0);
       doc.text("GENERATOR PROFILE DETAILS", 14, finalY);
       
-      const peakWatts = results?.analysis.max_surge || 0;
-      const requiredVA = peakWatts / 0.8;
-      const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
-      const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
-      const monthlyFuel = fuelPrice * selectedGen.fuel_consumption_l_hr * genHours * 30;
-
       doc.setFontSize(10);
       doc.setTextColor(60);
       doc.text(`• Capacity: ${selectedGen.capacity_va}VA (Supports ${peakWatts.toFixed(0)}W peak)`, 14, finalY + 8);
@@ -1741,10 +1720,10 @@ export default function App() {
     doc.text("ITEMIZED COST BREAKDOWN", 20, finalY);
 
     const costs = [
-      ["1", "Inverter Unit", `N${sys.inverter_price.toLocaleString()}`],
-      ["2", "Battery Storage Bank", `N${sys.battery_price.toLocaleString()}`],
-      ["3", "Solar PV Array", `N${sys.panel_price.toLocaleString()}`],
-      ["", "TOTAL INVESTMENT", `N${sys.total_price.toLocaleString()}`]
+      ["1", "Inverter Unit", `N${(sys.inverter_price || 0).toLocaleString()}`],
+      ["2", "Battery Storage Bank", `N${(sys.battery_price || 0).toLocaleString()}`],
+      ["3", "Solar PV Array", `N${(sys.panel_price || 0).toLocaleString()}`],
+      ["", "TOTAL INVESTMENT", `N${(sys.total_price || 0).toLocaleString()}`]
     ];
 
     autoTable(doc, {
@@ -3173,7 +3152,7 @@ export default function App() {
                           <button 
                             onClick={() => {
                               if (isComparison) {
-                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator);
+                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator, 6, null, r.analysis);
                               } else if (isAnalysis) {
                                 exportResultsToPDF({ analysis: r.analysis!, systems: r.systems! }, r.devices);
                               } else {

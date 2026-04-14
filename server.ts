@@ -372,6 +372,38 @@ if (useSupabase) {
         type: 'standalone',
         tags: ['internet', 'tier-a'],
         price: 95000
+      },
+      {
+        id: 'p_h_9',
+        name: 'Kulpower 250W Mono Panel',
+        description: 'High-efficiency monocrystalline panel.',
+        type: 'standalone',
+        tags: ['panel', 'solar'],
+        price: 50000
+      },
+      {
+        id: 'p_h_10',
+        name: '9Solar 450W Mono Panel',
+        description: 'High-yield upgrade for heavy-duty setups.',
+        type: 'standalone',
+        tags: ['panel', 'solar'],
+        price: 85000
+      },
+      {
+        id: 'p_h_11',
+        name: 'Taico 12V 200Ah LiFePO4',
+        description: 'High capacity lithium storage.',
+        type: 'standalone',
+        tags: ['battery', 'solar'],
+        price: 375000
+      },
+      {
+        id: 'p_h_12',
+        name: 'Cworth 12V 200Ah LiFePO4',
+        description: 'High capacity modular lithium storage.',
+        type: 'standalone',
+        tags: ['battery', 'solar'],
+        price: 390000
       }
     ];
     const insertProduct = db.prepare("INSERT OR REPLACE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -462,6 +494,20 @@ if (useSupabase) {
         tags: ['solar', 'battery', 'lithium'],
         description: 'High capacity modular lithium storage.',
         data: { name: 'Cworth 12V 200Ah LiFePO4', voltage: 12.8, capacity_ah: 200, type: 'lithium', min_c_rate: 0.1, price: 390000 }
+      },
+      {
+        id: 'h_p_8',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-efficiency monocrystalline panel.',
+        data: { name: 'Kulpower 250W Mono Crystalline Panel', watts: 250, voc: 30.5, isc: 10.8, price: 50000 }
+      },
+      {
+        id: 'h_p_9',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-yield upgrade for heavy-duty setups.',
+        data: { name: '9Solar 450W Mono Crystalline Panel', watts: 450, voc: 49.5, isc: 11.5, price: 85000 }
       },
       {
         id: 'h5',
