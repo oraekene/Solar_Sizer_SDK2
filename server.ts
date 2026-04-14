@@ -510,6 +510,34 @@ if (useSupabase) {
         data: { name: '9Solar 450W Mono Crystalline Panel', watts: 450, voc: 49.5, isc: 11.5, price: 85000 }
       },
       {
+        id: 'h_p_10',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'Premium high-wattage panel.',
+        data: { name: '9Solar 550W Mono Crystalline Panel', watts: 550, voc: 49.9, isc: 14.0, price: 115000 }
+      },
+      {
+        id: 'h_p_11',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'Ultra high-efficiency panel.',
+        data: { name: '9Solar 600W Mono Crystalline Panel', watts: 600, voc: 51.5, isc: 14.6, price: 135000 }
+      },
+      {
+        id: 'h_b_5',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'High capacity lithium storage.',
+        data: { name: 'Taico 12V 200Ah LiFePO4', voltage: 12.8, capacity_ah: 200, type: 'lithium', min_c_rate: 0.1, price: 375000 }
+      },
+      {
+        id: 'h_b_6',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'High capacity modular lithium storage.',
+        data: { name: 'Cworth 12V 200Ah LiFePO4', voltage: 12.8, capacity_ah: 200, type: 'lithium', min_c_rate: 0.1, price: 390000 }
+      },
+      {
         id: 'h5',
         type: 'accessory',
         tags: ['flagship', 'solar', 'accessory'],
@@ -633,6 +661,78 @@ if (useSupabase) {
           max_parallel_units: 1,
           battery_voltage: 12.8,
           capacity_ah: 80,
+          min_c_rate: 0.1
+        }
+      },
+      {
+        id: 'h_ps_1',
+        type: 'powerstation',
+        tags: ['premium', 'high-capacity'],
+        description: 'Industry leading portable power.',
+        data: { 
+          name: 'EcoFlow Delta Pro', 
+          capacity_wh: 3600, 
+          max_output_w: 3600, 
+          max_pv_input_w: 1600, 
+          price: 2850000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 48, 
+          max_charge_amps: 80, 
+          cc_type: 'mppt',
+          cc_max_voc: 150,
+          cc_max_amps: 30,
+          max_parallel_units: 1,
+          battery_voltage: 48,
+          capacity_ah: 75,
+          min_c_rate: 0.1
+        }
+      },
+      {
+        id: 'h_ps_2',
+        type: 'powerstation',
+        tags: ['premium', 'expandable'],
+        description: 'Reliable backup for home and travel.',
+        data: { 
+          name: 'Bluetti AC200MAX', 
+          capacity_wh: 2048, 
+          max_output_w: 2200, 
+          max_pv_input_w: 900, 
+          price: 1650000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 48, 
+          max_charge_amps: 40, 
+          cc_type: 'mppt',
+          cc_max_voc: 145,
+          cc_max_amps: 15,
+          max_parallel_units: 1,
+          battery_voltage: 48,
+          capacity_ah: 40,
+          min_c_rate: 0.1
+        }
+      },
+      {
+        id: 'h_ps_3',
+        type: 'powerstation',
+        tags: ['compact', 'budget'],
+        description: 'Essential power for small electronics.',
+        data: { 
+          name: 'Itel 500W Powerstation', 
+          capacity_wh: 512, 
+          max_output_w: 500, 
+          max_pv_input_w: 200, 
+          price: 245000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 12, 
+          max_charge_amps: 20, 
+          cc_type: 'mppt',
+          cc_max_voc: 30,
+          cc_max_amps: 15,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 40,
           min_c_rate: 0.1
         }
       },

@@ -479,6 +479,8 @@ export default function App() {
   const [region, setRegion] = useState<Region>("SE_SS");
   const [batteryPreference, setBatteryPreference] = useState<BatteryPreference>("any");
   const [tolerance, setTolerance] = useState<number>(20);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
   const [devices, setDevices] = useState<Device[]>([]);
   const [savedResults, setSavedResults] = useState<SavedResult[]>(() => {
     const saved = localStorage.getItem("ss_results");
@@ -767,7 +769,12 @@ export default function App() {
     });
 
     return res;
-  }, [region, devices, inverters, panels, batteries, powerstations]);
+  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products]);
+
+  // Reset pagination when results change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [results]);
 
   // Persist Hardware
   useEffect(() => {
@@ -1744,6 +1751,9 @@ export default function App() {
     doc.text("This quote is valid for 14 days.", 105, footerY + 5, { align: "center" });
 
     doc.save(`SolarSizer_Quote_${quoteId}.pdf`);
+
+    // Also export usage profile
+    generateUsageProfile();
   };
 
   return (
@@ -2224,131 +2234,175 @@ export default function App() {
                         );
 
                         const finalDisplay = [...cheapestOfEach, ...remaining];
+                        
+                        // Pagination
+                        const totalPages = Math.ceil(finalDisplay.length / itemsPerPage);
+                        const startIndex = (currentPage - 1) * itemsPerPage;
+                        const paginatedItems = finalDisplay.slice(startIndex, startIndex + itemsPerPage);
 
-                        return finalDisplay.map((sys, idx) => (
-                          <motion.div
-                            key={idx}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: idx * 0.05 }}
-                            className={`bg-white p-6 rounded-2xl shadow-sm border transition-all group relative overflow-hidden ${
-                              isSelectedForComparison(sys) ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-stone-200 hover:border-emerald-500'
-                            }`}
-                          >
-                            {idx < cheapestOfEach.length && (
-                              <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl">
-                                {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
-                              </div>
-                            )}
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                              <div className="space-y-4 flex-1">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 bg-stone-100 rounded-lg">
-                                    <Zap className="w-5 h-5 text-stone-600" />
+                        return (
+                          <>
+                            {paginatedItems.map((sys, idx) => (
+                              <motion.div
+                                key={startIndex + idx}
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: idx * 0.05 }}
+                                className={`bg-white p-6 rounded-2xl shadow-sm border transition-all group relative overflow-hidden ${
+                                  isSelectedForComparison(sys) ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-stone-200 hover:border-emerald-500'
+                                }`}
+                              >
+                                {startIndex + idx < cheapestOfEach.length && (
+                                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl">
+                                    {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
                                   </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <h3 className="font-bold text-lg">{sys.inverter}</h3>
-                                      {sys.status === "Optimal" ? (
-                                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                          <CheckCircle2 className="w-3 h-3" /> Perfect Match
-                                        </span>
-                                      ) : sys.status === "High Risk" ? (
-                                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                          <AlertCircle className="w-3 h-3" /> High Risk
-                                        </span>
-                                      ) : (
-                                        <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                          <AlertCircle className="w-3 h-3" /> Budget Option
-                                        </span>
-                                      )}
+                                )}
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                  <div className="space-y-4 flex-1">
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-2 bg-stone-100 rounded-lg">
+                                        <Zap className="w-5 h-5 text-stone-600" />
+                                      </div>
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <h3 className="font-bold text-lg">{sys.inverter}</h3>
+                                          {sys.status === "Optimal" ? (
+                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                                              <CheckCircle2 className="w-3 h-3" /> Perfect Match
+                                            </span>
+                                          ) : sys.status === "High Risk" ? (
+                                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                                              <AlertCircle className="w-3 h-3" /> High Risk
+                                            </span>
+                                          ) : (
+                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                                              <AlertCircle className="w-3 h-3" /> Budget Option
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
+                                      </div>
                                     </div>
-                                    <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
+                                    
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                      <div className="flex items-start gap-2">
+                                        <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
+                                        <div>
+                                          <p className="text-sm font-semibold">{sys.battery_config}</p>
+                                          <p className="text-xs text-stone-500">Storage Configuration</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-start gap-2">
+                                        <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
+                                        <div>
+                                          <p className="text-sm font-semibold">{sys.panel_config}</p>
+                                          <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    {/* Advice Section */}
+                                    <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
+                                      sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
+                                      sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
+                                      'bg-amber-50 text-amber-800 border border-amber-100'
+                                    }`}>
+                                      {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
+                                      <p>{sys.advice}</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
+                                    <p className="text-3xl font-black text-stone-900">
+                                      <span className="text-sm font-bold mr-1">NGN</span>
+                                      {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                    <div className="mt-4 flex flex-col gap-2">
+                                      <button 
+                                        onClick={() => setSelectedSystemDetails(sys)}
+                                        className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
+                                      >
+                                        View Details <ChevronRight className="w-4 h-4" />
+                                      </button>
+                                      <div className="flex gap-2">
+                                        <button 
+                                          onClick={() => setSelectedSystemLog(sys.log)}
+                                          className="p-2.5 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-all flex items-center justify-center"
+                                          title="View Calculation Logs"
+                                        >
+                                          <ListIcon className="w-5 h-5" />
+                                        </button>
+                                        <button 
+                                          onClick={() => toggleComparison(sys)}
+                                          className={`flex-1 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                                            isSelectedForComparison(sys)
+                                            ? 'bg-emerald-600 text-white shadow-md'
+                                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                          }`}
+                                        >
+                                          <Scale className="w-4 h-4" /> 
+                                          {isSelectedForComparison(sys) ? "Selected" : "Compare"}
+                                        </button>
+                                        <button 
+                                          onClick={() => saveResult(sys)}
+                                          className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all flex items-center justify-center"
+                                          title="Save this configuration"
+                                        >
+                                          <Save className="w-5 h-5" />
+                                        </button>
+                                        {isDeveloper && (
+                                          <button 
+                                            onClick={() => saveAsProduct(sys)}
+                                            className="p-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center"
+                                            title="Promote to Product"
+                                          >
+                                            <Layers className="w-5 h-5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
-                                
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                  <div className="flex items-start gap-2">
-                                    <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
-                                    <div>
-                                      <p className="text-sm font-semibold">{sys.battery_config}</p>
-                                      <p className="text-xs text-stone-500">Storage Configuration</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-start gap-2">
-                                    <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
-                                    <div>
-                                      <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                      <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
-                                    </div>
-                                  </div>
-                                </div>
+                              </motion.div>
+                            ))}
 
-                                {/* Advice Section */}
-                                <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
-                                  sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
-                                  sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
-                                  'bg-amber-50 text-amber-800 border border-amber-100'
-                                }`}>
-                                  {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
-                                  <p>{sys.advice}</p>
-                                </div>
-                              </div>
-
-                              <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
-                                <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
-                                <p className="text-3xl font-black text-stone-900">
-                                  <span className="text-sm font-bold mr-1">NGN</span>
-                                  {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </p>
-                                <div className="mt-4 flex flex-col gap-2">
-                                  <button 
-                                    onClick={() => setSelectedSystemDetails(sys)}
-                                    className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                                  >
-                                    View Details <ChevronRight className="w-4 h-4" />
-                                  </button>
-                                  <div className="flex gap-2">
-                                    <button 
-                                      onClick={() => setSelectedSystemLog(sys.log)}
-                                      className="p-2.5 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-all flex items-center justify-center"
-                                      title="View Calculation Logs"
-                                    >
-                                      <ListIcon className="w-5 h-5" />
-                                    </button>
-                                    <button 
-                                      onClick={() => toggleComparison(sys)}
-                                      className={`flex-1 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                                        isSelectedForComparison(sys)
-                                        ? 'bg-emerald-600 text-white shadow-md'
-                                        : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                              <div className="flex items-center justify-center gap-4 pt-8">
+                                <button
+                                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                  disabled={currentPage === 1}
+                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
+                                >
+                                  <ChevronLeft className="w-5 h-5" />
+                                </button>
+                                <div className="flex items-center gap-2">
+                                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <button
+                                      key={page}
+                                      onClick={() => setCurrentPage(page)}
+                                      className={`w-10 h-10 rounded-xl font-bold text-sm transition-all ${
+                                        currentPage === page 
+                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
+                                        : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
                                       }`}
                                     >
-                                      <Scale className="w-4 h-4" /> 
-                                      {isSelectedForComparison(sys) ? "Selected" : "Compare"}
+                                      {page}
                                     </button>
-                                    <button 
-                                      onClick={() => saveResult(sys)}
-                                      className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all flex items-center justify-center"
-                                      title="Save this configuration"
-                                    >
-                                      <Save className="w-5 h-5" />
-                                    </button>
-                                    {isDeveloper && (
-                                      <button 
-                                        onClick={() => saveAsProduct(sys)}
-                                        className="p-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center"
-                                        title="Promote to Product"
-                                      >
-                                        <Layers className="w-5 h-5" />
-                                      </button>
-                                    )}
-                                  </div>
+                                  ))}
                                 </div>
+                                <button
+                                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                  disabled={currentPage === totalPages}
+                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
+                                >
+                                  <ChevronRight className="w-5 h-5" />
+                                </button>
                               </div>
-                            </div>
-                          </motion.div>
-                        ));
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                   )}
