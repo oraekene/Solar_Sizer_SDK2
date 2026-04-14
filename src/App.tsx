@@ -752,25 +752,43 @@ export default function App() {
       return a.total_price - b.total_price;
     });
 
-    // Log attempt internally
+    return res;
+  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products]);
+
+  // Log calculation attempts internally
+  useEffect(() => {
+    if (!results) return;
+
     const attempt: CalculationAttempt = {
       timestamp: new Date().toISOString(),
       location: region,
       devices: [...devices],
-      analysis: res.analysis,
-      totalCombinationsChecked: res.allLogs.length,
-      validSystemsCount: res.systems.length,
-      allLogs: res.allLogs,
+      analysis: results.analysis,
+      totalCombinationsChecked: results.allLogs.length,
+      validSystemsCount: results.systems.length,
+      // Strip logs from internal history to save space
+      allLogs: results.allLogs.map(log => log.filter(line => line.includes('❌') || line.includes('✅'))),
     };
     
     setInternalLogs(prev => {
-      const updated = [attempt, ...prev].slice(0, 50); // Keep last 50
-      localStorage.setItem("ss_internal_logs", JSON.stringify(updated));
+      // Avoid duplicate logs for the exact same result (based on analysis summary)
+      const lastLog = prev[0];
+      if (lastLog && 
+          lastLog.analysis.max_surge === attempt.analysis.max_surge && 
+          lastLog.analysis.total_daily_wh === attempt.analysis.total_daily_wh &&
+          lastLog.validSystemsCount === attempt.validSystemsCount) {
+        return prev;
+      }
+
+      const updated = [attempt, ...prev].slice(0, 20); // Reduced history size
+      try {
+        localStorage.setItem("ss_internal_logs", JSON.stringify(updated));
+      } catch (e) {
+        console.warn("Failed to save internal logs to localStorage:", e);
+      }
       return updated;
     });
-
-    return res;
-  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products]);
+  }, [results, region, devices]);
 
   // Reset pagination when results change
   useEffect(() => {
@@ -832,17 +850,20 @@ export default function App() {
     const newResult: SavedResult = {
       id: crypto.randomUUID(),
       profile_name: name,
-      system_data: system,
+      // Strip logs to save space
+      system_data: { ...system, log: [] },
       devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
-    setSavedResults((prev) => {
-      const updated = [newResult, ...prev];
+    const updated = [newResult, ...savedResults];
+    try {
       localStorage.setItem("ss_results", JSON.stringify(updated));
-      return updated;
-    });
-    alert("Result saved.");
+      setSavedResults(updated);
+      alert("Result saved.");
+    } catch (e) {
+      alert("Storage full! Please delete some saved results to save new ones.");
+    }
   };
 
   const saveAnalysis = async () => {
@@ -858,17 +879,20 @@ export default function App() {
       id: crypto.randomUUID(),
       profile_name: name,
       analysis: results.analysis,
-      systems: results.systems,
+      // Strip logs to save space
+      systems: results.systems.map(s => ({ ...s, log: [] })),
       devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
-    setSavedResults((prev) => {
-      const updated = [newResult, ...prev];
+    const updated = [newResult, ...savedResults];
+    try {
       localStorage.setItem("ss_results", JSON.stringify(updated));
-      return updated;
-    });
-    alert("Analysis saved.");
+      setSavedResults(updated);
+      alert("Analysis saved.");
+    } catch (e) {
+      alert("Storage full! Please delete some saved results to save new ones.");
+    }
   };
   
   const saveComparison = async () => {
@@ -884,19 +908,22 @@ export default function App() {
       id: crypto.randomUUID(),
       profile_name: name,
       analysis: results.analysis,
-      systems: selectedForComparison,
+      // Strip logs to save space
+      systems: selectedForComparison.map(s => ({ ...s, log: [] })),
       devices: [...devices],
       is_comparison: true,
       has_generator: hasGenerator,
       created_at: new Date().toISOString(),
     };
 
-    setSavedResults((prev) => {
-      const updated = [newResult, ...prev];
+    const updated = [newResult, ...savedResults];
+    try {
       localStorage.setItem("ss_results", JSON.stringify(updated));
-      return updated;
-    });
-    alert("Comparison saved.");
+      setSavedResults(updated);
+      alert("Comparison saved.");
+    } catch (e) {
+      alert("Storage full! Please delete some saved results to save new ones.");
+    }
   };
 
   const deleteResult = async (id: string) => {
@@ -2884,12 +2911,25 @@ export default function App() {
                 <h2 className="text-2xl font-bold">Internal Developer Logs</h2>
                 <p className="text-stone-500">Historical calculation attempts and internal logic traces.</p>
               </div>
-              <button 
-                onClick={exportFullLogs}
-                className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-              >
-                <Download className="w-4 h-4" /> Export Full Logs
-              </button>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => {
+                    if (confirm("Are you sure you want to clear all internal logs? This will free up storage space.")) {
+                      setInternalLogs([]);
+                      localStorage.removeItem("ss_internal_logs");
+                    }
+                  }}
+                  className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100"
+                >
+                  <Trash2 className="w-4 h-4" /> Clear All Logs
+                </button>
+                <button 
+                  onClick={exportFullLogs}
+                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                >
+                  <Download className="w-4 h-4" /> Export Full Logs
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
