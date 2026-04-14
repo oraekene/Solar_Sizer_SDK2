@@ -11,6 +11,7 @@ import {
   Trash2, 
   Calculator, 
   ChevronRight,
+  ChevronLeft,
   Info,
   AlertCircle,
   CheckCircle2,
