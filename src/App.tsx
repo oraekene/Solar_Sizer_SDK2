@@ -1650,22 +1650,57 @@ export default function App() {
     doc.setTextColor(0);
     doc.text("ITEMIZED DEVICE LIST", 20, finalY + 15);
 
-    const deviceData = devices.map((d, idx) => [
-      (idx + 1).toString(),
-      d.name,
-      d.qty.toString(),
-      `${d.watts}W`,
-      `${d.watts * d.qty}W`,
-      d.ranges.map(r => `${r.start}:00-${r.end}:00`).join(", ")
-    ]);
+    const deviceData = devices.map((d, idx) => {
+      const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
+      const dailyWh = d.watts * d.qty * hours;
+      return [
+        (idx + 1).toString(),
+        d.name,
+        d.qty.toString(),
+        `${d.watts}W`,
+        `${d.watts * d.qty}W`,
+        hours.toString(),
+        `${dailyWh.toFixed(0)}Wh`,
+        d.ranges.map(r => `${r.start}:00-${r.end}:00`).join(", ")
+      ];
+    });
 
     autoTable(doc, {
       startY: finalY + 20,
-      head: [["#", "Device", "Qty", "Watts", "Total W", "Schedule"]],
+      head: [["#", "Device", "Qty", "Watts", "Total W", "Hrs", "Daily Wh", "Schedule"]],
       body: deviceData,
       theme: "grid",
-      headStyles: { fillColor: [16, 185, 129] }
+      headStyles: { fillColor: [16, 185, 129] },
+      styles: { fontSize: 8 }
     });
+
+    // Hourly Load Distribution
+    if (results) {
+      const currentY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setFontSize(14);
+      doc.setTextColor(0);
+      doc.text("HOURLY LOAD DISTRIBUTION", 20, currentY);
+
+      const hourlyData: string[][] = [];
+      // Split 24 hours into two columns of 12 for better space usage
+      for (let i = 0; i < 12; i++) {
+        const h1 = i;
+        const h2 = i + 12;
+        hourlyData.push([
+          `${h1}:00`, `${results.analysis.hourly_consumption[h1].toFixed(0)}W`,
+          `${h2}:00`, `${results.analysis.hourly_consumption[h2].toFixed(0)}W`
+        ]);
+      }
+
+      autoTable(doc, {
+        startY: currentY + 5,
+        head: [["Hour", "Load", "Hour", "Load"]],
+        body: hourlyData,
+        theme: "striped",
+        headStyles: { fillColor: [16, 185, 129] },
+        styles: { fontSize: 9 }
+      });
+    }
 
     // Footer
     const footerY = (doc as any).lastAutoTable.finalY + 20;
@@ -2004,6 +2039,9 @@ export default function App() {
                       onChange={e => setNewDevice({...newDevice, name: e.target.value})}
                       className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
+                    <p className="text-[10px] text-stone-400 mt-1 italic">
+                      Tip: If devices of the same type have different schedules (e.g. 2 ACs), add them as separate line items.
+                    </p>
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Category</label>
