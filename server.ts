@@ -118,6 +118,7 @@ if (useSupabase) {
     // Seed Flagship Products and Hardware
   // 1. Seed Products (Kits/Powerstations)
   const seedProducts = [
+      // TAB 1: Flagship Products
       {
         id: 'p1',
         name: 'SolarOne A300 Plug-and-Play Power Box',
@@ -156,6 +157,7 @@ if (useSupabase) {
         tags: ['flagship', 'kit', 'powerstation', 'solar'],
         price: 300000
       },
+      // TAB 2: Solar / Other Products
       {
         id: 'p3',
         name: 'Itel Energy iESS 320T + 200W Panel Kit',
@@ -213,75 +215,163 @@ if (useSupabase) {
         tags: ['solar', 'kit', 'powerstation'],
         price: 310000
       },
+      // TAB 3: Internet Products & Combinations
       {
-        id: 'p6',
-        name: 'Starlink Gen 2 + SolarOne A300 Internet Kit',
-        description: 'High-speed internet anywhere. Includes Starlink Gen 2 and SolarOne A300 powerstation.',
+        id: 'p_int_1',
+        name: 'Single CPE Upgrade (ZTE MC888)',
+        description: 'Immediate speed improvement with zero plan change. Superior antenna and radio pull dramatically more signal.',
+        type: 'standalone',
+        tags: ['internet', 'tier-a', 'flagship'],
+        price: 110000
+      },
+      {
+        id: 'p_int_2',
+        name: 'Budget Dual Stack Internet Kit',
+        description: 'Two-network redundancy. Cudy CPE on MTN + Android phone tether on Airtel.',
         type: 'combination',
         combination_data: {
-          inverter: '300W Pure Sine Wave',
-          inverter_w: 300,
-          battery_config: '390Wh LiFePO4',
-          battery_wh: 390,
-          panel_config: '1x 250W Mono',
-          panel_w: 250,
-          total_price: 650000,
+          inverter: 'Load Balancing Router',
+          inverter_w: 10,
+          battery_config: 'N/A',
+          battery_wh: 0,
+          panel_config: 'N/A',
+          panel_w: 0,
+          total_price: 135000,
           status: 'Optimal',
-          advice: 'The ultimate remote work setup.'
+          advice: 'The cheapest genuine failover setup for remote workers.'
         },
-        tags: ['internet', 'kit', 'flagship'],
-        price: 650000
+        tags: ['internet', 'kit'],
+        price: 135000
       },
       {
-        id: 'p7',
-        name: '9Solar 550W Mono Panel',
-        description: 'High-efficiency 550W monocrystalline solar panel.',
+        id: 'p_int_3',
+        name: 'Standard Dual CPE Internet Kit',
+        description: 'Full reliability. Huawei B818 (MTN) + Cudy LT500 (Airtel) + TP-Link ER605.',
+        type: 'combination',
+        combination_data: {
+          inverter: 'TP-Link ER605 Load Balancer',
+          inverter_w: 15,
+          battery_config: 'N/A',
+          battery_wh: 0,
+          panel_config: 'N/A',
+          panel_w: 0,
+          total_price: 235000,
+          status: 'Optimal',
+          advice: 'Two router-grade CPE devices for full signal quality.'
+        },
+        tags: ['internet', 'kit'],
+        price: 235000
+      },
+      {
+        id: 'p_int_4',
+        name: 'GL.iNet Spitz AX All-in-One',
+        description: 'Everything integrated: 5G modem, dual SIM, load balancing, WiFi 6, and VPN.',
         type: 'standalone',
-        tags: ['panel', 'solar'],
-        price: 103000
+        tags: ['internet', 'tier-b', 'flagship'],
+        price: 160000
       },
       {
-        id: 'p8',
-        name: 'Taico 12V 200Ah LiFePO4 Battery',
-        description: 'Deep cycle lithium iron phosphate battery for long-lasting storage.',
+        id: 'p_int_5',
+        name: 'Dual CPE Pro Internet Kit',
+        description: 'High capacity 5G primary (ZTE MC888 Pro) + 4G secondary (Huawei B818).',
+        type: 'combination',
+        combination_data: {
+          inverter: 'TP-Link ER605 Load Balancer',
+          inverter_w: 20,
+          battery_config: 'N/A',
+          battery_wh: 0,
+          panel_config: 'N/A',
+          panel_w: 0,
+          total_price: 310000,
+          status: 'Optimal',
+          advice: 'MTN 5G primary reaches 60-100Mbps in strong coverage areas.'
+        },
+        tags: ['internet', 'kit'],
+        price: 310000
+      },
+      {
+        id: 'p_int_6',
+        name: 'Bonded Stack Internet Kit',
+        description: 'True packet-level bonding. Speedify + Dual CPE Pro hardware.',
+        type: 'combination',
+        combination_data: {
+          inverter: 'Bonding Engine',
+          inverter_w: 20,
+          battery_config: 'N/A',
+          battery_wh: 0,
+          panel_config: 'N/A',
+          panel_w: 0,
+          total_price: 310000,
+          status: 'Optimal',
+          advice: 'True bandwidth aggregation for mission-critical tasks.'
+        },
+        tags: ['internet', 'kit', 'tier-c'],
+        price: 310000
+      },
+      // Standalone Hardware Products (for catalog filtering)
+      {
+        id: 'p_h_1',
+        name: 'Kulpower 100W Mono Panel',
+        description: 'Exceptional low irradiance performance. PID resistant.',
+        type: 'standalone',
+        tags: ['panel', 'solar', 'flagship'],
+        price: 32000
+      },
+      {
+        id: 'p_h_2',
+        name: '9Solar 190W Mono Panel',
+        description: 'Radically reduced string mismatch losses. Built-in bypass diode.',
+        type: 'standalone',
+        tags: ['panel', 'solar', 'flagship'],
+        price: 45000
+      },
+      {
+        id: 'p_h_3',
+        name: 'Kulpower 340W Mono Panel',
+        description: 'Industry\'s lowest thermal co-efficient. High-yield upgrade.',
+        type: 'standalone',
+        tags: ['panel', 'solar', 'flagship'],
+        price: 70000
+      },
+      {
+        id: 'p_h_4',
+        name: 'PowMr 50A LiFePO4 Battery',
+        description: 'Massive 640Wh usable capacity. Grade A cells.',
+        type: 'standalone',
+        tags: ['battery', 'solar', 'flagship'],
+        price: 110000
+      },
+      {
+        id: 'p_h_5',
+        name: 'Taico 12V 100Ah LiFePO4',
+        description: 'Smart Bluetooth Monitoring. Integrated BMS.',
         type: 'standalone',
         tags: ['battery', 'solar'],
-        price: 375000
+        price: 210000
       },
       {
-        id: 'p9',
-        name: 'Starlink Gen 3 Standard Kit',
-        description: 'High-speed, low-latency satellite internet. Standard Gen 3 hardware kit.',
+        id: 'p_h_6',
+        name: 'Cworth 12V 100Ah LiFePO4',
+        description: 'Modular design. DIY-friendly expansion.',
         type: 'standalone',
-        tags: ['internet', 'flagship'],
-        price: 450000
+        tags: ['battery', 'solar'],
+        price: 230000
       },
       {
-        id: 'p10',
-        name: 'Starlink Gen 3 + SolarOne A500 Pro Internet Kit',
-        description: 'Ultimate power and speed. Includes Starlink Gen 3 and SolarOne A500 Pro powerstation.',
-        type: 'combination',
-        combination_data: {
-          inverter: '500W Pure Sine Wave',
-          inverter_w: 500,
-          battery_config: '600Wh LiFePO4',
-          battery_wh: 600,
-          panel_config: '1x 350W Mono',
-          panel_w: 350,
-          total_price: 750000,
-          status: 'Optimal',
-          advice: 'The professional remote work setup for Gen 3 Starlink.'
-        },
-        tags: ['internet', 'kit', 'flagship'],
-        price: 750000
-      },
-      {
-        id: 'p11',
+        id: 'p_h_7',
         name: 'Huawei B818-263 4G+ Router',
-        description: 'High-performance 4G+ router for fast mobile internet.',
+        description: 'High-performance 4G+ router. Tier A.',
         type: 'standalone',
         tags: ['internet', 'tier-a'],
         price: 85000
+      },
+      {
+        id: 'p_h_8',
+        name: 'ZTE MC888 5G Router',
+        description: '5G Indoor CPE, WiFi 6. Tier A.',
+        type: 'standalone',
+        tags: ['internet', 'tier-a'],
+        price: 95000
       }
     ];
     const insertProduct = db.prepare("INSERT OR REPLACE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -311,11 +401,67 @@ if (useSupabase) {
         data: { name: 'Kulpower 340W Mono Crystalline Panel', watts: 340, voc: 41.5, isc: 10.5, price: 70000 }
       },
       {
+        id: 'h_p_4',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-yield upgrade for heavy-duty setups.',
+        data: { name: 'Kulpower 450W Mono Crystalline Panel', watts: 450, voc: 49.5, isc: 11.5, price: 85000 }
+      },
+      {
+        id: 'h_p_5',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-efficiency monocrystalline panel.',
+        data: { name: '9Solar 330W Mono Crystalline Panel', watts: 330, voc: 40.5, isc: 10.2, price: 73000 }
+      },
+      {
+        id: 'h_p_6',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-efficiency monocrystalline panel.',
+        data: { name: '9Solar 430W Mono Crystalline Panel', watts: 430, voc: 49.2, isc: 11.1, price: 95000 }
+      },
+      {
+        id: 'h_p_7',
+        type: 'panel',
+        tags: ['solar', 'panel'],
+        description: 'High-efficiency monocrystalline panel.',
+        data: { name: '9Solar 600W Mono Crystalline Panel', watts: 600, voc: 54.5, isc: 13.8, price: 105000 }
+      },
+      {
         id: 'h4',
         type: 'battery',
         tags: ['flagship', 'solar', 'battery'],
         description: 'Massive 640Wh usable capacity. Grade A cells.',
         data: { name: 'PowMr 50A LiFePO4 Expansion Battery', voltage: 12.8, capacity_ah: 50, type: 'lithium', min_c_rate: 0.1, price: 110000 }
+      },
+      {
+        id: 'h11',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'Smart Bluetooth Monitoring. Integrated BMS.',
+        data: { name: 'Taico 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 210000 }
+      },
+      {
+        id: 'h_b_2',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'High capacity lithium storage.',
+        data: { name: 'Taico 12V 200Ah LiFePO4', voltage: 12.8, capacity_ah: 200, type: 'lithium', min_c_rate: 0.1, price: 375000 }
+      },
+      {
+        id: 'h12',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'Modular design. DIY-friendly expansion.',
+        data: { name: 'Cworth 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 230000 }
+      },
+      {
+        id: 'h_b_4',
+        type: 'battery',
+        tags: ['solar', 'battery', 'lithium'],
+        description: 'High capacity modular lithium storage.',
+        data: { name: 'Cworth 12V 200Ah LiFePO4', voltage: 12.8, capacity_ah: 200, type: 'lithium', min_c_rate: 0.1, price: 390000 }
       },
       {
         id: 'h5',
@@ -329,7 +475,24 @@ if (useSupabase) {
         type: 'powerstation',
         tags: ['flagship', 'portable', 'pure-sine'],
         description: 'True plug-and-play Setup in a Box.',
-        data: { name: 'SolarOne A300', capacity_wh: 390, max_output_w: 300, max_pv_input_w: 250, price: 185000, battery_type: 'lithium', inverter_type: 'pure-sine' }
+        data: { 
+          name: 'SolarOne A300', 
+          capacity_wh: 390, 
+          max_output_w: 300, 
+          max_pv_input_w: 250, 
+          price: 185000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine',
+          system_vdc: 12,
+          max_charge_amps: 20,
+          cc_type: 'mppt',
+          cc_max_voc: 50,
+          cc_max_amps: 20,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 30,
+          min_c_rate: 0.1
+        }
       },
       {
         id: 'h7',
@@ -427,51 +590,83 @@ if (useSupabase) {
           min_c_rate: 0.1
         }
       },
+      // Internet Hardware
       {
-        id: 'h11',
-        type: 'battery',
-        tags: ['solar', 'battery', 'lithium'],
-        description: 'Smart Bluetooth Monitoring. Integrated BMS.',
-        data: { name: 'Taico 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 210000 }
+        id: 'h_i_1',
+        type: 'internet',
+        tags: ['internet', 'tier-a'],
+        description: '4G LTE Cat19 Indoor CPE.',
+        data: { name: 'Huawei B818-263', default_watts: 15, price: 85000 }
       },
       {
-        id: 'h12',
-        type: 'battery',
-        tags: ['solar', 'battery', 'lithium'],
-        description: 'Modular design. DIY-friendly expansion.',
-        data: { name: 'Cworth 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 230000 }
+        id: 'h_i_2',
+        type: 'internet',
+        tags: ['internet', 'tier-a'],
+        description: '5G Indoor CPE, WiFi 6.',
+        data: { name: 'ZTE MC888', default_watts: 20, price: 95000 }
       },
       {
-        id: 'h13',
-        type: 'inverter',
-        tags: ['pro', 'solar', 'pure-sine'],
-        description: 'High-power 5kVA pure sine wave inverter for whole-home backup.',
-        data: { 
-          name: 'Must 5kVA 48V Hybrid Inverter', 
-          max_ac_w: 5000, 
-          system_vdc: 48, 
-          cc_max_pv_w: 4000, 
-          cc_max_voc: 145, 
-          cc_max_amps: 80, 
-          max_charge_amps: 60, 
-          cc_type: 'mppt', 
-          max_parallel_units: 3, 
-          price: 450000 
-        }
+        id: 'h_i_3',
+        type: 'internet',
+        tags: ['internet', 'tier-a'],
+        description: '5G Indoor CPE, WiFi 6 (upgraded).',
+        data: { name: 'ZTE MC888 Pro', default_watts: 25, price: 120000 }
       },
       {
-        id: 'h14',
-        type: 'panel',
-        tags: ['pro', 'solar', 'panel'],
-        description: 'High-efficiency 550W monocrystalline solar panel.',
-        data: { name: 'Jinko 550W Mono Crystalline Panel', watts: 550, voc: 49.8, isc: 13.5, price: 105000 }
+        id: 'h_i_4',
+        type: 'internet',
+        tags: ['internet', 'tier-a'],
+        description: '5G Indoor/Outdoor Hybrid CPE.',
+        data: { name: 'Huawei CPE Pro 2', default_watts: 20, price: 70000 }
       },
       {
-        id: 'h15',
-        type: 'battery',
-        tags: ['pro', 'solar', 'gel'],
-        description: 'Deep cycle 12V 200Ah Gel battery for reliable energy storage.',
-        data: { name: 'Felicity 12V 200Ah Gel Battery', voltage: 12, capacity_ah: 200, type: 'lead-acid', min_c_rate: 0.1, price: 185000 }
+        id: 'h_i_5',
+        type: 'internet',
+        tags: ['internet', 'tier-a'],
+        description: 'Budget 4G Indoor CPE.',
+        data: { name: 'Cudy LT500', default_watts: 12, price: 45000 }
+      },
+      {
+        id: 'h_i_6',
+        type: 'internet',
+        tags: ['internet', 'tier-b'],
+        description: 'Multi-WAN Load Balancing Router.',
+        data: { name: 'TP-Link ER605 (V2)', default_watts: 10, price: 75000 }
+      },
+      {
+        id: 'h_i_7',
+        type: 'internet',
+        tags: ['internet', 'tier-b'],
+        description: 'Professional Multi-WAN Load Balancing Router.',
+        data: { name: 'TP-Link ER7206', default_watts: 15, price: 90000 }
+      },
+      {
+        id: 'h_i_8',
+        type: 'internet',
+        tags: ['internet', 'tier-b'],
+        description: 'All-in-One Dual-SIM 5G Router with WiFi 6.',
+        data: { name: 'GL.iNet Spitz AX (GL-X3000)', default_watts: 20, price: 160000 }
+      },
+      {
+        id: 'h_i_9',
+        type: 'internet',
+        tags: ['internet', 'tier-b'],
+        description: 'Travel Router with Multi-WAN.',
+        data: { name: 'GL.iNet Slate AX (GL-AXT1800)', default_watts: 10, price: 75000 }
+      },
+      {
+        id: 'h_i_10',
+        type: 'internet',
+        tags: ['internet', 'tier-b'],
+        description: 'Budget Multi-WAN Load Balancer.',
+        data: { name: 'Cudy WR2100', default_watts: 10, price: 35000 }
+      },
+      {
+        id: 'h_i_11',
+        type: 'internet',
+        tags: ['internet', 'tier-c'],
+        description: 'Hardware Bonding Router.',
+        data: { name: 'Pepwave MAX BR1 Mini', default_watts: 15, price: 350000 }
       }
     ];
     const insertHardware = db.prepare("INSERT OR REPLACE INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");

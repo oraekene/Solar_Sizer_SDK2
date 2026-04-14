@@ -798,7 +798,7 @@ export default function App() {
     });
 
     return res;
-  }, [region, devices, inverters, panels, batteries]);
+  }, [region, devices, inverters, panels, batteries, powerstations]);
 
   // Persist Hardware
   useEffect(() => {
@@ -2370,7 +2370,11 @@ export default function App() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {products
-                .filter(p => selectedProductTag === 'all' || p.tags.includes(selectedProductTag))
+                .filter(p => {
+                  if (selectedProductTag === 'all') return true;
+                  if (selectedProductTag === 'solar') return p.tags.includes('solar') && !p.tags.includes('flagship');
+                  return p.tags.includes(selectedProductTag);
+                })
                 .map(product => (
                 <motion.div
                   key={product.id}
@@ -2423,6 +2427,26 @@ export default function App() {
                       onClick={() => {
                         if (product.combination_data) {
                           setSelectedSystemDetails(product.combination_data);
+                        } else {
+                          // Create a dummy system combination for standalone products so they can have a specs view
+                          setSelectedSystemDetails({
+                            inverter: product.name,
+                            inverter_price: product.price,
+                            battery_config: "N/A",
+                            battery_price: 0,
+                            panel_config: "N/A",
+                            panel_price: 0,
+                            array_size_w: 0,
+                            battery_total_wh: 0,
+                            total_price: product.price,
+                            daily_yield: 0,
+                            deficit: 0,
+                            status: "Optimal",
+                            advice: product.description,
+                            log: [product.description],
+                            is_preconfigured: true,
+                            product_id: product.id
+                          });
                         }
                       }}
                       className="px-4 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all"
@@ -2577,12 +2601,10 @@ export default function App() {
                     <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold text-sm">{md.name}</p>
-                        {isDeveloper && (
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
-                            <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
-                          </div>
-                        )}
+                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                          <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
+                          <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                        </div>
                         <div className="flex gap-1 flex-wrap">
                           {md.tags.map(tag => (
                             <span key={tag} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
