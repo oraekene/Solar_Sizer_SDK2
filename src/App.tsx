@@ -731,6 +731,20 @@ export default function App() {
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
 
+  const safeLocalStorageSet = (key: string, value: any) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "QuotaExceededError") {
+        alert("⚠️ Browser Storage Full: Could not save data. Please clear some logs or saved results to free up space.");
+      } else {
+        console.error("Storage error:", e);
+      }
+      return false;
+    }
+  };
+
   // Profile State
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
     const saved = localStorage.getItem("ss_profiles");
@@ -755,7 +769,7 @@ export default function App() {
     return res;
   }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products]);
 
-  // Log calculation attempts internally
+  // Internal Logging with Duplicate Check
   useEffect(() => {
     if (!results) return;
 
@@ -766,26 +780,24 @@ export default function App() {
       analysis: results.analysis,
       totalCombinationsChecked: results.allLogs.length,
       validSystemsCount: results.systems.length,
-      // Strip logs from internal history to save space
-      allLogs: results.allLogs.map(log => log.filter(line => line.includes('❌') || line.includes('✅'))),
+      allLogs: results.allLogs,
     };
-    
+
     setInternalLogs(prev => {
-      // Avoid duplicate logs for the exact same result (based on analysis summary)
-      const lastLog = prev[0];
-      if (lastLog && 
-          lastLog.analysis.max_surge === attempt.analysis.max_surge && 
-          lastLog.analysis.total_daily_wh === attempt.analysis.total_daily_wh &&
-          lastLog.validSystemsCount === attempt.validSystemsCount) {
-        return prev;
+      const last = prev[0];
+      if (last) {
+        // Simple duplicate check based on analysis summary and device count
+        const isDuplicate = 
+          last.analysis.max_surge === attempt.analysis.max_surge &&
+          last.analysis.total_daily_wh === attempt.analysis.total_daily_wh &&
+          last.devices.length === attempt.devices.length &&
+          last.validSystemsCount === attempt.validSystemsCount;
+        
+        if (isDuplicate) return prev;
       }
 
-      const updated = [attempt, ...prev].slice(0, 20); // Reduced history size
-      try {
-        localStorage.setItem("ss_internal_logs", JSON.stringify(updated));
-      } catch (e) {
-        console.warn("Failed to save internal logs to localStorage:", e);
-      }
+      const updated = [attempt, ...prev].slice(0, 20); // Limit to 20 entries
+      safeLocalStorageSet("ss_internal_logs", updated);
       return updated;
     });
   }, [results, region, devices]);
@@ -797,11 +809,11 @@ export default function App() {
 
   // Persist Hardware
   useEffect(() => {
-    localStorage.setItem("ss_inverters", JSON.stringify(inverters));
-    localStorage.setItem("ss_panels", JSON.stringify(panels));
-    localStorage.setItem("ss_batteries", JSON.stringify(batteries));
-    localStorage.setItem("ss_powerstations", JSON.stringify(powerstations));
-    localStorage.setItem("ss_profiles", JSON.stringify(profiles));
+    safeLocalStorageSet("ss_inverters", inverters);
+    safeLocalStorageSet("ss_panels", panels);
+    safeLocalStorageSet("ss_batteries", batteries);
+    safeLocalStorageSet("ss_powerstations", powerstations);
+    safeLocalStorageSet("ss_profiles", profiles);
   }, [inverters, panels, batteries, powerstations, profiles]);
 
   const saveProfile = async () => {
@@ -826,18 +838,20 @@ export default function App() {
       updated = [newProfile, ...profiles];
     }
     
-    setProfiles(updated);
-    setCurrentProfileId(newProfile.id);
-    localStorage.setItem("ss_profiles", JSON.stringify(updated));
-
-    setProfileName("");
-    setShowSaveProfile(false);
+    if (safeLocalStorageSet("ss_profiles", updated)) {
+      setProfiles(updated);
+      setCurrentProfileId(newProfile.id);
+      setProfileName("");
+      setShowSaveProfile(false);
+      alert("Profile saved successfully.");
+    }
   };
 
   const deleteProfile = async (id: string) => {
     const updated = profiles.filter((p) => p.id !== id);
-    setProfiles(updated);
-    localStorage.setItem("ss_profiles", JSON.stringify(updated));
+    if (safeLocalStorageSet("ss_profiles", updated)) {
+      setProfiles(updated);
+    }
   };
 
   const saveResult = async (system: SystemCombination) => {
@@ -850,19 +864,15 @@ export default function App() {
     const newResult: SavedResult = {
       id: crypto.randomUUID(),
       profile_name: name,
-      // Strip logs to save space
-      system_data: { ...system, log: [] },
+      system_data: system,
       devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
     const updated = [newResult, ...savedResults];
-    try {
-      localStorage.setItem("ss_results", JSON.stringify(updated));
+    if (safeLocalStorageSet("ss_results", updated)) {
       setSavedResults(updated);
       alert("Result saved.");
-    } catch (e) {
-      alert("Storage full! Please delete some saved results to save new ones.");
     }
   };
 
@@ -879,19 +889,15 @@ export default function App() {
       id: crypto.randomUUID(),
       profile_name: name,
       analysis: results.analysis,
-      // Strip logs to save space
-      systems: results.systems.map(s => ({ ...s, log: [] })),
+      systems: results.systems,
       devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
     const updated = [newResult, ...savedResults];
-    try {
-      localStorage.setItem("ss_results", JSON.stringify(updated));
+    if (safeLocalStorageSet("ss_results", updated)) {
       setSavedResults(updated);
       alert("Analysis saved.");
-    } catch (e) {
-      alert("Storage full! Please delete some saved results to save new ones.");
     }
   };
   
@@ -908,8 +914,7 @@ export default function App() {
       id: crypto.randomUUID(),
       profile_name: name,
       analysis: results.analysis,
-      // Strip logs to save space
-      systems: selectedForComparison.map(s => ({ ...s, log: [] })),
+      systems: selectedForComparison,
       devices: [...devices],
       is_comparison: true,
       has_generator: hasGenerator,
@@ -917,12 +922,9 @@ export default function App() {
     };
 
     const updated = [newResult, ...savedResults];
-    try {
-      localStorage.setItem("ss_results", JSON.stringify(updated));
+    if (safeLocalStorageSet("ss_results", updated)) {
       setSavedResults(updated);
       alert("Comparison saved.");
-    } catch (e) {
-      alert("Storage full! Please delete some saved results to save new ones.");
     }
   };
 
@@ -2914,7 +2916,7 @@ export default function App() {
               <div className="flex gap-2">
                 <button 
                   onClick={() => {
-                    if (confirm("Are you sure you want to clear all internal logs? This will free up storage space.")) {
+                    if (confirm("Are you sure you want to clear all internal logs? This cannot be undone.")) {
                       setInternalLogs([]);
                       localStorage.removeItem("ss_internal_logs");
                     }

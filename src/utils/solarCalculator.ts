@@ -246,27 +246,24 @@ export function buildCombinations(
       advice = `🚨 High Blackout Risk: This kit is undersized for your current load. Drains at ${sim.failureTime}.`;
     }
 
-      validSystems.push({
-        inverter: data.inverter,
-        inverter_price: data.inverter_price || 0,
-        inverter_w: invW,
-        battery_config: data.battery_config,
-        battery_price: data.battery_price || 0,
-        battery_wh: batWh,
-        panel_config: data.panel_config,
-        panel_price: data.panel_price || 0,
-        panel_w: panW,
-        array_size_w: panW,
-        battery_total_wh: batWh,
-        total_price: prod.price,
-        daily_yield: dailyYield,
-        deficit: Math.max(0, simDeficit),
-        status,
-        advice,
-        log: prodLog,
-        is_preconfigured: true,
-        product_id: prod.id
-      });
+    validSystems.push({
+      inverter: data.inverter,
+      inverter_price: data.inverter_price || 0,
+      battery_config: data.battery_config,
+      battery_price: data.battery_price || 0,
+      panel_config: data.panel_config,
+      panel_price: data.panel_price || 0,
+      array_size_w: panW,
+      battery_total_wh: batWh,
+      total_price: prod.price,
+      daily_yield: dailyYield,
+      deficit: Math.max(0, simDeficit),
+      status,
+      advice,
+      log: prodLog,
+      is_preconfigured: true,
+      product_id: prod.id
+    });
     allLogs.push(prodLog);
   }
 
@@ -326,13 +323,10 @@ export function buildCombinations(
     validSystems.push({
       inverter: `${ps.name} (Built-in Inverter)`,
       inverter_price: ps.price,
-      inverter_w: ps.max_output_w,
       battery_config: `${ps.name} (Built-in Battery)`,
       battery_price: 0,
-      battery_wh: ps.capacity_wh,
       panel_config: maxPanels > 0 ? `${maxPanels}x 350W Panels` : "No Panels",
       panel_price: maxPanels * 95000,
-      panel_w: actualPanW,
       array_size_w: actualPanW,
       battery_total_wh: ps.capacity_wh,
       total_price: ps.price + (maxPanels * 95000),
@@ -545,13 +539,10 @@ export function buildCombinations(
         validSystems.push({
           inverter: inverterDisplayName,
           inverter_price: totalInverterPrice,
-          inverter_w: totalMaxAcW,
           battery_config: `${totalBatteries}x ${bat.name} (${batteriesInSeries}S${parallelStrings}P)`,
           battery_price: totalBatteryPrice,
-          battery_wh: bat.voltage * bat.capacity_ah * totalBatteries,
           panel_config: `${totalPanels}x ${panel.name}`,
           panel_price: totalPanelPrice,
-          panel_w: arrayWattsRaw,
           array_size_w: arrayWattsActual, // Showing the actual usable watts!
           battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
           total_price: totalSystemPrice,
