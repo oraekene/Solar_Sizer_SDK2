@@ -192,6 +192,7 @@ function ComparisonModal({
   analysis, 
   hasGenerator: initialHasGenerator, 
   setHasGenerator: onHasGeneratorChange, 
+  exportComparisonToPDF,
   onSave,
   onClose 
 }: { 
@@ -199,6 +200,7 @@ function ComparisonModal({
   analysis: LoadAnalysis;
   hasGenerator: boolean;
   setHasGenerator: (val: boolean) => void;
+  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null) => void;
   onSave?: () => void;
   onClose: () => void 
 }) {
@@ -229,40 +231,7 @@ function ComparisonModal({
   const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
   const exportToPDF = () => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    
-    doc.setFontSize(20);
-    doc.text("Solar vs. Generator Comparison Report", 14, 22);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
-    doc.text(`Generator Profile: ${selectedGen.name}`, 14, 35);
-    doc.text(`Settings: ${genHours} hrs/day usage, ₦${fuelPrice}/L fuel price`, 14, 40);
-
-    const tableHeaders = [["Feature", ...systems.map((_, i) => `Option ${i+1}`), "Generator"]];
-    
-    const tableRows = [
-      ["Initial Cost", ...systems.map(s => `₦${s.total_price.toLocaleString()}`), initialCost === 0 ? "Owned" : `₦${initialCost.toLocaleString()}`],
-      ["Monthly Running Cost", ...systems.map(_ => "₦0 (Solar)"), `₦${monthlyTotal.toLocaleString()}`],
-      ["5-Year Total Cost", ...systems.map(s => `₦${s.total_price.toLocaleString()}`), `₦${fiveYearTotal.toLocaleString()}`],
-      ["Amortized Monthly", ...systems.map(s => `₦${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), `₦${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`],
-      ["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type],
-      ["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`],
-      ["Daily Usage", ...systems.map(_ => "N/A"), `${genHours} hrs/day`],
-      ["Fuel Price", ...systems.map(_ => "N/A"), `₦${fuelPrice}/L`],
-    ];
-
-    autoTable(doc, {
-      startY: 45,
-      head: tableHeaders,
-      body: tableRows,
-      theme: 'grid',
-      headStyles: { fillColor: [16, 185, 129] },
-      alternateRowStyles: { fillColor: [245, 245, 244] },
-    });
-
-    doc.save(`Solar_Comparison_${new Date().getTime()}.pdf`);
+    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, true, genHours, fuelPriceOverride);
   };
 
   return (
@@ -856,6 +825,7 @@ export default function App() {
       id: crypto.randomUUID(),
       profile_name: name,
       system_data: system,
+      devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
@@ -881,6 +851,7 @@ export default function App() {
       profile_name: name,
       analysis: results.analysis,
       systems: results.systems,
+      devices: [...devices],
       created_at: new Date().toISOString(),
     };
 
@@ -906,6 +877,7 @@ export default function App() {
       profile_name: name,
       analysis: results.analysis,
       systems: selectedForComparison,
+      devices: [...devices],
       is_comparison: true,
       has_generator: hasGenerator,
       created_at: new Date().toISOString(),
@@ -942,6 +914,97 @@ export default function App() {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(a.href);
+  };
+
+  const exportComparisonToPDF = (profileName: string, systems: SystemCombination[], hasGen: boolean = false, genHours: number = 6, fuelPriceOverride: number | null = null) => {
+    const doc = new jsPDF('l', 'mm', 'a4');
+    const timestamp = new Date().toLocaleString();
+    
+    doc.setFontSize(22);
+    doc.setTextColor(16, 185, 129);
+    doc.text(`System Comparison: ${profileName}`, 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Generated on: ${timestamp}`, 14, 28);
+
+    const headers = ["Feature", ...systems.map((s, i) => s.inverter || `Option ${i+1}`)];
+    if (hasGen) headers.push("Generator");
+
+    const rows = [
+      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`)],
+      ["Solar Array", ...systems.map(s => s.panel_config)],
+      ["Battery Bank", ...systems.map(s => s.battery_config)],
+      ["Daily Yield", ...systems.map(s => `${s.daily_yield.toFixed(0)}Wh`)],
+      ["Status", ...systems.map(s => s.status)],
+      ["Amortized (25yr Std)", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})}`)],
+      ["Amortized (10yr Cons)", ...systems.map(s => `N${(s.total_price/120).toLocaleString(undefined, {maximumFractionDigits: 0})}`)],
+      ["Reliability", ...systems.map(_ => "Silent, Automatic")]
+    ];
+
+    if (systems.length === 2) {
+      rows.push(["Best For", 
+        "Student & Entry-Level: Most affordable entry into solar energy. Food Vendor & Home Cooling: High battery autonomy for freezers.", 
+        "Executive & Senior Level: Premium capacity for large homes. Coldroom & Frozen Food: Maximum storage for 24/7 cooling."
+      ]);
+    }
+
+    if (hasGen) {
+      const peakWatts = results?.analysis.max_surge || 0;
+      const requiredVA = peakWatts / 0.8;
+      const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
+      
+      const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
+      const consumption = selectedGen.fuel_consumption_l_hr;
+      const maintenance = selectedGen.maintenance_mo;
+      const initialCost = 0; 
+      const monthlyFuel = fuelPrice * consumption * genHours * 30; 
+      const monthlyTotal = monthlyFuel + maintenance;
+
+      rows[0].push("Owned");
+      rows[1].push("N/A");
+      rows[2].push("N/A");
+      rows[3].push("N/A");
+      rows[4].push("N/A");
+      rows[5].push("N/A");
+      rows[6].push(`N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`);
+      rows[7].push("Noisy, Fumes, Manual");
+      if (systems.length === 2) rows[8].push("High CO2 emissions and noise pollution.");
+      
+      rows.push(["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type]);
+      rows.push(["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`]);
+    }
+
+    autoTable(doc, {
+      startY: 35,
+      head: [headers],
+      body: rows,
+      theme: "grid",
+      headStyles: { fillColor: [16, 185, 129] },
+      styles: { fontSize: 8, cellPadding: 3 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
+    });
+
+    if (hasGen) {
+      const finalY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setFontSize(14);
+      doc.setTextColor(0);
+      doc.text("GENERATOR PROFILE DETAILS", 14, finalY);
+      
+      const peakWatts = results?.analysis.max_surge || 0;
+      const requiredVA = peakWatts / 0.8;
+      const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
+      const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
+      const monthlyFuel = fuelPrice * selectedGen.fuel_consumption_l_hr * genHours * 30;
+
+      doc.setFontSize(10);
+      doc.setTextColor(60);
+      doc.text(`• Capacity: ${selectedGen.capacity_va}VA (Supports ${peakWatts.toFixed(0)}W peak)`, 14, finalY + 8);
+      doc.text(`• Running Costs: N${monthlyFuel.toLocaleString()} fuel + N${selectedGen.maintenance_mo.toLocaleString()} maintenance per month.`, 14, finalY + 14);
+      doc.text(`• Environmental: High CO2 emissions and noise pollution.`, 14, finalY + 20);
+    }
+
+    doc.save(`Comparison_${profileName.replace(/\s+/g, '_')}.pdf`);
   };
 
   const exportSingleResultToPDF = (result: SystemCombination, profileName: string) => {
@@ -997,9 +1060,10 @@ export default function App() {
     doc.save(`SolarSizer_${profileName.replace(/\s+/g, "_")}_Config.pdf`);
   };
 
-  const exportResultsToPDF = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }) => {
+  const exportResultsToPDF = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }, savedDevices?: Device[]) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const timestamp = new Date().toLocaleString();
+    const activeDevices = savedDevices || devices;
     
     doc.setFontSize(22);
     doc.setTextColor(16, 185, 129); // Emerald-600
@@ -1018,9 +1082,11 @@ export default function App() {
       startY: 50,
       head: [["Metric", "Value"]],
       body: [
-        ["Peak Surge", `${results.analysis.max_surge}W`],
-        ["Night Usage", `${results.analysis.nighttime_wh}Wh`],
-        ["Daily Total", `${results.analysis.total_daily_wh}Wh`],
+        ["Peak Load", `${Math.max(...Object.values(results.analysis.hourly_consumption)).toFixed(0)}W`],
+        ["Peak Surge Load", `${results.analysis.max_surge.toFixed(0)}W`],
+        ["Daily Energy Consumption", `${results.analysis.total_daily_wh.toFixed(0)}Wh`],
+        ["Nighttime Consumption (6PM-7AM)", `${results.analysis.nighttime_wh.toFixed(0)}Wh`],
+        ["System Options Found", results.systems.length.toString()],
       ],
       theme: 'striped',
       headStyles: { fillColor: [16, 185, 129] },
@@ -1031,7 +1097,7 @@ export default function App() {
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 20,
       head: [["Device", "Qty", "Watts", "Category", "Schedule"]],
-      body: devices.map(d => [
+      body: activeDevices.map(d => [
         d.name,
         d.qty.toString(),
         `${d.watts}W`,
@@ -1596,9 +1662,6 @@ export default function App() {
   };
 
   const generateQuote = (sys: SystemCombination) => {
-    // Generate usage profile first
-    generateUsageProfile();
-    
     const doc = new jsPDF();
     const date = new Date().toLocaleDateString();
     const quoteId = `QT-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -1650,6 +1713,28 @@ export default function App() {
       headStyles: { fillColor: [16, 185, 129] }
     });
 
+    // Installation Guide
+    const guideY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("WIRING & INSTALLATION GUIDE", 20, guideY);
+
+    doc.setFontSize(10);
+    doc.setTextColor(60);
+    const guide = [
+      ["DC Bus", "Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration."],
+      ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`],
+      ["Protection", "Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array."]
+    ];
+
+    autoTable(doc, {
+      startY: guideY + 5,
+      body: guide,
+      theme: "plain",
+      styles: { cellPadding: 2, fontSize: 9 },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
+    });
+
     // Cost Breakdown
     const finalY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(14);
@@ -1692,6 +1777,7 @@ export default function App() {
             analysis={results.analysis}
             hasGenerator={hasGenerator}
             setHasGenerator={setHasGenerator}
+            exportComparisonToPDF={exportComparisonToPDF}
             onSave={saveComparison}
             onClose={() => setShowComparison(false)} 
           />
@@ -1702,6 +1788,7 @@ export default function App() {
             analysis={selectedSavedComparison.analysis!}
             hasGenerator={selectedSavedComparison.has_generator || false}
             setHasGenerator={() => {}} 
+            exportComparisonToPDF={exportComparisonToPDF}
             onClose={() => setSelectedSavedComparison(null)} 
           />
         )}
@@ -3086,31 +3173,9 @@ export default function App() {
                           <button 
                             onClick={() => {
                               if (isComparison) {
-                                // Implement Comparison PDF export
-                                const doc = new jsPDF("l", "mm", "a4");
-                                doc.setFontSize(20);
-                                doc.text(`System Comparison: ${r.profile_name}`, 20, 20);
-                                
-                                const headers = ["Feature", ...r.systems!.map(s => s.inverter)];
-                                const rows = [
-                                  ["Total Price", ...r.systems!.map(s => `N${s.total_price.toLocaleString()}`)],
-                                  ["Solar Array", ...r.systems!.map(s => s.panel_config)],
-                                  ["Battery Bank", ...r.systems!.map(s => s.battery_config)],
-                                  ["Daily Yield", ...r.systems!.map(s => `${s.daily_yield.toFixed(0)}Wh`)],
-                                  ["Status", ...r.systems!.map(s => s.status)]
-                                ];
-
-                                autoTable(doc, {
-                                  startY: 30,
-                                  head: [headers],
-                                  body: rows,
-                                  theme: "grid",
-                                  headStyles: { fillColor: [16, 185, 129] }
-                                });
-                                
-                                doc.save(`Comparison_${r.profile_name}.pdf`);
+                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator);
                               } else if (isAnalysis) {
-                                exportResultsToPDF({ analysis: r.analysis!, systems: r.systems! });
+                                exportResultsToPDF({ analysis: r.analysis!, systems: r.systems! }, r.devices);
                               } else {
                                 generateQuote(r.system_data!);
                               }
@@ -3128,27 +3193,35 @@ export default function App() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100">
-                  <h3 className="font-bold text-emerald-900 mb-2">Analysis Summary: {selectedSavedAnalysis.profile_name}</h3>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Peak Load</p>
-                      <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis ? Math.max(...Object.values(selectedSavedAnalysis.analysis.hourly_consumption)).toFixed(0) : 0}W</p>
+                      <h3 className="font-bold text-emerald-900 mb-2">Analysis Summary: {selectedSavedAnalysis.profile_name}</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Peak Load</p>
+                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis ? Math.max(...Object.values(selectedSavedAnalysis.analysis.hourly_consumption)).toFixed(0) : 0}W</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Daily Energy</p>
+                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.total_daily_wh.toFixed(0) || 0}Wh</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Surge Load</p>
+                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.max_surge.toFixed(0) || 0}W</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Options</p>
+                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.systems?.length || 0}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Daily Energy</p>
-                      <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.total_daily_wh.toFixed(0) || 0}Wh</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Surge Load</p>
-                      <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.max_surge.toFixed(0) || 0}W</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Options</p>
-                      <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.systems?.length || 0}</p>
-                    </div>
+                    <button 
+                      onClick={() => exportResultsToPDF({ analysis: selectedSavedAnalysis.analysis!, systems: selectedSavedAnalysis.systems! }, selectedSavedAnalysis.devices)}
+                      className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                    >
+                      <Download className="w-5 h-5" /> Export PDF Report
+                    </button>
                   </div>
-                </div>
 
                 <div className="space-y-4">
                   {selectedSavedAnalysis.systems?.map((sys, idx) => (

@@ -144,6 +144,7 @@ export interface SavedResult {
   id: string;
   profile_name: string;
   created_at: string;
+  devices?: Device[];
   // For full analysis saves
   analysis?: LoadAnalysis;
   systems?: SystemCombination[];
