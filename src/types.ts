@@ -64,6 +64,9 @@ export interface Powerstation {
   inverter_type?: "pure-sine" | "modified-sine";
   max_charge_amps?: number;
   system_vdc?: number;
+  cc_type?: "pwm" | "mppt";
+  cc_max_voc?: number;
+  cc_max_amps?: number;
   description?: string;
 }
 

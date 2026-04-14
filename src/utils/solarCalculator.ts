@@ -280,18 +280,27 @@ export function buildCombinations(
     }
     psLog.push(`✅ Powerstation output (${ps.max_output_w}W) matches surge requirements.`);
 
-    // Simulation (assuming 1 panel of 350W for now or just the max PV input)
-    // Let's assume we pair it with panels up to its max PV input
-    const maxPanels = Math.floor(ps.max_pv_input_w / 350); // Using 350W as standard
-    const actualPanW = maxPanels * 350;
+    // Simulation
+    // Use powerstation's own specs if available, otherwise fallback to defaults
+    const usableWh = ps.capacity_wh * (ps.battery_type === 'lithium' ? 0.9 : 0.8);
+    const maxChargeW = ps.max_charge_amps && ps.system_vdc 
+      ? ps.max_charge_amps * ps.system_vdc 
+      : ps.max_pv_input_w; // Fallback to PV input if charge amps missing
+    
+    const ccType = ps.cc_type || "mppt";
+    
+    // Pair with panels up to its max PV input
+    const standardPanelW = 350;
+    const maxPanels = Math.floor(ps.max_pv_input_w / standardPanelW);
+    const actualPanW = maxPanels * standardPanelW;
     const dailyYield = actualPanW * psh * 0.8;
 
     const sim = simulateHourlySoC(
       analysis.hourly_consumption,
       dailyYield,
-      ps.capacity_wh * 0.9, // 90% usable for lithium powerstations
-      ps.max_output_w,
-      "mppt",
+      usableWh,
+      maxChargeW,
+      ccType,
       location
     );
 

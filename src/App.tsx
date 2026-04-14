@@ -1603,8 +1603,11 @@ export default function App() {
     const date = new Date().toLocaleDateString();
     const quoteId = `QT-${Math.floor(100000 + Math.random() * 900000)}`;
     
+    // Safety check for sys
+    if (!sys) return;
+
     // Use adjusted advice if available
-    let finalAdvice = sys.advice;
+    let finalAdvice = sys.advice || "No advice available.";
     if (adjustedLoad && sys.status === "Conditional") {
       if (adjustedLoad.deficit === 0) {
         finalAdvice = "Perfect Match (Lifestyle Adjusted): Your modified usage schedule now fits this system's capacity perfectly.";
@@ -1631,12 +1634,12 @@ export default function App() {
     
     doc.setFontSize(10);
     const specs = [
-      ["Status", sys.status],
+      ["Status", sys.status || "N/A"],
       ["Advice", finalAdvice],
-      ["Inverter", sys.inverter],
-      ["Battery Bank", sys.battery_config],
-      ["Solar Array", `${sys.panel_config} (${sys.array_size_w}W)`],
-      ["Est. Daily Yield", `${sys.daily_yield.toFixed(0)}Wh`]
+      ["Inverter", sys.inverter || "N/A"],
+      ["Battery Bank", sys.battery_config || "N/A"],
+      ["Solar Array", `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
+      ["Est. Daily Yield", `${(sys.daily_yield || 0).toFixed(0)}Wh`]
     ];
 
     autoTable(doc, {
@@ -2340,18 +2343,27 @@ export default function App() {
                 <p className="text-stone-500 text-sm">Pre-configured solar system combinations and standalone products.</p>
               </div>
               <div className="flex gap-2">
-                {['all', 'flagship', 'kit', 'solar', 'internet', 'panel', 'battery'].map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => setSelectedProductTag(tag)}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                      selectedProductTag === tag 
-                      ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
-                      : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
-                    }`}
-                  >
-                    {tag}
-                  </button>
+                {[
+                  { id: 'all', label: 'All', desc: 'Everything in our catalog.' },
+                  { id: 'flagship', label: 'Flagship', desc: 'Premium, high-performance system combinations.' },
+                  { id: 'kit', label: 'Kits', desc: 'Pre-configured systems, including flagship and standard combos.' },
+                  { id: 'solar', label: 'Solar', desc: 'All system combinations excluding flagship ones.' },
+                  { id: 'internet', label: 'Internet', desc: 'Products specifically related to internet connectivity.' },
+                  { id: 'panel', label: 'Panels', desc: 'Standalone solar panels.' },
+                  { id: 'battery', label: 'Batteries', desc: 'Standalone batteries.' }
+                ].map(tag => (
+                  <Tooltip key={tag.id} content={tag.desc}>
+                    <button
+                      onClick={() => setSelectedProductTag(tag.id)}
+                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                        selectedProductTag === tag.id 
+                        ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
+                        : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
+                      }`}
+                    >
+                      {tag.label}
+                    </button>
+                  </Tooltip>
                 ))}
               </div>
             </div>
@@ -2605,7 +2617,7 @@ export default function App() {
                     <div key={inv.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{inv.name}</p>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => duplicateHardware("inverter", inv)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
                           <button onClick={() => startEditing("inverter", inv)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
                           <button onClick={() => deleteHardware("inverter", inv.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2633,7 +2645,7 @@ export default function App() {
                     <div key={p.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{p.name}</p>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => duplicateHardware("panel", p)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
                           <button onClick={() => startEditing("panel", p)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
                           <button onClick={() => deleteHardware("panel", p.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2660,7 +2672,7 @@ export default function App() {
                     <div key={b.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{b.name}</p>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => duplicateHardware("battery", b)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
                           <button onClick={() => startEditing("battery", b)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
                           <button onClick={() => deleteHardware("battery", b.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2687,7 +2699,7 @@ export default function App() {
                     <div key={ps.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{ps.name}</p>
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                           <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
                           <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
                           <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -3564,6 +3576,9 @@ export default function App() {
                       inverter_type: fd.get("inverter_type") as any,
                       max_charge_amps: Number(fd.get("max_charge_amps")),
                       system_vdc: Number(fd.get("system_vdc")),
+                      cc_type: fd.get("cc_type") as any,
+                      cc_max_voc: Number(fd.get("cc_max_voc")),
+                      cc_max_amps: Number(fd.get("cc_max_amps")),
                     };
                     if (editingHardware) {
                       setPowerstations(powerstations.map(ps => ps.id === editingHardware.id ? data : ps));
@@ -3659,6 +3674,9 @@ export default function App() {
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>

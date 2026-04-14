@@ -110,8 +110,11 @@ if (useSupabase) {
       { id: 'd12', name: 'Huawei B818-263', category: 'internet', watts: 20, tags: ['internet', 'tier-a'] },
       { id: 'd13', name: 'ZTE MC888', category: 'internet', watts: 25, tags: ['internet', 'tier-a'] },
       { id: 'd14', name: 'TP-Link ER605', category: 'internet', watts: 15, tags: ['internet', 'tier-b'] },
+      { id: 'd15', name: 'Starlink Gen 2', category: 'internet', watts: 65, tags: ['internet', 'flagship'] },
+      { id: 'd16', name: 'Starlink Gen 3', category: 'internet', watts: 85, tags: ['internet', 'flagship'] },
+      { id: 'd17', name: 'TP-Link Archer AX55', category: 'internet', watts: 12, tags: ['internet', 'router'] },
     ];
-    const insert = db.prepare("INSERT INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
+    const insert = db.prepare("INSERT OR REPLACE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
     seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags)));
   }
 
@@ -136,7 +139,7 @@ if (useSupabase) {
           status: 'Optimal',
           advice: 'Perfect for exams and studio sessions.'
         },
-        tags: ['flagship', 'kit', 'powerstation'],
+        tags: ['flagship', 'kit', 'powerstation', 'solar'],
         price: 185000
       },
       {
@@ -155,7 +158,7 @@ if (useSupabase) {
           status: 'Optimal',
           advice: 'Premium power for sensitive electronics.'
         },
-        tags: ['flagship', 'kit', 'powerstation'],
+        tags: ['flagship', 'kit', 'powerstation', 'solar'],
         price: 300000
       },
       {
@@ -214,9 +217,44 @@ if (useSupabase) {
         },
         tags: ['solar', 'kit', 'powerstation'],
         price: 310000
+      },
+      {
+        id: 'p6',
+        name: 'Starlink Gen 2 + SolarOne A300 Internet Kit',
+        description: 'High-speed internet anywhere. Includes Starlink Gen 2 and SolarOne A300 powerstation.',
+        type: 'combination',
+        combination_data: {
+          inverter: '300W Pure Sine Wave',
+          inverter_w: 300,
+          battery_config: '390Wh LiFePO4',
+          battery_wh: 390,
+          panel_config: '1x 250W Mono',
+          panel_w: 250,
+          total_price: 650000,
+          status: 'Optimal',
+          advice: 'The ultimate remote work setup.'
+        },
+        tags: ['internet', 'kit', 'flagship'],
+        price: 650000
+      },
+      {
+        id: 'p7',
+        name: '9Solar 550W Mono Panel',
+        description: 'High-efficiency 550W monocrystalline solar panel.',
+        type: 'standalone',
+        tags: ['panel', 'solar'],
+        price: 103000
+      },
+      {
+        id: 'p8',
+        name: 'Taico 12V 200Ah LiFePO4 Battery',
+        description: 'Deep cycle lithium iron phosphate battery for long-lasting storage.',
+        type: 'standalone',
+        tags: ['battery', 'solar'],
+        price: 375000
       }
     ];
-    const insertProduct = db.prepare("INSERT INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    const insertProduct = db.prepare("INSERT OR REPLACE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
     seedProducts.forEach(p => insertProduct.run(p.id, p.name, p.description, p.type, JSON.stringify(p.combination_data), JSON.stringify(p.tags), p.price));
 
     // 2. Seed Hardware (Panels, Batteries, Cables)
@@ -268,24 +306,45 @@ if (useSupabase) {
         type: 'powerstation',
         tags: ['flagship', 'pro', 'pure-sine'],
         description: 'Whole-house power without the installation.',
-        data: { name: 'SolarOne A500 Pro', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 300000, battery_type: 'lithium', inverter_type: 'pure-sine' }
+        data: { name: 'SolarOne A500 Pro', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 300000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 40, cc_type: 'mppt' }
       },
       {
         id: 'h8',
+        type: 'powerstation',
+        tags: ['budget', 'student', 'pure-sine'],
+        description: 'Compact student power box.',
+        data: { name: 'Itel Energy iESS 320T', capacity_wh: 320, max_output_w: 130, max_pv_input_w: 200, price: 140000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 10, cc_type: 'pwm' }
+      },
+      {
+        id: 'h9',
+        type: 'powerstation',
+        tags: ['mid-range', 'modified-sine'],
+        description: 'Affordable backup power.',
+        data: { name: '500W Generic Powerstation', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 265000, battery_type: 'lithium', inverter_type: 'modified-sine', system_vdc: 12, max_charge_amps: 30, cc_type: 'pwm' }
+      },
+      {
+        id: 'h10',
+        type: 'powerstation',
+        tags: ['pro', 'high-capacity'],
+        description: 'High capacity studio power.',
+        data: { name: 'Itel 1000W Powerstation', capacity_wh: 1000, max_output_w: 500, max_pv_input_w: 450, price: 340000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 50, cc_type: 'mppt' }
+      },
+      {
+        id: 'h11',
         type: 'battery',
         tags: ['solar', 'battery', 'lithium'],
         description: 'Smart Bluetooth Monitoring. Integrated BMS.',
         data: { name: 'Taico 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 210000 }
       },
       {
-        id: 'h9',
+        id: 'h12',
         type: 'battery',
         tags: ['solar', 'battery', 'lithium'],
         description: 'Modular design. DIY-friendly expansion.',
         data: { name: 'Cworth 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 230000 }
       }
     ];
-    const insertHardware = db.prepare("INSERT INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");
+    const insertHardware = db.prepare("INSERT OR REPLACE INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");
     seedHardware.forEach(h => insertHardware.run(h.id, 'system', h.type, JSON.stringify(h.tags), h.description, JSON.stringify(h.data)));
   }
 }
