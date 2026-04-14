@@ -2626,9 +2626,13 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
                         <span>Max AC: {inv.max_ac_w}W</span>
                         <span>DC Volts: {inv.system_vdc}V</span>
-                        <span>PV Input: {inv.cc_max_pv_w}W</span>
+                        <span>PV Max: {inv.cc_max_pv_w}W</span>
+                        <span>Max Voc: {inv.cc_max_voc}V</span>
+                        <span>Max Amps: {inv.cc_max_amps}A</span>
+                        <span>Charge: {inv.max_charge_amps}A</span>
+                        <span>Parallel: {inv.max_parallel_units} Units</span>
                         <span className="uppercase">CC: {inv.cc_type || "pwm"}</span>
-                        <span>Price: ₦{inv.price.toLocaleString()}</span>
+                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{inv.price.toLocaleString()}</span>
                       </div>
                     </div>
                   ))}
@@ -2679,10 +2683,11 @@ export default function App() {
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>{b.voltage}V {b.capacity_ah}Ah</span>
-                        <span>Type: {b.type}</span>
-                        <span>C-Rate: {b.min_c_rate}</span>
-                        <span>Price: ₦{b.price.toLocaleString()}</span>
+                        <span className="font-bold text-stone-700">{b.voltage}V {b.capacity_ah}Ah</span>
+                        <span className="capitalize">Type: {b.type}</span>
+                        <span>Max Parallel: {b.max_parallel_strings}</span>
+                        <span>Min C-Rate: {b.min_c_rate}</span>
+                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{b.price.toLocaleString()}</span>
                       </div>
                     </div>
                   ))}
@@ -2706,14 +2711,20 @@ export default function App() {
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>{ps.capacity_wh}Wh</span>
+                        <span className="font-bold text-stone-700">{ps.capacity_wh}Wh</span>
                         <span>Output: {ps.max_output_w}W</span>
-                        <span>PV In: {ps.max_pv_input_w}W</span>
-                        {ps.battery_type && <span>Bat: {ps.battery_type}</span>}
-                        {ps.inverter_type && <span>Inv: {ps.inverter_type}</span>}
-                        {ps.system_vdc && <span>VDC: {ps.system_vdc}V</span>}
+                        <span>PV Max: {ps.max_pv_input_w}W</span>
+                        {ps.system_vdc && <span>Sys VDC: {ps.system_vdc}V</span>}
+                        {ps.cc_type && <span>CC: {ps.cc_type.toUpperCase()}</span>}
+                        {ps.cc_max_voc && <span>Max Voc: {ps.cc_max_voc}V</span>}
+                        {ps.cc_max_amps && <span>Max CC: {ps.cc_max_amps}A</span>}
                         {ps.max_charge_amps && <span>Charge: {ps.max_charge_amps}A</span>}
-                        <span>Price: ₦{ps.price.toLocaleString()}</span>
+                        {ps.max_parallel_units && <span>Parallel: {ps.max_parallel_units} Units</span>}
+                        {ps.battery_voltage && <span>Bat: {ps.battery_voltage}V</span>}
+                        {ps.capacity_ah && <span>Cap: {ps.capacity_ah}Ah</span>}
+                        {ps.battery_type && <span className="capitalize">{ps.battery_type}</span>}
+                        {ps.min_c_rate && <span>Min C: {ps.min_c_rate}</span>}
+                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{ps.price.toLocaleString()}</span>
                       </div>
                     </div>
                   ))}
@@ -3579,6 +3590,10 @@ export default function App() {
                       cc_type: fd.get("cc_type") as any,
                       cc_max_voc: Number(fd.get("cc_max_voc")),
                       cc_max_amps: Number(fd.get("cc_max_amps")),
+                      max_parallel_units: Number(fd.get("max_parallel_units")),
+                      battery_voltage: Number(fd.get("battery_voltage")),
+                      capacity_ah: Number(fd.get("capacity_ah")),
+                      min_c_rate: Number(fd.get("min_c_rate")),
                     };
                     if (editingHardware) {
                       setPowerstations(powerstations.map(ps => ps.id === editingHardware.id ? data : ps));
@@ -3677,6 +3692,10 @@ export default function App() {
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="0.01" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>

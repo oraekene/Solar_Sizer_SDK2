@@ -92,10 +92,8 @@ if (useSupabase) {
     );
   `);
 
-  // Seed master devices if empty
-  const count = db.prepare("SELECT COUNT(*) as count FROM devices_master").get().count;
-  if (count === 0) {
-    const seedDevices = [
+  // Seed master devices
+  const seedDevices = [
       { id: 'd1', name: 'LED Bulb', category: 'electronics', watts: 10, tags: ['basic', 'lighting'] },
       { id: 'd2', name: 'Standing Fan', category: 'motor', watts: 50, tags: ['cooling', 'essential'] },
       { id: 'd3', name: 'Ceiling Fan', category: 'motor', watts: 75, tags: ['cooling', 'essential'] },
@@ -116,13 +114,10 @@ if (useSupabase) {
     ];
     const insert = db.prepare("INSERT OR REPLACE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
     seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags)));
-  }
 
-  // Seed Flagship Products and Hardware
-  const productCount = db.prepare("SELECT COUNT(*) as count FROM products").get().count;
-  if (productCount === 0) {
-    // 1. Seed Products (Kits/Powerstations)
-    const seedProducts = [
+    // Seed Flagship Products and Hardware
+  // 1. Seed Products (Kits/Powerstations)
+  const seedProducts = [
       {
         id: 'p1',
         name: 'SolarOne A300 Plug-and-Play Power Box',
@@ -252,6 +247,41 @@ if (useSupabase) {
         type: 'standalone',
         tags: ['battery', 'solar'],
         price: 375000
+      },
+      {
+        id: 'p9',
+        name: 'Starlink Gen 3 Standard Kit',
+        description: 'High-speed, low-latency satellite internet. Standard Gen 3 hardware kit.',
+        type: 'standalone',
+        tags: ['internet', 'flagship'],
+        price: 450000
+      },
+      {
+        id: 'p10',
+        name: 'Starlink Gen 3 + SolarOne A500 Pro Internet Kit',
+        description: 'Ultimate power and speed. Includes Starlink Gen 3 and SolarOne A500 Pro powerstation.',
+        type: 'combination',
+        combination_data: {
+          inverter: '500W Pure Sine Wave',
+          inverter_w: 500,
+          battery_config: '600Wh LiFePO4',
+          battery_wh: 600,
+          panel_config: '1x 350W Mono',
+          panel_w: 350,
+          total_price: 750000,
+          status: 'Optimal',
+          advice: 'The professional remote work setup for Gen 3 Starlink.'
+        },
+        tags: ['internet', 'kit', 'flagship'],
+        price: 750000
+      },
+      {
+        id: 'p11',
+        name: 'Huawei B818-263 4G+ Router',
+        description: 'High-performance 4G+ router for fast mobile internet.',
+        type: 'standalone',
+        tags: ['internet', 'tier-a'],
+        price: 85000
       }
     ];
     const insertProduct = db.prepare("INSERT OR REPLACE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -306,28 +336,96 @@ if (useSupabase) {
         type: 'powerstation',
         tags: ['flagship', 'pro', 'pure-sine'],
         description: 'Whole-house power without the installation.',
-        data: { name: 'SolarOne A500 Pro', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 300000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 40, cc_type: 'mppt' }
+        data: { 
+          name: 'SolarOne A500 Pro', 
+          capacity_wh: 600, 
+          max_output_w: 500, 
+          max_pv_input_w: 350, 
+          price: 300000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 12, 
+          max_charge_amps: 40, 
+          cc_type: 'mppt',
+          cc_max_voc: 50,
+          cc_max_amps: 30,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 50,
+          min_c_rate: 0.1
+        }
       },
       {
         id: 'h8',
         type: 'powerstation',
         tags: ['budget', 'student', 'pure-sine'],
         description: 'Compact student power box.',
-        data: { name: 'Itel Energy iESS 320T', capacity_wh: 320, max_output_w: 130, max_pv_input_w: 200, price: 140000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 10, cc_type: 'pwm' }
+        data: { 
+          name: 'Itel Energy iESS 320T', 
+          capacity_wh: 320, 
+          max_output_w: 130, 
+          max_pv_input_w: 200, 
+          price: 140000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 12, 
+          max_charge_amps: 10, 
+          cc_type: 'pwm',
+          cc_max_voc: 25,
+          cc_max_amps: 10,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 25,
+          min_c_rate: 0.1
+        }
       },
       {
         id: 'h9',
         type: 'powerstation',
         tags: ['mid-range', 'modified-sine'],
         description: 'Affordable backup power.',
-        data: { name: '500W Generic Powerstation', capacity_wh: 600, max_output_w: 500, max_pv_input_w: 350, price: 265000, battery_type: 'lithium', inverter_type: 'modified-sine', system_vdc: 12, max_charge_amps: 30, cc_type: 'pwm' }
+        data: { 
+          name: '500W Generic Powerstation', 
+          capacity_wh: 600, 
+          max_output_w: 500, 
+          max_pv_input_w: 350, 
+          price: 265000, 
+          battery_type: 'lithium', 
+          inverter_type: 'modified-sine', 
+          system_vdc: 12, 
+          max_charge_amps: 30, 
+          cc_type: 'pwm',
+          cc_max_voc: 30,
+          cc_max_amps: 20,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 50,
+          min_c_rate: 0.1
+        }
       },
       {
         id: 'h10',
         type: 'powerstation',
         tags: ['pro', 'high-capacity'],
         description: 'High capacity studio power.',
-        data: { name: 'Itel 1000W Powerstation', capacity_wh: 1000, max_output_w: 500, max_pv_input_w: 450, price: 340000, battery_type: 'lithium', inverter_type: 'pure-sine', system_vdc: 12, max_charge_amps: 50, cc_type: 'mppt' }
+        data: { 
+          name: 'Itel 1000W Powerstation', 
+          capacity_wh: 1000, 
+          max_output_w: 500, 
+          max_pv_input_w: 450, 
+          price: 340000, 
+          battery_type: 'lithium', 
+          inverter_type: 'pure-sine', 
+          system_vdc: 12, 
+          max_charge_amps: 50, 
+          cc_type: 'mppt',
+          cc_max_voc: 60,
+          cc_max_amps: 40,
+          max_parallel_units: 1,
+          battery_voltage: 12.8,
+          capacity_ah: 80,
+          min_c_rate: 0.1
+        }
       },
       {
         id: 'h11',
@@ -342,11 +440,42 @@ if (useSupabase) {
         tags: ['solar', 'battery', 'lithium'],
         description: 'Modular design. DIY-friendly expansion.',
         data: { name: 'Cworth 12V 100Ah LiFePO4', voltage: 12.8, capacity_ah: 100, type: 'lithium', min_c_rate: 0.1, price: 230000 }
+      },
+      {
+        id: 'h13',
+        type: 'inverter',
+        tags: ['pro', 'solar', 'pure-sine'],
+        description: 'High-power 5kVA pure sine wave inverter for whole-home backup.',
+        data: { 
+          name: 'Must 5kVA 48V Hybrid Inverter', 
+          max_ac_w: 5000, 
+          system_vdc: 48, 
+          cc_max_pv_w: 4000, 
+          cc_max_voc: 145, 
+          cc_max_amps: 80, 
+          max_charge_amps: 60, 
+          cc_type: 'mppt', 
+          max_parallel_units: 3, 
+          price: 450000 
+        }
+      },
+      {
+        id: 'h14',
+        type: 'panel',
+        tags: ['pro', 'solar', 'panel'],
+        description: 'High-efficiency 550W monocrystalline solar panel.',
+        data: { name: 'Jinko 550W Mono Crystalline Panel', watts: 550, voc: 49.8, isc: 13.5, price: 105000 }
+      },
+      {
+        id: 'h15',
+        type: 'battery',
+        tags: ['pro', 'solar', 'gel'],
+        description: 'Deep cycle 12V 200Ah Gel battery for reliable energy storage.',
+        data: { name: 'Felicity 12V 200Ah Gel Battery', voltage: 12, capacity_ah: 200, type: 'lead-acid', min_c_rate: 0.1, price: 185000 }
       }
     ];
     const insertHardware = db.prepare("INSERT OR REPLACE INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");
     seedHardware.forEach(h => insertHardware.run(h.id, 'system', h.type, JSON.stringify(h.tags), h.description, JSON.stringify(h.data)));
-  }
 }
 
 async function startServer() {

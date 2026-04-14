@@ -67,6 +67,10 @@ export interface Powerstation {
   cc_type?: "pwm" | "mppt";
   cc_max_voc?: number;
   cc_max_amps?: number;
+  max_parallel_units?: number;
+  battery_voltage?: number;
+  capacity_ah?: number;
+  min_c_rate?: number;
   description?: string;
 }
 
