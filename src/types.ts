@@ -173,4 +173,12 @@ export interface MasterDevice {
   tags: string[];
 }
 
+export interface ProfitMargins {
+  inverter: number;
+  panel: number;
+  battery: number;
+  powerstation: number;
+  product: number;
+}
+
 export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";

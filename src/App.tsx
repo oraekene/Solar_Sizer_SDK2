@@ -28,6 +28,7 @@ import {
   Layers,
   Activity,
   Wifi,
+  Percent,
   UserCircle,
   Save,
   FolderOpen,
@@ -56,7 +57,8 @@ import {
   SavedResult,
   MasterDevice,
   Product,
-  Powerstation
+  Powerstation,
+  ProfitMargins
 } from "./types";
 import { buildCombinations } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
@@ -592,6 +594,12 @@ export default function App() {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Profit Margins State
+  const [margins, setMargins] = useState<ProfitMargins>(() => {
+    const saved = localStorage.getItem("ss_margins");
+    return saved ? JSON.parse(saved) : { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 };
+  });
+
   const [newDevice, setNewDevice] = useState<Omit<Partial<Device>, 'qty' | 'watts'> & { qty?: number | ""; watts?: number | "" }>({
     name: "",
     category: "electronics",
@@ -755,7 +763,7 @@ export default function App() {
 
   const results = useMemo(() => {
     if (devices.length === 0) return null;
-    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations }, batteryPreference, tolerance, products);
+    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations }, batteryPreference, tolerance, products, margins);
     
     // Sort systems: Optimal -> Conditional -> High Risk, then by price
     res.systems.sort((a, b) => {
@@ -767,7 +775,7 @@ export default function App() {
     });
 
     return res;
-  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products]);
+  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products, margins]);
 
   // Internal Logging with Duplicate Check
   useEffect(() => {
@@ -814,7 +822,8 @@ export default function App() {
     safeLocalStorageSet("ss_batteries", batteries);
     safeLocalStorageSet("ss_powerstations", powerstations);
     safeLocalStorageSet("ss_profiles", profiles);
-  }, [inverters, panels, batteries, powerstations, profiles]);
+    safeLocalStorageSet("ss_margins", margins);
+  }, [inverters, panels, batteries, powerstations, profiles, margins]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) return;
@@ -1315,13 +1324,97 @@ export default function App() {
           importedCount++;
         }
 
+        if (data.powerstations && Array.isArray(data.powerstations)) {
+          const sanitizedPS = data.powerstations.map((ps: any) => ({
+            ...ps,
+            id: ps.id || crypto.randomUUID(),
+            capacity_wh: Number(ps.capacity_wh) || 0,
+            max_output_w: Number(ps.max_output_w) || 0,
+            max_pv_input_w: Number(ps.max_pv_input_w) || 0,
+            price: Number(ps.price) || 0,
+          }));
+          setPowerstations(prev => {
+            const merged = [...prev];
+            sanitizedPS.forEach(newItem => {
+              const index = merged.findIndex(item => item.id === newItem.id);
+              if (index !== -1) {
+                merged[index] = newItem;
+              } else {
+                merged.push(newItem);
+              }
+            });
+            return merged;
+          });
+          importedCount++;
+        }
+
         if (importedCount > 0) {
           alert("Hardware database updated successfully!");
         } else {
-          alert("Invalid hardware database file format. Please ensure it contains 'inverters', 'panels', or 'batteries' arrays.");
+          alert("Invalid hardware database file format. Please ensure it contains 'inverters', 'panels', 'batteries', or 'powerstations' arrays.");
         }
       } catch (err) {
         alert("Failed to parse the file. Please ensure it is a valid JSON.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const importMasterDevices = async (event: ChangeEvent<HTMLInputElement>) => {
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session required. Visit ?admin=true to unlock.");
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            await sdk.saveMasterDevice(item, adminKey);
+          }
+          const updated = await sdk.getDevices();
+          setMasterDevices(updated);
+          alert("Master devices imported successfully!");
+        } else {
+          alert("Invalid format. Expected an array of devices.");
+        }
+      } catch (err) {
+        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const importProducts = async (event: ChangeEvent<HTMLInputElement>) => {
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session required. Visit ?admin=true to unlock.");
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            await sdk.saveProduct(item, adminKey);
+          }
+          const updated = await sdk.getProducts();
+          setProducts(updated);
+          alert("Products imported successfully!");
+        } else {
+          alert("Invalid format. Expected an array of products.");
+        }
+      } catch (err) {
+        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
       }
     };
     reader.readAsText(file);
@@ -2531,6 +2624,12 @@ export default function App() {
                 <p className="text-stone-500 text-sm">Pre-configured solar system combinations and standalone products.</p>
               </div>
               <div className="flex gap-2">
+                {isDeveloper && (
+                  <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
+                    <Upload className="w-3 h-3" /> Import
+                    <input type="file" accept=".json" onChange={importProducts} className="hidden" />
+                  </label>
+                )}
                 {[
                   { id: 'all', label: 'All', desc: 'Everything in our catalog.' },
                   { id: 'flagship', label: 'Flagship', desc: 'Premium, high-performance system combinations.' },
@@ -2778,12 +2877,50 @@ export default function App() {
               </div>
             </div>
 
+            {isDeveloper && (
+              <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 mb-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-emerald-100 rounded-lg">
+                    <Percent className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg">Profit Margins (%)</h3>
+                    <p className="text-xs text-emerald-600/70">Set percentage margins to be added to hardware and product prices.</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  {(['inverter', 'panel', 'battery', 'powerstation', 'product'] as const).map((key) => (
+                    <div key={key}>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5 capitalize">{key}</label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          value={margins[key]} 
+                          onChange={(e) => setMargins({ ...margins, [key]: parseFloat(e.target.value) || 0 })}
+                          className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-bold"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-400">%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
               {/* Master Devices */}
               <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
-                </h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-bold flex items-center gap-2 text-stone-700">
+                    <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
+                  </h3>
+                  {isDeveloper && (
+                    <label className="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
+                      <Upload className="w-4 h-4" />
+                      <input type="file" accept=".json" onChange={importMasterDevices} className="hidden" />
+                    </label>
+                  )}
+                </div>
                 <div className="space-y-3">
                   {masterDevices.map((md) => (
                     <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">

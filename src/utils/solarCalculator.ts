@@ -1,5 +1,5 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES } from "../constants";
-import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation } from "../types";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins } from "../types";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -187,11 +187,14 @@ export function buildCombinations(
   hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[] },
   batteryPreference: BatteryPreference = "any",
   tolerance: number = 20,
-  products: Product[] = []
+  products: Product[] = [],
+  margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 }
 ): { analysis: LoadAnalysis; systems: SystemCombination[]; allLogs: string[][] } {
   const analysis = calculateUserNeeds(devices);
   const { max_surge, nighttime_wh, total_daily_wh } = analysis;
   const psh = LOCATION_PSH[location];
+
+  const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
 
   const validSystems: SystemCombination[] = [];
   const allLogs: string[][] = [];
@@ -246,16 +249,18 @@ export function buildCombinations(
       advice = `🚨 High Blackout Risk: This kit is undersized for your current load. Drains at ${sim.failureTime}.`;
     }
 
+    const totalPrice = applyMargin(prod.price, margins.product);
+
     validSystems.push({
       inverter: data.inverter,
-      inverter_price: data.inverter_price || 0,
+      inverter_price: applyMargin(data.inverter_price || 0, margins.product),
       battery_config: data.battery_config,
-      battery_price: data.battery_price || 0,
+      battery_price: applyMargin(data.battery_price || 0, margins.product),
       panel_config: data.panel_config,
-      panel_price: data.panel_price || 0,
+      panel_price: applyMargin(data.panel_price || 0, margins.product),
       array_size_w: panW,
       battery_total_wh: batWh,
-      total_price: prod.price,
+      total_price: totalPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
       status,
@@ -320,16 +325,19 @@ export function buildCombinations(
       advice = `🚨 High Blackout Risk: This powerstation is undersized for your current load.`;
     }
 
+    const psPrice = applyMargin(ps.price, margins.powerstation);
+    const panelPrice = applyMargin(maxPanels * 95000, margins.panel);
+
     validSystems.push({
       inverter: `${ps.name} (Built-in Inverter)`,
-      inverter_price: ps.price,
+      inverter_price: psPrice,
       battery_config: `${ps.name} (Built-in Battery)`,
       battery_price: 0,
       panel_config: maxPanels > 0 ? `${maxPanels}x 350W Panels` : "No Panels",
-      panel_price: maxPanels * 95000,
+      panel_price: panelPrice,
       array_size_w: actualPanW,
       battery_total_wh: ps.capacity_wh,
-      total_price: ps.price + (maxPanels * 95000),
+      total_price: psPrice + panelPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
       status,
@@ -426,7 +434,7 @@ export function buildCombinations(
       }
       batLog.push(`✅ Battery bank is compatible with inverter charging capacity.`);
 
-      const totalBatteryPrice = bat.price * totalBatteries;
+      const totalBatteryPrice = applyMargin(bat.price * totalBatteries, margins.battery);
 
       for (const panel of hardware.panels) {
         const panelLog = [...batLog];
@@ -532,8 +540,8 @@ export function buildCombinations(
           panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
         }
 
-        const totalPanelPrice = panel.price * totalPanels;
-        const totalInverterPrice = inv.price * numUnits;
+        const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
+        const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
         const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;
         
         validSystems.push({
