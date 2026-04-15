@@ -58,7 +58,8 @@ import {
   MasterDevice,
   Product,
   Powerstation,
-  ProfitMargins
+  ProfitMargins,
+  PDFSettings
 } from "./types";
 import { buildCombinations } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
@@ -546,6 +547,8 @@ export default function App() {
     // Fetch public master data — no auth needed
     sdk.getDevices().then(setMasterDevices).catch(console.error);
     sdk.getProducts().then(setProducts).catch(console.error);
+    sdk.getSettings("margins").then(m => m && setMargins(m)).catch(console.error);
+    sdk.getSettings("pdf_settings").then(p => p && setPdfSettings(p)).catch(console.error);
     
     // Fetch global hardware
     sdk.getHardware().then(data => {
@@ -598,6 +601,17 @@ export default function App() {
   const [margins, setMargins] = useState<ProfitMargins>(() => {
     const saved = localStorage.getItem("ss_margins");
     return saved ? JSON.parse(saved) : { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 };
+  });
+
+  // PDF Quote Settings State
+  const [pdfSettings, setPdfSettings] = useState<PDFSettings>(() => {
+    const saved = localStorage.getItem("ss_pdf_settings");
+    return saved ? JSON.parse(saved) : {
+      quoteTitle: "SOLARSIZER PRO QUOTE",
+      quotePrefix: "QT",
+      footerLine1: "Thank you for choosing SolarSizer Pro!",
+      footerLine2: "This quote is valid for 14 days."
+    };
   });
 
   const [newDevice, setNewDevice] = useState<Omit<Partial<Device>, 'qty' | 'watts'> & { qty?: number | ""; watts?: number | "" }>({
@@ -1184,7 +1198,7 @@ export default function App() {
     const doc = new jsPDF('p', 'mm', 'a4');
     doc.setFontSize(22);
     doc.setTextColor(16, 185, 129);
-    doc.text("SolarSizer Pro - Hardware Database", 14, 20);
+    doc.text("Complete Product Catalog", 14, 20);
 
     doc.setFontSize(14);
     doc.text("Inverters", 14, 35);
@@ -1214,7 +1228,16 @@ export default function App() {
       headStyles: { fillColor: [16, 185, 129] },
     });
 
-    doc.save("SolarSizer_Hardware_Database.pdf");
+    doc.text("Powerstations", 14, (doc as any).lastAutoTable.finalY + 15);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [["Name", "Capacity", "Max Output", "PV Input", "Price"]],
+      body: powerstations.map(ps => [ps.name, `${ps.capacity_wh}Wh`, `${ps.max_output_w}W`, `${ps.max_pv_input_w}W`, `₦${ps.price.toLocaleString()}`]),
+      theme: 'striped',
+      headStyles: { fillColor: [16, 185, 129] },
+    });
+
+    doc.save("SolarSizer_Complete_Product_Catalog.pdf");
   };
 
   const exportResultsJSON = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }) => {
@@ -1412,6 +1435,84 @@ export default function App() {
           alert("Products imported successfully!");
         } else {
           alert("Invalid format. Expected an array of products.");
+        }
+      } catch (err) {
+        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const saveGlobalSettings = async () => {
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session required to save global settings. Visit ?admin=true to unlock.");
+      return;
+    }
+
+    try {
+      await sdk.saveSettings("margins", margins, adminKey);
+      await sdk.saveSettings("pdf_settings", pdfSettings, adminKey);
+      localStorage.setItem("ss_margins", JSON.stringify(margins));
+      localStorage.setItem("ss_pdf_settings", JSON.stringify(pdfSettings));
+      alert("✅ Global settings (margins & PDF customization) saved to server successfully!");
+    } catch (err) {
+      alert("Failed to save settings: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const exportProductsJSON = () => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadFile(JSON.stringify(products, null, 2), `SolarSizer_Products_${timestamp}.json`, "application/json");
+  };
+
+  const exportInternetDataJSON = () => {
+    const internetMasterDevices = masterDevices.filter(md => md.category === 'internet' || md.tags.includes('internet'));
+    const internetProducts = products.filter(p => p.tags.includes('internet'));
+    const data = { masterDevices: internetMasterDevices, products: internetProducts };
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    downloadFile(JSON.stringify(data, null, 2), `SolarSizer_InternetData_${timestamp}.json`, "application/json");
+  };
+
+  const importInternetData = async (event: ChangeEvent<HTMLInputElement>) => {
+    const adminKey = sessionStorage.getItem("ss_admin_key");
+    if (!adminKey) {
+      alert("Admin session required. Visit ?admin=true to unlock.");
+      return;
+    }
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = JSON.parse(e.target?.result as string);
+        let importedMaster = 0;
+        let importedProducts = 0;
+
+        if (data.masterDevices && Array.isArray(data.masterDevices)) {
+          for (const item of data.masterDevices) {
+            await sdk.saveMasterDevice(item, adminKey);
+            importedMaster++;
+          }
+        }
+        if (data.products && Array.isArray(data.products)) {
+          for (const item of data.products) {
+            await sdk.saveProduct(item, adminKey);
+            importedProducts++;
+          }
+        }
+
+        if (importedMaster > 0 || importedProducts > 0) {
+          const [updatedDevices, updatedProducts] = await Promise.all([
+            sdk.getDevices(),
+            sdk.getProducts()
+          ]);
+          setMasterDevices(updatedDevices);
+          setProducts(updatedProducts);
+          alert(`Import successful: ${importedMaster} devices and ${importedProducts} products.`);
+        } else {
+          alert("Invalid format. Expected an object with 'masterDevices' and 'products' arrays.");
         }
       } catch (err) {
         alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
@@ -1808,7 +1909,10 @@ export default function App() {
   const generateQuote = (sys: SystemCombination) => {
     const doc = new jsPDF();
     const date = new Date().toLocaleDateString();
-    const quoteId = `QT-${Math.floor(100000 + Math.random() * 900000)}`;
+    
+    // Customization Settings
+    const { quoteTitle, quotePrefix, footerLine1, footerLine2 } = pdfSettings;
+    const quoteId = `${quotePrefix}-${Math.floor(100000 + Math.random() * 900000)}`;
     
     // Safety check for sys
     if (!sys) return;
@@ -1826,7 +1930,7 @@ export default function App() {
     // Header
     doc.setFontSize(22);
     doc.setTextColor(16, 185, 129); // emerald-600
-    doc.text("SOLARSIZER PRO QUOTE", 105, 20, { align: "center" });
+    doc.text(quoteTitle, 105, 20, { align: "center" });
     
     doc.setFontSize(10);
     doc.setTextColor(100);
@@ -1905,8 +2009,8 @@ export default function App() {
     const footerY = (doc as any).lastAutoTable.finalY + 20;
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text("Thank you for choosing SolarSizer Pro!", 105, footerY, { align: "center" });
-    doc.text("This quote is valid for 14 days.", 105, footerY + 5, { align: "center" });
+    doc.text(pdfSettings.footerLine1, 105, footerY, { align: "center" });
+    doc.text(pdfSettings.footerLine2, 105, footerY + 5, { align: "center" });
 
     doc.save(`SolarSizer_Quote_${quoteId}.pdf`);
 
@@ -2625,10 +2729,18 @@ export default function App() {
               </div>
               <div className="flex gap-2">
                 {isDeveloper && (
-                  <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
-                    <Upload className="w-3 h-3" /> Import
-                    <input type="file" accept=".json" onChange={importProducts} className="hidden" />
-                  </label>
+                  <>
+                    <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
+                      <Upload className="w-3 h-3" /> Import
+                      <input type="file" accept=".json" onChange={importProducts} className="hidden" />
+                    </label>
+                    <button 
+                      onClick={exportProductsJSON}
+                      className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all flex items-center gap-2"
+                    >
+                      <Download className="w-3 h-3" /> Export
+                    </button>
+                  </>
                 )}
                 {[
                   { id: 'all', label: 'All', desc: 'Everything in our catalog.' },
@@ -2749,15 +2861,32 @@ export default function App() {
 
         {activeTab === "internet" && (
           <div className="space-y-8">
-            <div className="max-w-4xl">
-              <h2 className="text-4xl font-black text-stone-900 mb-4 tracking-tight">Your Internet Stack. Built for Nigeria.</h2>
-              <p className="text-stone-500 text-lg leading-relaxed">
-                The same SIM. The right hardware. Three to five times the speed — and a connection that doesn't die when NEPA does.
-              </p>
-              <div className="mt-8 p-6 bg-amber-50 border border-amber-100 rounded-3xl text-amber-900 text-sm">
-                <p className="font-black mb-2 uppercase tracking-wider text-[10px]">Pricing Disclaimer</p>
-                <p className="leading-relaxed">Prices below are naira-range estimates sourced from Lagos import-market data as of early 2026. Verify on the day before purchasing.</p>
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+              <div className="max-w-4xl">
+                <h2 className="text-4xl font-black text-stone-900 mb-4 tracking-tight">Your Internet Stack. Built for Nigeria.</h2>
+                <p className="text-stone-500 text-lg leading-relaxed">
+                  The same SIM. The right hardware. Three to five times the speed — and a connection that doesn't die when NEPA does.
+                </p>
               </div>
+              {isDeveloper && (
+                <div className="flex gap-2">
+                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
+                    <Upload className="w-4 h-4" /> Import Data
+                    <input type="file" accept=".json" onChange={importInternetData} className="hidden" />
+                  </label>
+                  <button 
+                    onClick={exportInternetDataJSON}
+                    className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  >
+                    <Download className="w-4 h-4" /> Export Data
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl text-amber-900 text-sm">
+              <p className="font-black mb-2 uppercase tracking-wider text-[10px]">Pricing Disclaimer</p>
+              <p className="leading-relaxed">Prices below are naira-range estimates sourced from Lagos import-market data as of early 2026. Verify on the day before purchasing.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -2883,10 +3012,16 @@ export default function App() {
                   <div className="p-2 bg-emerald-100 rounded-lg">
                     <Percent className="w-5 h-5 text-emerald-600" />
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h3 className="font-bold text-lg">Profit Margins (%)</h3>
                     <p className="text-xs text-emerald-600/70">Set percentage margins to be added to hardware and product prices.</p>
                   </div>
+                  <button 
+                    onClick={saveGlobalSettings}
+                    className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
+                  >
+                    <Save className="w-4 h-4" /> Save to Server
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   {(['inverter', 'panel', 'battery', 'powerstation', 'product'] as const).map((key) => (
@@ -2895,14 +3030,67 @@ export default function App() {
                       <div className="relative">
                         <input 
                           type="number" 
-                          value={margins[key]} 
+                          value={margins[key] === 0 ? "" : margins[key]} 
                           onChange={(e) => setMargins({ ...margins, [key]: parseFloat(e.target.value) || 0 })}
+                          placeholder="0"
                           className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-bold"
                         />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-400">%</span>
                       </div>
                     </div>
                   ))}
+                </div>
+                
+                {/* PDF Customization Panel */}
+                <div className="mt-8 pt-8 border-t border-emerald-100">
+                  <h3 className="font-bold text-sm text-emerald-800 mb-4 flex items-center gap-2">
+                    <Settings className="w-4 h-4" /> PDF Quote Customization
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Quote Header Title</label>
+                        <input 
+                          type="text" 
+                          value={pdfSettings.quoteTitle}
+                          onChange={(e) => setPdfSettings({ ...pdfSettings, quoteTitle: e.target.value })}
+                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
+                          placeholder="e.g. SOLARSIZER PRO QUOTE"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Quote ID Prefix</label>
+                        <input 
+                          type="text" 
+                          value={pdfSettings.quotePrefix}
+                          onChange={(e) => setPdfSettings({ ...pdfSettings, quotePrefix: e.target.value })}
+                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
+                          placeholder="e.g. QT"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Footer Message Line 1</label>
+                        <input 
+                          type="text" 
+                          value={pdfSettings.footerLine1}
+                          onChange={(e) => setPdfSettings({ ...pdfSettings, footerLine1: e.target.value })}
+                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Footer Message Line 2</label>
+                        <input 
+                          type="text" 
+                          value={pdfSettings.footerLine2}
+                          onChange={(e) => setPdfSettings({ ...pdfSettings, footerLine2: e.target.value })}
+                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-[10px] text-emerald-600/60 italic">* Changes are saved to the server and synced across devices.</p>
                 </div>
               </div>
             )}
@@ -3203,51 +3391,42 @@ export default function App() {
                     </div>
                   </Tooltip>
                 </div>
-                <div className="relative group/export">
-                  <button 
-                    className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                  >
-                    <Download className="w-4 h-4" /> Export Profiles
-                  </button>
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-xl shadow-xl py-2 w-48 hidden group-hover/export:block z-50">
-                    <button 
-                      onClick={exportProfilesJSON}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-stone-50 font-medium flex items-center gap-2"
-                    >
-                      <FileJson className="w-4 h-4 text-stone-400" /> Export as JSON
-                    </button>
-                    <button 
-                      onClick={() => {
-                        const doc = new jsPDF();
-                        doc.setFontSize(20);
-                        doc.text("Saved Profiles Inventory", 20, 20);
-                        
-                        profiles.forEach((p, i) => {
-                          if (i > 0) doc.addPage();
-                          doc.setFontSize(16);
-                          doc.text(`Profile: ${p.name}`, 20, 40);
-                          doc.setFontSize(10);
-                          doc.text(`Region: ${REGIONS.find(r => r.value === p.region)?.label}`, 20, 50);
-                          doc.text(`Battery Preference: ${p.batteryPreference}`, 20, 55);
-                          
-                          autoTable(doc, {
-                            startY: 65,
-                            head: [["Device", "Watts", "Qty", "Hours", "Daily Wh"]],
-                            body: p.devices.map(d => {
-                              const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
-                              return [d.name, d.watts, d.qty, hours, d.watts * d.qty * hours];
-                            }),
-                            theme: "striped"
-                          });
-                        });
-                        doc.save("SolarSizer_Profiles.pdf");
-                      }}
-                      className="w-full text-left px-4 py-2 text-sm hover:bg-stone-50 font-medium flex items-center gap-2"
-                    >
-                      <FileText className="w-4 h-4 text-stone-400" /> Export as PDF
-                    </button>
-                  </div>
-                </div>
+                <button 
+                  onClick={exportProfilesJSON}
+                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                >
+                  <Download className="w-4 h-4" /> Export JSON
+                </button>
+                <button 
+                  onClick={() => {
+                    const doc = new jsPDF();
+                    doc.setFontSize(20);
+                    doc.text("Saved Profiles Inventory", 20, 20);
+                    
+                    profiles.forEach((p, i) => {
+                      if (i > 0) doc.addPage();
+                      doc.setFontSize(16);
+                      doc.text(`Profile: ${p.name}`, 20, 40);
+                      doc.setFontSize(10);
+                      doc.text(`Region: ${REGIONS.find(r => r.value === p.region)?.label}`, 20, 50);
+                      doc.text(`Battery Preference: ${p.batteryPreference}`, 20, 55);
+                      
+                      autoTable(doc, {
+                        startY: 65,
+                        head: [["Device", "Watts", "Qty", "Hours", "Daily Wh"]],
+                        body: p.devices.map(d => {
+                          const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
+                          return [d.name, d.watts, d.qty, hours, d.watts * d.qty * hours];
+                        }),
+                        theme: "striped"
+                      });
+                    });
+                    doc.save("SolarSizer_Profiles.pdf");
+                  }}
+                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                >
+                  <Download className="w-4 h-4" /> Export PDF
+                </button>
                 <button 
                   onClick={() => setShowSaveProfile(true)}
                   className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all"

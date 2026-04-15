@@ -90,6 +90,12 @@ if (useSupabase) {
       price REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT, -- JSON string
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed master devices
@@ -859,9 +865,12 @@ async function startServer() {
   app.post("/api/admin/verify", (req, res) => {
     const { password } = req.body;
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    
     if (!ADMIN_PASSWORD) {
-      return res.status(500).json({ error: "Admin password not configured." });
+      // If not configured, we can't verify, but don't return 500
+      return res.json({ valid: false, error: "Admin password not configured on server." });
     }
+    
     res.json({ valid: password === ADMIN_PASSWORD });
   });
 
@@ -918,7 +927,10 @@ async function startServer() {
   app.post("/api/hardware", async (req, res) => {
     const adminKey = req.headers["x-admin-key"];
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+    
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+    }
 
     const { id, type, data, tags, description } = req.body;
     if (useSupabase) {
@@ -959,7 +971,10 @@ async function startServer() {
   app.post("/api/devices", async (req, res) => {
     const adminKey = req.headers["x-admin-key"];
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+    
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+    }
 
     const { id, name, category, default_watts, tags } = req.body;
     if (useSupabase) {
@@ -985,7 +1000,10 @@ async function startServer() {
   app.delete("/api/devices/:id", async (req, res) => {
     const adminKey = req.headers["x-admin-key"];
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+    
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+    }
 
     const { id } = req.params;
     if (useSupabase) {
@@ -1023,12 +1041,8 @@ async function startServer() {
     const adminKey = req.headers["x-admin-key"];
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-    if (!ADMIN_PASSWORD) {
-      return res.status(500).json({ error: "Admin password not configured on server." });
-    }
-
-    if (adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Invalid admin credentials." });
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
     }
 
     const { id, name, description, type, combination_data, tags, price } = req.body;
@@ -1065,12 +1079,8 @@ async function startServer() {
     const adminKey = req.headers["x-admin-key"];
     const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-    if (!ADMIN_PASSWORD) {
-      return res.status(500).json({ error: "Admin password not configured on server." });
-    }
-
-    if (adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Invalid admin credentials." });
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
     }
 
     const { id } = req.params;
@@ -1085,9 +1095,65 @@ async function startServer() {
     res.json({ success: true });
   });
 
+  // --- Settings Routes ---
+  app.get("/api/settings/:key", async (req, res) => {
+    const { key } = req.params;
+    try {
+      if (useSupabase) {
+        const { data, error } = await supabase.from("settings").select("value").eq("key", key).single();
+        if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
+        res.json(data ? JSON.parse(data.value) : null);
+      } else {
+        const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+        res.json(row ? JSON.parse(row.value) : null);
+      }
+    } catch (error: any) {
+      console.error(`Error fetching setting ${key}:`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/settings/:key", async (req, res) => {
+    const adminKey = req.headers["x-admin-key"];
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    
+    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+      return res.status(403).json({ error: "Unauthorized or Admin password not configured." });
+    }
+
+    const { key } = req.params;
+    const { value } = req.body;
+
+    try {
+      if (useSupabase) {
+        const { error } = await supabase.from("settings").upsert({
+          key, value: JSON.stringify(value), updated_at: new Date().toISOString()
+        });
+        if (error) return res.status(500).json({ error: error.message });
+      } else {
+        const upsert = db.prepare(`
+          INSERT INTO settings (key, value, updated_at)
+          VALUES (?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = CURRENT_TIMESTAMP
+        `);
+        upsert.run(key, JSON.stringify(value));
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error(`Error saving setting ${key}:`, error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // --- Calculation API ---
   app.post("/api/calculate", async (req, res) => {
     const { location, devices, hardware, batteryPreference, tolerance } = req.body;
+    
+    if (!hardware) {
+      return res.status(400).json({ error: "Hardware database is required for calculation." });
+    }
     
     try {
       // Fetch products to include pre-configured kits in calculation

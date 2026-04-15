@@ -70,6 +70,18 @@ export class SolarSizerSDK {
     });
     return res.data;
   }
+
+  async getSettings(key: string) {
+    const res = await axios.get(`${this.baseUrl}/settings/${key}`);
+    return res.data;
+  }
+
+  async saveSettings(key: string, value: any, adminKey: string) {
+    const res = await axios.post(`${this.baseUrl}/settings/${key}`, { value }, {
+      headers: { "x-admin-key": adminKey }
+    });
+    return res.data;
+  }
 }
 
 export const sdk = new SolarSizerSDK();

@@ -181,4 +181,11 @@ export interface ProfitMargins {
   product: number;
 }
 
+export interface PDFSettings {
+  quoteTitle: string;
+  quotePrefix: string;
+  footerLine1: string;
+  footerLine2: string;
+}
+
 export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";
