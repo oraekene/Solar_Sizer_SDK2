@@ -61,7 +61,7 @@ import {
   ProfitMargins,
   PDFSettings
 } from "./types";
-import { buildCombinations } from "./utils/solarCalculator";
+import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
@@ -626,6 +626,7 @@ export default function App() {
   const [selectedSystemDetails, setSelectedSystemDetails] = useState<SystemCombination | null>(null);
   const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
   const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
+  const [resultFilter, setResultFilter] = useState<"all" | "kits" | "powerstations">("all");
   const saveAsProduct = async (system: SystemCombination) => {
     const adminKey = sessionStorage.getItem("ss_admin_key");
     if (!adminKey) {
@@ -1798,11 +1799,15 @@ export default function App() {
     if (type === "powerstation") setPowerstations([...powerstations, newItem]);
   };
 
-  const generateUsageProfile = () => {
-    if (devices.length === 0) return;
+  const generateUsageProfile = (targetDevices?: Device[]) => {
+    const activeDevices = targetDevices || devices;
+    if (activeDevices.length === 0) return;
     const doc = new jsPDF();
     const date = new Date().toLocaleDateString();
     const profileId = `UP-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    // Recalculate analysis if targetDevices is provided to ensure accuracy
+    const activeAnalysis = targetDevices ? calculateUserNeeds(targetDevices) : results?.analysis;
 
     // Header
     doc.setFontSize(22);
@@ -1816,17 +1821,17 @@ export default function App() {
     doc.text(`Location: ${REGIONS.find(r => r.value === region)?.label}`, 20, 45);
 
     // Load Analysis Summary
-    if (results) {
+    if (activeAnalysis) {
       doc.setFontSize(14);
       doc.setTextColor(0);
       doc.text("LOAD ANALYSIS SUMMARY", 20, 60);
       
       doc.setFontSize(10);
       const summary = [
-        ["Peak Surge Load", `${results.analysis.max_surge.toFixed(0)}W`],
-        ["Total Daily Consumption", `${results.analysis.total_daily_wh.toFixed(0)}Wh`],
-        ["Nighttime Consumption (6PM-7AM)", `${results.analysis.nighttime_wh.toFixed(0)}Wh`],
-        ["Average Hourly Load", `${(results.analysis.total_daily_wh / 24).toFixed(0)}W`]
+        ["Peak Surge Load", `${activeAnalysis.max_surge.toFixed(0)}W`],
+        ["Total Daily Consumption", `${activeAnalysis.total_daily_wh.toFixed(0)}Wh`],
+        ["Nighttime Consumption (6PM-7AM)", `${activeAnalysis.nighttime_wh.toFixed(0)}Wh`],
+        ["Average Hourly Load", `${(activeAnalysis.total_daily_wh / 24).toFixed(0)}W`]
       ];
 
       autoTable(doc, {
@@ -1844,7 +1849,7 @@ export default function App() {
     doc.setTextColor(0);
     doc.text("ITEMIZED DEVICE LIST", 20, finalY + 15);
 
-    const deviceData = devices.map((d, idx) => {
+    const deviceData = activeDevices.map((d, idx) => {
       const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
       const dailyWh = d.watts * d.qty * hours;
       return [
@@ -1869,7 +1874,7 @@ export default function App() {
     });
 
     // Hourly Load Distribution
-    if (results) {
+    if (activeAnalysis) {
       const currentY = (doc as any).lastAutoTable.finalY + 15;
       doc.setFontSize(14);
       doc.setTextColor(0);
@@ -1881,8 +1886,8 @@ export default function App() {
         const h1 = i;
         const h2 = i + 12;
         hourlyData.push([
-          `${h1}:00`, `${results.analysis.hourly_consumption[h1].toFixed(0)}W`,
-          `${h2}:00`, `${results.analysis.hourly_consumption[h2].toFixed(0)}W`
+          `${h1}:00`, `${activeAnalysis.hourly_consumption[h1].toFixed(0)}W`,
+          `${h2}:00`, `${activeAnalysis.hourly_consumption[h2].toFixed(0)}W`
         ]);
       }
 
@@ -1919,7 +1924,7 @@ export default function App() {
 
     // Use adjusted advice if available
     let finalAdvice = sys.advice || "No advice available.";
-    if (adjustedLoad && sys.status === "Conditional") {
+    if (adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk")) {
       if (adjustedLoad.deficit === 0) {
         finalAdvice = "Perfect Match (Lifestyle Adjusted): Your modified usage schedule now fits this system's capacity perfectly.";
       } else {
@@ -1938,10 +1943,39 @@ export default function App() {
     doc.text(`Date: ${date}`, 20, 40);
     doc.text(`Location: ${REGIONS.find(r => r.value === region)?.label}`, 20, 45);
 
-    // System Specifications
+    // Helper to extract units
+    const getUnits = (str: string) => {
+      const match = str.match(/^(\d+)x/);
+      return match ? match[1] : "1";
+    };
+
+    // Cost Breakdown (Shifted to first position)
     doc.setFontSize(14);
     doc.setTextColor(0);
-    doc.text("SYSTEM SPECIFICATIONS", 20, 60);
+    doc.text("ITEMIZED COST BREAKDOWN", 20, 60);
+
+    const costs = [
+      ["1", "Inverter Unit", getUnits(sys.inverter), `N${(sys.inverter_price || 0).toLocaleString()}`],
+      ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${(sys.battery_price || 0).toLocaleString()}`],
+      ["3", "Solar PV Array", getUnits(sys.panel_config), `N${(sys.panel_price || 0).toLocaleString()}`],
+      ["", "TOTAL INVESTMENT", "", `N${(sys.total_price || 0).toLocaleString()}`]
+    ];
+
+    autoTable(doc, {
+      startY: 65,
+      head: [["#", "Component", "Units", "Price"]],
+      body: costs,
+      theme: "grid",
+      headStyles: { fillColor: [16, 185, 129] },
+      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${(sys.total_price * 1.075).toLocaleString()}`]],
+      footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
+    });
+
+    // System Specifications (Shifted under Cost Breakdown)
+    const specsY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("SYSTEM SPECIFICATIONS", 20, specsY);
     
     doc.setFontSize(10);
     const specs = [
@@ -1954,14 +1988,14 @@ export default function App() {
     ];
 
     autoTable(doc, {
-      startY: 65,
+      startY: specsY + 5,
       head: [["Specification", "Details"]],
       body: specs,
       theme: "striped",
       headStyles: { fillColor: [16, 185, 129] }
     });
 
-    // Installation Guide
+    // Installation Guide (Shifted under System Specifications)
     const guideY = (doc as any).lastAutoTable.finalY + 15;
     doc.setFontSize(14);
     doc.setTextColor(0);
@@ -1983,28 +2017,6 @@ export default function App() {
       columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
     });
 
-    // Cost Breakdown
-    const finalY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(14);
-    doc.text("ITEMIZED COST BREAKDOWN", 20, finalY);
-
-    const costs = [
-      ["1", "Inverter Unit", `N${(sys.inverter_price || 0).toLocaleString()}`],
-      ["2", "Battery Storage Bank", `N${(sys.battery_price || 0).toLocaleString()}`],
-      ["3", "Solar PV Array", `N${(sys.panel_price || 0).toLocaleString()}`],
-      ["", "TOTAL INVESTMENT", `N${(sys.total_price || 0).toLocaleString()}`]
-    ];
-
-    autoTable(doc, {
-      startY: finalY + 5,
-      head: [["#", "Component", "Price"]],
-      body: costs,
-      theme: "grid",
-      headStyles: { fillColor: [16, 185, 129] },
-      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", `N${(sys.total_price * 1.075).toLocaleString()}`]],
-      footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
-    });
-
     // Footer
     const footerY = (doc as any).lastAutoTable.finalY + 20;
     doc.setFontSize(10);
@@ -2015,7 +2027,7 @@ export default function App() {
     doc.save(`SolarSizer_Quote_${quoteId}.pdf`);
 
     // Also export usage profile
-    generateUsageProfile();
+    generateUsageProfile(adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk") ? adjustedLoad.devices : devices);
   };
 
   return (
@@ -2436,11 +2448,38 @@ export default function App() {
 
                 {/* System Options */}
                 <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h2 className="font-bold text-xl flex items-center gap-2">
-                      <BatteryIcon className="w-6 h-6 text-emerald-600" />
-                      Recommended Systems
-                    </h2>
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h2 className="font-bold text-xl flex items-center gap-2">
+                        <BatteryIcon className="w-6 h-6 text-emerald-600" />
+                        Recommended Systems
+                      </h2>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex bg-stone-100 p-1 rounded-xl w-fit">
+                          <button 
+                            onClick={() => setResultFilter("all")}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "all" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                          >
+                            Full Results
+                          </button>
+                          <button 
+                            onClick={() => setResultFilter("kits")}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "kits" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                          >
+                            Kits
+                          </button>
+                          <button 
+                            onClick={() => setResultFilter("powerstations")}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "powerstations" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                          >
+                            Powerstations
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-stone-500 ml-1">
+                          Students and young professionals: for easy simple solutions that don't require complex installations, toggle on powerstations or kits.
+                        </p>
+                      </div>
+                    </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-stone-500">{results.systems.length} configurations found</span>
                       <div className="flex gap-2">
@@ -2450,12 +2489,6 @@ export default function App() {
                         >
                           <Download className="w-3.5 h-3.5" /> Export Report
                         </button>
-                        {/* <button 
-                          onClick={() => exportResultsJSON(results)}
-                          className="bg-stone-100 text-stone-600 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Export JSON
-                        </button> */}
                         <button 
                           onClick={saveAnalysis}
                           className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
@@ -2480,7 +2513,13 @@ export default function App() {
                   ) : (
                     <div className="space-y-4">
                       {(() => {
-                        const sortedSystems = [...results.systems].sort((a, b) => {
+                        const filteredSystems = results.systems.filter(s => {
+                          if (resultFilter === "kits") return s.is_preconfigured && s.product_id;
+                          if (resultFilter === "powerstations") return s.is_preconfigured && !s.product_id;
+                          return true;
+                        });
+
+                        const sortedSystems = [...filteredSystems].sort((a, b) => {
                           const statusOrder: Record<string, number> = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
                           if (statusOrder[a.status] !== statusOrder[b.status]) {
                             return statusOrder[a.status] - statusOrder[b.status];
@@ -2730,10 +2769,25 @@ export default function App() {
               <div className="flex gap-2">
                 {isDeveloper && (
                   <>
-                    <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
-                      <Upload className="w-3 h-3" /> Import
-                      <input type="file" accept=".json" onChange={importProducts} className="hidden" />
-                    </label>
+                    <div className="flex items-center gap-1">
+                      <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
+                        <Upload className="w-3 h-3" /> Import
+                        <input type="file" accept=".json" onChange={importProducts} className="hidden" />
+                      </label>
+                      <Tooltip content={`[
+  {
+    "id": "kit-1",
+    "name": "Starter Kit",
+    "type": "combination",
+    "combination_data": { "inverter": "5kVA", "battery_wh": 5000, "panel_w": 2000 },
+    "price": 500000
+  }
+]`}>
+                        <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
+                          <span className="text-[10px] font-bold">!</span>
+                        </div>
+                      </Tooltip>
+                    </div>
                     <button 
                       onClick={exportProductsJSON}
                       className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all flex items-center gap-2"
@@ -2870,10 +2924,20 @@ export default function App() {
               </div>
               {isDeveloper && (
                 <div className="flex gap-2">
-                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                    <Upload className="w-4 h-4" /> Import Data
-                    <input type="file" accept=".json" onChange={importInternetData} className="hidden" />
-                  </label>
+                  <div className="flex items-center gap-1">
+                    <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
+                      <Upload className="w-4 h-4" /> Import Data
+                      <input type="file" accept=".json" onChange={importInternetData} className="hidden" />
+                    </label>
+                    <Tooltip content={`{
+  "master": [ { "id": "tv", "name": "TV", "category": "electronics", "default_watts": 100 } ],
+  "products": [ { "id": "p1", "name": "Product 1", "price": 100000 } ]
+}`}>
+                      <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
+                        <span className="text-[10px] font-bold">!</span>
+                      </div>
+                    </Tooltip>
+                  </div>
                   <button 
                     onClick={exportInternetDataJSON}
                     className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
@@ -3102,12 +3166,24 @@ export default function App() {
                   <h3 className="font-bold flex items-center gap-2 text-stone-700">
                     <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
                   </h3>
-                  {isDeveloper && (
+                  <div className="flex items-center gap-1">
                     <label className="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
                       <Upload className="w-4 h-4" />
                       <input type="file" accept=".json" onChange={importMasterDevices} className="hidden" />
                     </label>
-                  )}
+                    <Tooltip content={`[
+  {
+    "id": "fridge",
+    "name": "Refrigerator",
+    "category": "compressor",
+    "default_watts": 150
+  }
+]`}>
+                      <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
+                        <span className="text-[10px] font-bold">!</span>
+                      </div>
+                    </Tooltip>
+                  </div>
                 </div>
                 <div className="space-y-3">
                   {masterDevices.map((md) => (
@@ -3898,7 +3974,7 @@ export default function App() {
                          "Conditional Recommendation"}
                       </h4>
                       <p className="text-sm text-stone-600 mt-1">{selectedSystemDetails.advice}</p>
-                      {selectedSystemDetails.status === "Conditional" && !showInteractiveBridge && (
+                      {(selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") && !showInteractiveBridge && (
                         <button 
                           onClick={() => setShowInteractiveBridge(true)}
                           className="mt-3 px-4 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all flex items-center gap-2"
@@ -3909,7 +3985,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  {showInteractiveBridge && selectedSystemDetails.status === "Conditional" ? (
+                  {showInteractiveBridge && (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
                     <div className="md:col-span-3">
                       <InteractiveBridge 
                         devices={devices} 

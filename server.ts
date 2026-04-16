@@ -7,99 +7,121 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import { createClient } from "@supabase/supabase-js";
+import { buildCombinations } from "./src/utils/solarCalculator.ts";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- Helper Functions ---
+function safeJsonParse(json: any, fallback: any = null) {
+  if (json === null || json === undefined || json === "") return fallback;
+  if (typeof json === "object") return json; // Already parsed (e.g. from Supabase)
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    console.error("JSON parse error:", e, "for value:", json);
+    return fallback;
+  }
+}
+
 // --- Database Setup ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const useSupabase = !!(SUPABASE_URL && SUPABASE_KEY);
+const useSupabase = !!(SUPABASE_URL && SUPABASE_KEY && SUPABASE_URL.startsWith("http"));
 
 let db: any;
 let supabase: any;
 
-if (useSupabase) {
-  console.log("Using Supabase as backend database.");
-  supabase = createClient(SUPABASE_URL!, SUPABASE_KEY!);
-} else {
-  console.log("Using local SQLite as backend database. Note: Data will be ephemeral on Render.");
-  db = new Database("solar_sizer.db");
-  db.pragma("foreign_keys = ON");
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+});
 
-  // Create tables
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      email TEXT UNIQUE,
-      name TEXT,
-      picture TEXT,
-      provider TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
+});
 
-    CREATE TABLE IF NOT EXISTS profiles (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      name TEXT,
-      region TEXT,
-      battery_preference TEXT,
-      devices TEXT, -- JSON string
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+try {
+  if (useSupabase) {
+    console.log("Using Supabase as backend database.");
+    supabase = createClient(SUPABASE_URL!, SUPABASE_KEY!);
+  } else {
+    console.log("Using local SQLite as backend database. Note: Data will be ephemeral on Render.");
+    db = new Database("solar_sizer.db");
+    db.pragma("foreign_keys = ON");
 
-    CREATE TABLE IF NOT EXISTS results (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      profile_name TEXT,
-      data TEXT, -- JSON string containing the full SavedResult object
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+    // Create tables
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        email TEXT UNIQUE,
+        name TEXT,
+        picture TEXT,
+        provider TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-    CREATE TABLE IF NOT EXISTS hardware (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      type TEXT, -- 'inverter', 'panel', 'battery'
-      data TEXT, -- JSON string
-      tags TEXT, -- JSON array of strings
-      description TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+      CREATE TABLE IF NOT EXISTS profiles (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        name TEXT,
+        region TEXT,
+        battery_preference TEXT,
+        devices TEXT, -- JSON string
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
 
-    CREATE TABLE IF NOT EXISTS devices_master (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      category TEXT,
-      default_watts REAL,
-      tags TEXT, -- JSON array of strings
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      CREATE TABLE IF NOT EXISTS results (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        profile_name TEXT,
+        data TEXT, -- JSON string containing the full SavedResult object
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
 
-    CREATE TABLE IF NOT EXISTS products (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      description TEXT,
-      type TEXT, -- 'standalone' or 'combination'
-      combination_data TEXT, -- JSON string if type is combination
-      tags TEXT, -- JSON array of strings
-      price REAL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+      CREATE TABLE IF NOT EXISTS hardware (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        type TEXT, -- 'inverter', 'panel', 'battery'
+        data TEXT, -- JSON string
+        tags TEXT, -- JSON array of strings
+        description TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
 
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT, -- JSON string
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
+      CREATE TABLE IF NOT EXISTS devices_master (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        category TEXT,
+        default_watts REAL,
+        tags TEXT, -- JSON array of strings
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
 
-  // Seed master devices
-  const seedDevices = [
+      CREATE TABLE IF NOT EXISTS products (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        description TEXT,
+        type TEXT, -- 'standalone' or 'combination'
+        combination_data TEXT, -- JSON string if type is combination
+        tags TEXT, -- JSON array of strings
+        price REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT, -- JSON string
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Seed master devices
+    const seedDevices = [
       { id: 'd1', name: 'LED Bulb', category: 'electronics', watts: 10, tags: ['basic', 'lighting'] },
       { id: 'd2', name: 'Standing Fan', category: 'motor', watts: 50, tags: ['cooling', 'essential'] },
       { id: 'd3', name: 'Ceiling Fan', category: 'motor', watts: 75, tags: ['cooling', 'essential'] },
@@ -119,7 +141,7 @@ if (useSupabase) {
       { id: 'd17', name: 'TP-Link Archer AX55', category: 'internet', watts: 12, tags: ['internet', 'router'] },
     ];
     const insert = db.prepare("INSERT OR REPLACE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
-    seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags)));
+    seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags || [])));
 
     // Seed Flagship Products and Hardware
   // 1. Seed Products (Kits/Powerstations)
@@ -413,7 +435,7 @@ if (useSupabase) {
       }
     ];
     const insertProduct = db.prepare("INSERT OR REPLACE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)");
-    seedProducts.forEach(p => insertProduct.run(p.id, p.name, p.description, p.type, JSON.stringify(p.combination_data), JSON.stringify(p.tags), p.price));
+    seedProducts.forEach(p => insertProduct.run(p.id, p.name, p.description, p.type, JSON.stringify(p.combination_data || null), JSON.stringify(p.tags || []), p.price));
 
     // 2. Seed Hardware (Panels, Batteries, Cables)
     const seedHardware = [
@@ -822,7 +844,10 @@ if (useSupabase) {
       }
     ];
     const insertHardware = db.prepare("INSERT OR REPLACE INTO hardware (id, user_id, type, tags, description, data) VALUES (?, ?, ?, ?, ?, ?)");
-    seedHardware.forEach(h => insertHardware.run(h.id, 'system', h.type, JSON.stringify(h.tags), h.description, JSON.stringify(h.data)));
+    seedHardware.forEach(h => insertHardware.run(h.id, 'system', h.type, JSON.stringify(h.tags || []), h.description, JSON.stringify(h.data || {})));
+  }
+} catch (dbInitError) {
+  console.error("Database initialization error:", dbInitError);
 }
 
 async function startServer() {
@@ -901,198 +926,249 @@ async function startServer() {
   // --- Master Data & Product Routes ---
 
   app.get("/api/devices", async (req, res) => {
-    if (useSupabase) {
-      const { data } = await supabase.from("devices_master").select("*");
-      res.json(data || []);
-    } else {
-      const devices = db.prepare("SELECT * FROM devices_master").all();
-      res.json(devices.map((d: any) => ({ ...d, tags: JSON.parse(d.tags) })));
+    try {
+      if (useSupabase) {
+        const { data, error } = await supabase.from("devices_master").select("*");
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+        res.json(data || []);
+      } else {
+        const devices = db.prepare("SELECT * FROM devices_master").all();
+        res.json(devices.map((d: any) => ({ 
+          ...d, 
+          tags: safeJsonParse(d.tags, [])
+        })));
+      }
+    } catch (error: any) {
+      console.error("Error fetching devices:", error);
+      res.status(500).json({ error: "Failed to fetch devices", message: error.message });
     }
   });
 
   app.get("/api/hardware", async (req, res) => {
-    if (useSupabase) {
-      const { data } = await supabase.from("hardware").select("*").eq("user_id", "system");
-      res.json(data || []);
-    } else {
-      const hardware = db.prepare("SELECT * FROM hardware WHERE user_id = 'system'").all();
-      res.json(hardware.map((h: any) => ({
-        ...h,
-        data: JSON.parse(h.data),
-        tags: JSON.parse(h.tags)
-      })));
+    try {
+      if (useSupabase) {
+        const { data, error } = await supabase.from("hardware").select("*").eq("user_id", "system");
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+        res.json(data || []);
+      } else {
+        const hardware = db.prepare("SELECT * FROM hardware WHERE user_id = 'system'").all();
+        res.json(hardware.map((h: any) => ({
+          ...h,
+          data: safeJsonParse(h.data, {}),
+          tags: safeJsonParse(h.tags, [])
+        })));
+      }
+    } catch (error: any) {
+      console.error("Error fetching hardware:", error);
+      res.status(500).json({ error: "Failed to fetch hardware", message: error.message });
     }
   });
 
   app.post("/api/hardware", async (req, res) => {
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
-    }
+    try {
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+      
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      }
 
-    const { id, type, data, tags, description } = req.body;
-    if (useSupabase) {
-      const { error } = await supabase.from("hardware").upsert({
-        id, user_id: "system", type, data, tags, description
-      });
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      const upsert = db.prepare(`
-        INSERT INTO hardware (id, user_id, type, data, tags, description)
-        VALUES (?, 'system', ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          type = excluded.type,
-          data = excluded.data,
-          tags = excluded.tags,
-          description = excluded.description
-      `);
-      upsert.run(id, type, JSON.stringify(data), JSON.stringify(tags), description);
+      const { id, type, data, tags, description } = req.body;
+      if (useSupabase) {
+        const { error } = await supabase.from("hardware").upsert({
+          id, user_id: "system", type, data, tags, description
+        });
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+      } else {
+        const upsert = db.prepare(`
+          INSERT INTO hardware (id, user_id, type, data, tags, description)
+          VALUES (?, 'system', ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            type = excluded.type,
+            data = excluded.data,
+            tags = excluded.tags,
+            description = excluded.description
+        `);
+        upsert.run(id, type, JSON.stringify(data || {}), JSON.stringify(tags || []), description);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving hardware:", error);
+      res.status(500).json({ error: "Failed to save hardware", message: error.message });
     }
-    res.json({ success: true });
   });
 
   app.delete("/api/hardware/:id", async (req, res) => {
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
+    try {
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+      if (adminKey !== ADMIN_PASSWORD) return res.status(403).json({ error: "Unauthorized" });
 
-    const { id } = req.params;
-    if (useSupabase) {
-      const { error } = await supabase.from("hardware").delete().eq("id", id);
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      db.prepare("DELETE FROM hardware WHERE id = ?").run(id);
+      const { id } = req.params;
+      if (useSupabase) {
+        const { error } = await supabase.from("hardware").delete().eq("id", id);
+        if (error) throw error;
+      } else {
+        db.prepare("DELETE FROM hardware WHERE id = ?").run(id);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting hardware:", error);
+      res.status(500).json({ error: error.message });
     }
-    res.json({ success: true });
   });
 
   app.post("/api/devices", async (req, res) => {
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
-    }
+    try {
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+      
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      }
 
-    const { id, name, category, default_watts, tags } = req.body;
-    if (useSupabase) {
-      const { error } = await supabase.from("devices_master").upsert({
-        id, name, category, default_watts, tags
-      });
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      const upsert = db.prepare(`
-        INSERT INTO devices_master (id, name, category, default_watts, tags)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          category = excluded.category,
-          default_watts = excluded.default_watts,
-          tags = excluded.tags
-      `);
-      upsert.run(id, name, category, default_watts, JSON.stringify(tags));
+      const { id, name, category, default_watts, tags } = req.body;
+      if (useSupabase) {
+        const { error } = await supabase.from("devices_master").upsert({
+          id, name, category, default_watts, tags
+        });
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+      } else {
+        const upsert = db.prepare(`
+          INSERT INTO devices_master (id, name, category, default_watts, tags)
+          VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            category = excluded.category,
+            default_watts = excluded.default_watts,
+            tags = excluded.tags
+        `);
+        upsert.run(id, name, category, default_watts, JSON.stringify(tags || []));
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving device:", error);
+      res.status(500).json({ error: "Failed to save device", message: error.message });
     }
-    res.json({ success: true });
   });
 
   app.delete("/api/devices/:id", async (req, res) => {
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
-    }
+    try {
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+      
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      }
 
-    const { id } = req.params;
-    if (useSupabase) {
-      const { error } = await supabase.from("devices_master").delete().eq("id", id);
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      db.prepare("DELETE FROM devices_master WHERE id = ?").run(id);
+      const { id } = req.params;
+      if (useSupabase) {
+        const { error } = await supabase.from("devices_master").delete().eq("id", id);
+        if (error) throw error;
+      } else {
+        db.prepare("DELETE FROM devices_master WHERE id = ?").run(id);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting device:", error);
+      res.status(500).json({ error: error.message });
     }
-    res.json({ success: true });
   });
 
   app.get("/api/products", async (req, res) => {
-    const { tag } = req.query;
-    if (useSupabase) {
-      let query = supabase.from("products").select("*");
-      if (tag) query = query.contains("tags", [tag]);
-      const { data } = await query;
-      res.json(data || []);
-    } else {
-      let products = db.prepare("SELECT * FROM products").all();
-      products = products.map((p: any) => ({
-        ...p,
-        combination_data: JSON.parse(p.combination_data),
-        tags: JSON.parse(p.tags)
-      }));
-      if (tag) {
-        products = products.filter((p: any) => p.tags.includes(tag));
+    try {
+      const { tag } = req.query;
+      if (useSupabase) {
+        let query = supabase.from("products").select("*");
+        if (tag) query = query.contains("tags", [tag]);
+        const { data, error } = await query;
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+        res.json(data || []);
+      } else {
+        let products = db.prepare("SELECT * FROM products").all();
+        products = products.map((p: any) => ({
+          ...p,
+          combination_data: safeJsonParse(p.combination_data, null),
+          tags: safeJsonParse(p.tags, [])
+        }));
+        if (tag) {
+          products = products.filter((p: any) => p.tags.includes(tag));
+        }
+        res.json(products);
       }
-      res.json(products);
+    } catch (error: any) {
+      console.error("Error fetching products:", error);
+      res.status(500).json({ error: "Failed to fetch products", message: error.message });
     }
   });
 
   app.post("/api/products", async (req, res) => {
-    // Validate admin password from request header
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    try {
+      // Validate admin password from request header
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      }
+
+      const { id, name, description, type, combination_data, tags, price } = req.body;
+
+      if (useSupabase) {
+        const { error } = await supabase.from("products").upsert({
+          id, name, description, type, combination_data, tags, price
+        });
+        if (error) throw new Error(`Supabase error: ${error.message}`);
+      } else {
+        const upsert = db.prepare(`
+          INSERT INTO products (id, name, description, type, combination_data, tags, price)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            description = excluded.description,
+            type = excluded.type,
+            combination_data = excluded.combination_data,
+            tags = excluded.tags,
+            price = excluded.price
+        `);
+        upsert.run(
+          id, name, description, type,
+          JSON.stringify(combination_data || null),
+          JSON.stringify(tags || []),
+          price
+        );
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error saving product:", error);
+      res.status(500).json({ error: "Failed to save product", message: error.message });
     }
-
-    const { id, name, description, type, combination_data, tags, price } = req.body;
-
-    if (useSupabase) {
-      const { error } = await supabase.from("products").upsert({
-        id, name, description, type, combination_data, tags, price
-      });
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      const upsert = db.prepare(`
-        INSERT INTO products (id, name, description, type, combination_data, tags, price)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          name = excluded.name,
-          description = excluded.description,
-          type = excluded.type,
-          combination_data = excluded.combination_data,
-          tags = excluded.tags,
-          price = excluded.price
-      `);
-      upsert.run(
-        id, name, description, type,
-        JSON.stringify(combination_data),
-        JSON.stringify(tags),
-        price
-      );
-    }
-    res.json({ success: true });
   });
 
   app.delete("/api/products/:id", async (req, res) => {
-    // Validate admin password from request header
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+    try {
+      // Validate admin password from request header
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      }
+
+      const { id } = req.params;
+
+      if (useSupabase) {
+        const { error } = await supabase.from("products").delete().eq("id", id);
+        if (error) throw error;
+      } else {
+        const del = db.prepare("DELETE FROM products WHERE id = ?");
+        del.run(id);
+      }
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Error deleting product:", error);
+      res.status(500).json({ error: error.message });
     }
-
-    const { id } = req.params;
-
-    if (useSupabase) {
-      const { error } = await supabase.from("products").delete().eq("id", id);
-      if (error) return res.status(500).json({ error: error.message });
-    } else {
-      const del = db.prepare("DELETE FROM products WHERE id = ?");
-      del.run(id);
-    }
-    res.json({ success: true });
   });
 
   // --- Settings Routes ---
@@ -1101,35 +1177,35 @@ async function startServer() {
     try {
       if (useSupabase) {
         const { data, error } = await supabase.from("settings").select("value").eq("key", key).single();
-        if (error && error.code !== 'PGRST116') return res.status(500).json({ error: error.message });
-        res.json(data ? JSON.parse(data.value) : null);
+        if (error && error.code !== 'PGRST116') throw new Error(`Supabase error: ${error.message}`);
+        res.json(data ? safeJsonParse(data.value) : null);
       } else {
         const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
-        res.json(row ? JSON.parse(row.value) : null);
+        res.json(row ? safeJsonParse(row.value) : null);
       }
     } catch (error: any) {
       console.error(`Error fetching setting ${key}:`, error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: `Failed to fetch setting ${key}`, message: error.message });
     }
   });
 
   app.post("/api/settings/:key", async (req, res) => {
-    const adminKey = req.headers["x-admin-key"];
-    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-    
-    if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-      return res.status(403).json({ error: "Unauthorized or Admin password not configured." });
-    }
-
-    const { key } = req.params;
-    const { value } = req.body;
-
     try {
+      const adminKey = req.headers["x-admin-key"];
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+      
+      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Unauthorized or Admin password not configured." });
+      }
+
+      const { key } = req.params;
+      const { value } = req.body;
+
       if (useSupabase) {
         const { error } = await supabase.from("settings").upsert({
           key, value: JSON.stringify(value), updated_at: new Date().toISOString()
         });
-        if (error) return res.status(500).json({ error: error.message });
+        if (error) throw new Error(`Supabase error: ${error.message}`);
       } else {
         const upsert = db.prepare(`
           INSERT INTO settings (key, value, updated_at)
@@ -1142,40 +1218,60 @@ async function startServer() {
       }
       res.json({ success: true });
     } catch (error: any) {
-      console.error(`Error saving setting ${key}:`, error);
-      res.status(500).json({ error: error.message });
+      console.error(`Error saving setting ${req.params.key}:`, error);
+      res.status(500).json({ error: `Failed to save setting ${req.params.key}`, message: error.message });
     }
   });
 
   // --- Calculation API ---
   app.post("/api/calculate", async (req, res) => {
-    const { location, devices, hardware, batteryPreference, tolerance } = req.body;
-    
-    if (!hardware) {
-      return res.status(400).json({ error: "Hardware database is required for calculation." });
-    }
-    
     try {
+      const { location, devices, hardware, batteryPreference, tolerance } = req.body;
+      
+      if (!hardware) {
+        return res.status(400).json({ error: "Hardware database is required for calculation." });
+      }
+      
+      console.log(`Calculation request for location: ${location}, devices count: ${devices?.length}`);
+
       // Fetch products to include pre-configured kits in calculation
       let products: any[] = [];
       if (useSupabase) {
-        const { data } = await supabase.from("products").select("*");
+        const { data, error } = await supabase.from("products").select("*");
+        if (error) {
+          console.error("Supabase products fetch error:", error);
+          // Don't throw, just continue with empty products if it's just a missing table or something
+        }
         products = data || [];
       } else {
-        products = db.prepare("SELECT * FROM products").all();
-        products = products.map(p => ({
-          ...p,
-          combination_data: JSON.parse(p.combination_data),
-          tags: JSON.parse(p.tags)
-        }));
+        try {
+          products = db.prepare("SELECT * FROM products").all();
+          products = products.map(p => ({
+            ...p,
+            combination_data: safeJsonParse(p.combination_data, null),
+            tags: safeJsonParse(p.tags, [])
+          }));
+        } catch (dbError) {
+          console.error("SQLite products fetch error:", dbError);
+        }
       }
 
-      const { buildCombinations } = await import("./src/utils/solarCalculator.ts");
       const result = buildCombinations(location, devices, hardware, batteryPreference, tolerance, products);
       res.json(result);
     } catch (error: any) {
-      res.status(500).json({ error: error.message });
+      console.error("Calculation error:", error);
+      res.status(500).json({ 
+        error: "Calculation failed", 
+        message: error.message,
+        stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+      });
     }
+  });
+
+  // Global error handler
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("Unhandled error:", err);
+    res.status(500).json({ error: "Internal Server Error", message: err.message });
   });
 
   // --- Vite Middleware ---

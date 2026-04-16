@@ -67,7 +67,7 @@ export function simulateHourlySoC(
   location: Region
 ): { passed: boolean; lowestSoCWh: number; finalDeficitWh: number; failureTime: string | null } {
   // FETCH DYNAMIC REGIONAL CURVE
-  const irradianceCurve = IRRADIANCE_PROFILES[location];
+  const irradianceCurve = IRRADIANCE_PROFILES[location] || IRRADIANCE_PROFILES["SW"]; // Fallback to SW if location missing
   
   const hourlySolarGen: Record<number, number> = {};
   for (let h = 0; h < 24; h++) {
@@ -190,9 +190,19 @@ export function buildCombinations(
   products: Product[] = [],
   margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 }
 ): { analysis: LoadAnalysis; systems: SystemCombination[]; allLogs: string[][] } {
-  const analysis = calculateUserNeeds(devices);
+  // Defensive checks
+  const safeDevices = Array.isArray(devices) ? devices : [];
+  const safeHardware = {
+    inverters: Array.isArray(hardware?.inverters) ? hardware.inverters : [],
+    panels: Array.isArray(hardware?.panels) ? hardware.panels : [],
+    batteries: Array.isArray(hardware?.batteries) ? hardware.batteries : [],
+    powerstations: Array.isArray(hardware?.powerstations) ? hardware.powerstations : []
+  };
+  const safeProducts = Array.isArray(products) ? products : [];
+
+  const analysis = calculateUserNeeds(safeDevices);
   const { max_surge, nighttime_wh, total_daily_wh } = analysis;
-  const psh = LOCATION_PSH[location];
+  const psh = LOCATION_PSH[location] || 2.6; // Fallback to 2.6 if location missing
 
   const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
 
@@ -200,7 +210,7 @@ export function buildCombinations(
   const allLogs: string[][] = [];
 
   // --- 1. Check Pre-configured Products (Kits/Powerstations) ---
-  for (const prod of products) {
+  for (const prod of safeProducts) {
     if (prod.type !== 'combination' || !prod.combination_data) continue;
     
     const prodLog: string[] = [];
@@ -263,7 +273,7 @@ export function buildCombinations(
       total_price: totalPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
-      status,
+      status: status || "High Risk",
       advice,
       log: prodLog,
       is_preconfigured: true,
@@ -273,7 +283,7 @@ export function buildCombinations(
   }
 
   // --- 1.5 Check Powerstations ---
-  for (const ps of hardware.powerstations) {
+  for (const ps of safeHardware.powerstations) {
     const psLog: string[] = [];
     psLog.push(`Checking Powerstation: ${ps.name} (${ps.capacity_wh}Wh, ${ps.max_output_w}W)`);
 
@@ -340,7 +350,7 @@ export function buildCombinations(
       total_price: psPrice + panelPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
-      status,
+      status: status || "High Risk",
       advice,
       log: psLog,
       is_preconfigured: true
@@ -349,7 +359,7 @@ export function buildCombinations(
   }
 
   // --- 2. Build Custom Combinations from Hardware ---
-  for (const inv of hardware.inverters) {
+  for (const inv of safeHardware.inverters) {
     const minUnitsForSurge = Math.ceil(max_surge / inv.max_ac_w);
     
     if (minUnitsForSurge > inv.max_parallel_units) {
