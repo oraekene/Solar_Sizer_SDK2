@@ -30,6 +30,8 @@ export interface Inverter {
   cc_type: "pwm" | "mppt";
   max_parallel_units: number;
   price: number;
+  description?: string;
+  tags?: string[];
 }
 
 export interface Panel {
@@ -39,6 +41,8 @@ export interface Panel {
   voc: number;
   isc: number;
   price: number;
+  description?: string;
+  tags?: string[];
 }
 
 export interface Battery {
@@ -50,6 +54,8 @@ export interface Battery {
   max_parallel_strings: number;
   min_c_rate: number;
   price: number;
+  description?: string;
+  tags?: string[];
 }
 
 export interface Powerstation {
@@ -144,7 +150,6 @@ export interface SavedResult {
   id: string;
   profile_name: string;
   created_at: string;
-  devices?: Device[];
   // For full analysis saves
   analysis?: LoadAnalysis;
   systems?: SystemCombination[];
@@ -171,21 +176,6 @@ export interface MasterDevice {
   category: DeviceCategory;
   default_watts: number;
   tags: string[];
-}
-
-export interface ProfitMargins {
-  inverter: number;
-  panel: number;
-  battery: number;
-  powerstation: number;
-  product: number;
-}
-
-export interface PDFSettings {
-  quoteTitle: string;
-  quotePrefix: string;
-  footerLine1: string;
-  footerLine2: string;
 }
 
 export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";
