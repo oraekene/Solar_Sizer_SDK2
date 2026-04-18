@@ -136,10 +136,18 @@ try {
       { id: 'd11', name: 'Television (43")', category: 'electronics', watts: 80, tags: ['entertainment'] },
       { id: 'd12', name: 'Huawei B818-263', category: 'internet', watts: 20, tags: ['internet', 'tier-a'] },
       { id: 'd13', name: 'ZTE MC888', category: 'internet', watts: 25, tags: ['internet', 'tier-a'] },
-      { id: 'd14', name: 'TP-Link ER605', category: 'internet', watts: 15, tags: ['internet', 'tier-b'] },
-      { id: 'd15', name: 'Starlink Gen 2', category: 'internet', watts: 65, tags: ['internet', 'flagship'] },
-      { id: 'd16', name: 'Starlink Gen 3', category: 'internet', watts: 85, tags: ['internet', 'flagship'] },
-      { id: 'd17', name: 'TP-Link Archer AX55', category: 'internet', watts: 12, tags: ['internet', 'router'] },
+      { id: 'd14', name: 'ZTE MC888 PRO', category: 'internet', watts: 30, tags: ['internet', 'tier-a'] },
+      { id: 'd15', name: 'Huawei CPE PRO 2', category: 'internet', watts: 22, tags: ['internet', 'tier-a'] },
+      { id: 'd16', name: 'Cudy LT500', category: 'internet', watts: 12, tags: ['internet', 'tier-b'] },
+      { id: 'd17', name: 'Cudy LT700', category: 'internet', watts: 15, tags: ['internet', 'tier-b'] },
+      { id: 'd18', name: 'TP-Link ER605', category: 'internet', watts: 15, tags: ['internet', 'tier-b'] },
+      { id: 'd19', name: 'TP-Link ER7206', category: 'internet', watts: 20, tags: ['internet', 'tier-b'] },
+      { id: 'd20', name: 'Starlink Gen 2', category: 'internet', watts: 65, tags: ['internet', 'flagship'] },
+      { id: 'd21', name: 'Starlink Gen 3', category: 'internet', watts: 85, tags: ['internet', 'flagship'] },
+      { id: 'd22', name: 'GL.iNet Spitz AX', category: 'internet', watts: 18, tags: ['internet', 'router'] },
+      { id: 'd23', name: 'GL.iNet Slate AX', category: 'internet', watts: 15, tags: ['internet', 'router'] },
+      { id: 'd24', name: 'Cudy WR2100', category: 'internet', watts: 12, tags: ['internet', 'router'] },
+      { id: 'd25', name: 'Pepwave MAX BR1 Mini', category: 'internet', watts: 20, tags: ['internet', 'enterprise'] },
     ];
     const insert = db.prepare("INSERT OR REPLACE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)");
     seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags || [])));
@@ -1079,24 +1087,61 @@ async function startServer() {
   app.get("/api/products", async (req, res) => {
     try {
       const { tag } = req.query;
+      let productsList: any[] = [];
+      let hardwareList: any[] = [];
+
       if (useSupabase) {
-        let query = supabase.from("products").select("*");
-        if (tag) query = query.contains("tags", [tag]);
-        const { data, error } = await query;
-        if (error) throw new Error(`Supabase error: ${error.message}`);
-        res.json(data || []);
-      } else {
-        let products = db.prepare("SELECT * FROM products").all();
-        products = products.map((p: any) => ({
+        let prodQuery = supabase.from("products").select("*");
+        if (tag) prodQuery = prodQuery.contains("tags", [tag]);
+        const { data: prods, error: prodError } = await prodQuery;
+        if (prodError) throw new Error(`Supabase products error: ${prodError.message}`);
+        productsList = (prods || []).map((p: any) => ({
           ...p,
           combination_data: safeJsonParse(p.combination_data, null),
-          tags: safeJsonParse(p.tags, [])
+          tags: safeJsonParse(p.tags, []),
         }));
+
+        let hwQuery = supabase.from("hardware").select("*").neq("tags", "[]");
+        if (tag) hwQuery = hwQuery.contains("tags", [tag]);
+        const { data: hws, error: hwError } = await hwQuery;
+        if (hwError) throw new Error(`Supabase hardware error: ${hwError.message}`);
+        hardwareList = (hws || []).map((h: any) => ({
+          ...h,
+          data: safeJsonParse(h.data, {}),
+          tags: safeJsonParse(h.tags, []),
+        }));
+      } else {
+        let prods = db.prepare("SELECT * FROM products").all();
+        productsList = prods.map((p: any) => ({
+          ...p,
+          combination_data: safeJsonParse(p.combination_data, null),
+          tags: safeJsonParse(p.tags, []),
+        }));
+
+        let hws = db.prepare("SELECT * FROM hardware WHERE tags != '[]' AND tags IS NOT NULL").all();
+        hardwareList = hws.map((h: any) => ({
+          ...h,
+          data: safeJsonParse(h.data, {}),
+          tags: safeJsonParse(h.tags, []),
+        }));
+
         if (tag) {
-          products = products.filter((p: any) => p.tags.includes(tag));
+          productsList = productsList.filter((p: any) => p.tags.includes(tag));
+          hardwareList = hardwareList.filter((h: any) => h.tags.includes(tag));
         }
-        res.json(products);
       }
+
+      const hardwareAsProducts = hardwareList.map(h => ({
+        id: h.id,
+        name: h.data?.name || h.id,
+        description: h.description || `Standalone ${h.type}`,
+        type: "standalone",
+        combination_data: null,
+        tags: h.tags,
+        price: h.data?.price || 0,
+      }));
+
+      res.json([...productsList, ...hardwareAsProducts]);
     } catch (error: any) {
       console.error("Error fetching products:", error);
       res.status(500).json({ error: "Failed to fetch products", message: error.message });
@@ -1105,12 +1150,15 @@ async function startServer() {
 
   app.post("/api/products", async (req, res) => {
     try {
-      // Validate admin password from request header
       const adminKey = req.headers["x-admin-key"];
       const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      if (!ADMIN_PASSWORD) {
+        return res.status(500).json({ error: "Admin password not configured on server." });
+      }
+
+      if (adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Invalid admin credentials." });
       }
 
       const { id, name, description, type, combination_data, tags, price } = req.body;
@@ -1148,12 +1196,15 @@ async function startServer() {
 
   app.delete("/api/products/:id", async (req, res) => {
     try {
-      // Validate admin password from request header
       const adminKey = req.headers["x-admin-key"];
       const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
+      if (!ADMIN_PASSWORD) {
+        return res.status(500).json({ error: "Admin password not configured on server." });
+      }
+
+      if (adminKey !== ADMIN_PASSWORD) {
+        return res.status(403).json({ error: "Invalid admin credentials." });
       }
 
       const { id } = req.params;
