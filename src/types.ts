@@ -1,3 +1,4 @@
+// Merged types.ts (best of v1 + v2)
 export type Region = "SE_SS" | "SW" | "North";
 
 export type DeviceCategory = "compressor" | "motor" | "heating" | "electronics" | "internet" | "powerstation";
@@ -150,6 +151,7 @@ export interface SavedResult {
   id: string;
   profile_name: string;
   created_at: string;
+  devices?: Device[];
   // For full analysis saves
   analysis?: LoadAnalysis;
   systems?: SystemCombination[];
@@ -176,6 +178,21 @@ export interface MasterDevice {
   category: DeviceCategory;
   default_watts: number;
   tags: string[];
+}
+
+export interface ProfitMargins {
+  inverter: number;
+  panel: number;
+  battery: number;
+  powerstation: number;
+  product: number;
+}
+
+export interface PDFSettings {
+  quoteTitle: string;
+  quotePrefix: string;
+  footerLine1: string;
+  footerLine2: string;
 }
 
 export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";
