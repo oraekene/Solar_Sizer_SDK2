@@ -3161,9 +3161,9 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-8 items-start">
               {/* Master Devices */}
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold flex items-center gap-2 text-stone-700">
                     <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
@@ -3221,7 +3221,7 @@ export default function App() {
               </div>
 
               {/* Inverters */}
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Cpu className="w-5 h-5 text-emerald-600" /> Inverters
                 </h3>
@@ -3253,7 +3253,7 @@ export default function App() {
               </div>
 
               {/* Panels */}
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Sun className="w-5 h-5 text-amber-500" /> Solar Panels
                 </h3>
@@ -3280,7 +3280,7 @@ export default function App() {
               </div>
 
               {/* Batteries */}
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <BatteryIcon className="w-5 h-5 text-blue-600" /> Batteries
                 </h3>
@@ -3308,7 +3308,7 @@ export default function App() {
               </div>
 
               {/* Powerstations */}
-              <div className="space-y-4">
+              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Zap className="w-5 h-5 text-stone-900" /> Powerstations
                 </h3>
