@@ -217,6 +217,17 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
   };
 };
 
+const safeNumber = (value: unknown, fallback = 0) => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+};
+
+const getSystemKey = (sys: SystemCombination, index: number) =>
+  [sys.inverter, sys.battery_config, sys.panel_config, safeNumber(sys.total_price), index].join("::");
+
+const getLogKey = (prefix: string, value: string, index: number) =>
+  `${prefix}::${index}::${value}`;
+
 function ComparisonModal({ 
   systems, 
   analysis, 
@@ -341,7 +352,7 @@ function ComparisonModal({
                 <tr>
                   <th className="text-left p-4 bg-stone-50 rounded-tl-2xl border-b border-stone-200 text-xs font-bold uppercase tracking-widest text-stone-400">Feature</th>
                   {systems.map((s, i) => (
-                    <th key={i} className="text-center p-4 bg-stone-50 border-b border-stone-200 text-sm font-black text-stone-900">
+                    <th key={getSystemKey(s, i)} className="text-center p-4 bg-stone-50 border-b border-stone-200 text-sm font-black text-stone-900">
                       Option {i + 1}
                       <div className="text-[10px] font-bold text-emerald-600 uppercase mt-1">{s.inverter.split(' ')[0]}</div>
                     </th>
@@ -356,7 +367,7 @@ function ComparisonModal({
                 <tr className="border-b border-stone-50">
                   <td className="p-4 font-bold text-stone-600 text-sm">Initial Cost</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">
                     {initialCost === 0 ? (
@@ -369,14 +380,14 @@ function ComparisonModal({
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Monthly Running Cost</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center font-medium text-emerald-600">₦0 <span className="text-[10px] opacity-60">(Free Sun)</span></td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center font-medium text-emerald-600">₦0 <span className="text-[10px] opacity-60">(Free Sun)</span></td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{monthlyTotal.toLocaleString()}</td>
                 </tr>
                 <tr className="border-b border-stone-50">
                   <td className="p-4 font-bold text-stone-600 text-sm">5-Year Total Cost</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{fiveYearTotal.toLocaleString()}</td>
                 </tr>
@@ -386,7 +397,7 @@ function ComparisonModal({
                     const amortized25yr = s.total_price / 300; // 25 years
                     const amortized10yr = s.total_price / 120; // 10 years (conservative)
                     return (
-                      <td key={i} className="p-4 text-center">
+                      <td key={getSystemKey(s, i)} className="p-4 text-center">
                         <div className="font-black text-emerald-600 text-sm">₦{amortized25yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                         <div className="text-[10px] text-emerald-500 font-bold uppercase">25yr Standard</div>
                         <div className="mt-1 font-bold text-stone-900 text-xs">₦{amortized10yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
@@ -402,21 +413,21 @@ function ComparisonModal({
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Fuel Type</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-bold text-red-600">{selectedGen.fuel_type}</td>
                 </tr>
                 <tr className="border-b border-stone-50">
                   <td className="p-4 font-bold text-stone-600 text-sm">Fuel Consumption</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-medium">{selectedGen.fuel_consumption_l_hr} L/hr</td>
                 </tr>
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Reliability</td>
                   {systems.map((s, i) => (
-                    <td key={i} className="p-4 text-center text-xs font-medium text-emerald-600">Silent, Automatic</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center text-xs font-medium text-emerald-600">Silent, Automatic</td>
                   ))}
                   <td className="p-4 text-center text-xs font-medium text-red-600">Noisy, Fumes, Manual Start</td>
                 </tr>
@@ -425,11 +436,11 @@ function ComparisonModal({
 
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
               {systems.map((s, i) => (
-                <div key={i} className="bg-stone-50 p-6 rounded-3xl border border-stone-100">
+                <div key={getSystemKey(s, i)} className="bg-stone-50 p-6 rounded-3xl border border-stone-100">
                   <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">When Best to Use (Option {i+1})</h4>
                   <ul className="space-y-3">
                     {getSystemRecommendations(s, systems).map((rec, j) => (
-                      <li key={j} className="flex gap-2 text-sm text-stone-700 font-medium">
+                      <li key={getLogKey("rec", rec, j)} className="flex gap-2 text-sm text-stone-700 font-medium">
                         <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                         {rec}
                       </li>
@@ -1948,6 +1959,8 @@ export default function App() {
     // Safety check for sys
     if (!sys) return;
 
+    const safePrice = (value: unknown) => safeNumber(value, 0);
+
     // Use adjusted advice if available
     let finalAdvice = sys.advice || "No advice available.";
     if (adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk")) {
@@ -1981,10 +1994,10 @@ export default function App() {
     doc.text("ITEMIZED COST BREAKDOWN", 20, 60);
 
     const costs = [
-      ["1", "Inverter Unit", getUnits(sys.inverter), `N${(sys.inverter_price || 0).toLocaleString()}`],
-      ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${(sys.battery_price || 0).toLocaleString()}`],
-      ["3", "Solar PV Array", getUnits(sys.panel_config), `N${(sys.panel_price || 0).toLocaleString()}`],
-      ["", "TOTAL INVESTMENT", "", `N${(sys.total_price || 0).toLocaleString()}`]
+      ["1", "Inverter Unit", getUnits(sys.inverter), `N${safePrice(sys.inverter_price).toLocaleString()}`],
+      ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${safePrice(sys.battery_price).toLocaleString()}`],
+      ["3", "Solar PV Array", getUnits(sys.panel_config), `N${safePrice(sys.panel_price).toLocaleString()}`],
+      ["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]
     ];
 
     autoTable(doc, {
@@ -1993,7 +2006,7 @@ export default function App() {
       body: costs,
       theme: "grid",
       headStyles: { fillColor: [16, 185, 129] },
-      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${(sys.total_price * 1.075).toLocaleString()}`]],
+      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${(safePrice(sys.total_price) * 1.075).toLocaleString()}`]],
       footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
     });
 
@@ -2343,7 +2356,7 @@ export default function App() {
                     {newDevice.ranges && newDevice.ranges.length > 0 && (
                       <div className="flex flex-wrap gap-2">
                         {newDevice.ranges.map((r, i) => (
-                          <div key={i} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-100">
+                          <div key={`${r.start}-${r.end}-${i}`} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-100">
                             <span>{getHourLabel(r.start)} - {getHourLabel(r.end)}</span>
                             <button onClick={() => removeRange(i)} className="hover:text-emerald-900">
                               <Trash2 className="w-3 h-3" />
@@ -2399,7 +2412,7 @@ export default function App() {
                             <span className="text-stone-300">•</span>
                             <div className="flex gap-1">
                               {d.ranges.map((r, i) => (
-                                <span key={i}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
+                                <span key={`${d.id}-${r.start}-${r.end}-${i}`}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
                               ))}
                             </div>
                           </div>
@@ -2574,7 +2587,7 @@ export default function App() {
                           <>
                             {paginatedItems.map((sys, idx) => (
                               <motion.div
-                                key={startIndex + idx}
+                                key={getSystemKey(sys, startIndex + idx)}
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: idx * 0.05 }}
@@ -2750,7 +2763,7 @@ export default function App() {
                           <div className="flex items-center gap-4">
                             <div className="flex -space-x-2">
                               {selectedForComparison.map((s, i) => (
-                                <div key={i} className="w-8 h-8 rounded-full bg-emerald-600 border-2 border-stone-900 flex items-center justify-center text-[10px] font-bold">
+                                <div key={getSystemKey(s, i)} className="w-8 h-8 rounded-full bg-emerald-600 border-2 border-stone-900 flex items-center justify-center text-[10px] font-bold">
                                   {i + 1}
                                 </div>
                               ))}
@@ -2866,7 +2879,7 @@ export default function App() {
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex gap-1 flex-wrap">
                         {product.tags.map(tag => (
-                          <span key={tag} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
+                          <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
                             {tag}
                           </span>
                         ))}
@@ -3222,7 +3235,7 @@ export default function App() {
                         </div>
                         <div className="flex gap-1 flex-wrap">
                           {md.tags.map(tag => (
-                            <span key={tag} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
+                            <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
                               {tag}
                             </span>
                           ))}
@@ -3407,7 +3420,7 @@ export default function App() {
                 </div>
               ) : (
                 internalLogs.map((log, i) => (
-                  <div key={i} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-4">
+                  <div key={`${log.timestamp || "log"}-${i}`} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-4">
                     <div className="flex items-center justify-between border-b border-stone-100 pb-4">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-stone-100 rounded-lg">
@@ -3454,9 +3467,9 @@ export default function App() {
                       </summary>
                       <div className="mt-4 space-y-4 max-h-60 overflow-y-auto p-4 bg-stone-900 rounded-xl">
                         {log.allLogs.map((path, pi) => (
-                          <div key={pi} className="border-l-2 border-stone-700 pl-4 space-y-1">
+                          <div key={getLogKey("path", path[0] || "empty", pi)} className="border-l-2 border-stone-700 pl-4 space-y-1">
                             {path.map((line, li) => (
-                              <p key={li} className="text-[10px] font-mono text-stone-400">{line}</p>
+                              <p key={getLogKey("line", line, li)} className="text-[10px] font-mono text-stone-400">{line}</p>
                             ))}
                           </div>
                         ))}
@@ -3758,7 +3771,7 @@ export default function App() {
                 <div className="space-y-4">
                   {selectedSavedAnalysis.systems?.map((sys, idx) => (
                     <motion.div
-                      key={idx}
+                      key={getSystemKey(sys, idx)}
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
@@ -3861,7 +3874,7 @@ export default function App() {
       {/* Save Profile Modal */}
       <AnimatePresence>
         {showSaveProfile && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
@@ -3955,7 +3968,7 @@ export default function App() {
       {/* System Details Modal */}
       <AnimatePresence>
         {selectedSystemDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -4088,7 +4101,7 @@ export default function App() {
       {/* Add Hardware Modal */}
       <AnimatePresence>
         {showAddMasterDevice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -4099,7 +4112,7 @@ export default function App() {
                 <h2 className="font-bold text-xl">{editingMasterDevice ? "Edit" : "Add"} Master Device</h2>
                 <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
-              <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0" onSubmit={saveMasterDevice}>
+              <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8" onSubmit={saveMasterDevice}>
                 <div>
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Name</label>
                   <input name="name" defaultValue={itemData(editingMasterDevice)?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
@@ -4117,7 +4130,7 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
-                    <input name="default_watts" type="number" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                    <input name="default_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
                   </div>
                 </div>
                 <div>
@@ -4146,7 +4159,7 @@ export default function App() {
                 <button onClick={() => { setShowAddHardware(null); setEditingHardware(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
               <form 
-                className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0"
+                className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
@@ -4257,12 +4270,14 @@ export default function App() {
                 }}
               >
                 {(() => {
-                  const currentItem = editingHardware 
-                    ? editingHardware.item ?? itemData(
-                      editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
-                        : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
-                        : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
-                        : powerstations.find(ps => ps.id === editingHardware.id),
+                  const currentItem = editingHardware
+                    ? itemData(
+                      editingHardware.item ?? (
+                        editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
+                          : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
+                          : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
+                          : powerstations.find(ps => ps.id === editingHardware.id)
+                      ),
                       editingHardware.type
                     )
                     : null;
@@ -4284,51 +4299,51 @@ export default function App() {
                       <div className="grid grid-cols-2 gap-4">
                         {showAddHardware === "inverter" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max AC (W)</label><input name="max_ac_w" type="number" defaultValue={(currentItem as Inverter)?.max_ac_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">DC Volts (V)</label><input name="system_vdc" type="number" defaultValue={(currentItem as Inverter)?.system_vdc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">PV Max (W)</label><input name="cc_max_pv_w" type="number" defaultValue={(currentItem as Inverter)?.cc_max_pv_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" defaultValue={(currentItem as Inverter)?.cc_max_voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Amps (A)</label><input name="cc_max_amps" type="number" defaultValue={(currentItem as Inverter)?.cc_max_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" defaultValue={(currentItem as Inverter)?.max_charge_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" defaultValue={(currentItem as Inverter)?.max_parallel_units || 1} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max AC (W)</label><input name="max_ac_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_ac_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">DC Volts (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Inverter)?.system_vdc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">PV Max (W)</label><input name="cc_max_pv_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_pv_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_charge_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_parallel_units || 1} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Inverter)?.cc_type || "pwm"} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
                           </>
                         )}
                         {showAddHardware === "panel" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts (W)</label><input name="watts" type="number" defaultValue={(currentItem as Panel)?.watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voc (V)</label><input name="voc" type="number" defaultValue={(currentItem as Panel)?.voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Isc (A)</label><input name="isc" type="number" step="0.1" defaultValue={(currentItem as Panel)?.isc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts (W)</label><input name="watts" type="number" step="any" defaultValue={(currentItem as Panel)?.watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voc (V)</label><input name="voc" type="number" step="any" defaultValue={(currentItem as Panel)?.voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Isc (A)</label><input name="isc" type="number" step="any" defaultValue={(currentItem as Panel)?.isc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         {showAddHardware === "battery" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voltage (V)</label><input name="voltage" type="number" defaultValue={(currentItem as Battery)?.voltage} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" defaultValue={(currentItem as Battery)?.capacity_ah} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voltage (V)</label><input name="voltage" type="number" step="any" defaultValue={(currentItem as Battery)?.voltage} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Battery)?.capacity_ah} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Type</label><select name="type" defaultValue={(currentItem as Battery)?.type} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="0.01" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" step="any" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         {showAddHardware === "powerstation" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Type</label><select name="battery_type" defaultValue={(currentItem as Powerstation)?.battery_type || "lithium"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="0.01" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
-                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                       </div>
                     </div>
                   );
@@ -4368,7 +4383,7 @@ export default function App() {
               <div className="flex-1 overflow-y-auto p-6 space-y-3">
                 {selectedSystemLog.map((line, i) => (
                   <div 
-                    key={i} 
+                    key={getLogKey("system-log", line, i)} 
                     className={`p-3 rounded-xl text-sm font-mono flex gap-3 ${
                       line.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
                       line.includes('❌') ? 'bg-red-50 text-red-800 border border-red-100' :
