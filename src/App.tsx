@@ -193,6 +193,30 @@ const FUEL_PRICES = {
   Diesel: 1400,
 };
 
+type HardwareType = "inverter" | "panel" | "battery" | "powerstation";
+
+const itemData = (item: any, fallbackType?: HardwareType) => {
+  if (!item) return null;
+
+  const nestedData = item?.data && typeof item.data === "object" && !Array.isArray(item.data)
+    ? item.data
+    : null;
+
+  const normalized = nestedData ? { ...item, ...nestedData } : { ...item };
+
+  return {
+    ...normalized,
+    id: normalized.id ?? item.id,
+    type: normalized.type ?? fallbackType ?? item.type,
+    description: normalized.description ?? item.description ?? "",
+    tags: Array.isArray(normalized.tags)
+      ? normalized.tags
+      : Array.isArray(item.tags)
+        ? item.tags
+        : [],
+  };
+};
+
 function ComparisonModal({ 
   systems, 
   analysis, 
@@ -751,7 +775,7 @@ export default function App() {
 
   // Hardware Form State
   const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | "powerstation" | null>(null);
-  const [editingHardware, setEditingHardware] = useState<{ type: "inverter" | "panel" | "battery" | "powerstation", id: string } | null>(null);
+  const [editingHardware, setEditingHardware] = useState<{ type: HardwareType, id: string, item?: any } | null>(null);
 
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
@@ -1747,12 +1771,12 @@ export default function App() {
   };
 
   const startEditingMasterDevice = (device: MasterDevice) => {
-    setEditingMasterDevice(device);
+    setEditingMasterDevice(itemData(device) as MasterDevice);
     setShowAddMasterDevice(true);
   };
 
-  const startEditing = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
-    setEditingHardware({ type, id: item.id });
+  const startEditing = (type: HardwareType, item: any) => {
+    setEditingHardware({ type, id: item.id, item: itemData(item, type) });
     setShowAddHardware(type);
   };
 
@@ -3161,9 +3185,9 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-8 items-start">
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
               {/* Master Devices */}
-              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold flex items-center gap-2 text-stone-700">
                     <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
@@ -3221,7 +3245,7 @@ export default function App() {
               </div>
 
               {/* Inverters */}
-              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Cpu className="w-5 h-5 text-emerald-600" /> Inverters
                 </h3>
@@ -3253,7 +3277,7 @@ export default function App() {
               </div>
 
               {/* Panels */}
-              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Sun className="w-5 h-5 text-amber-500" /> Solar Panels
                 </h3>
@@ -3280,7 +3304,7 @@ export default function App() {
               </div>
 
               {/* Batteries */}
-              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <BatteryIcon className="w-5 h-5 text-blue-600" /> Batteries
                 </h3>
@@ -3308,7 +3332,7 @@ export default function App() {
               </div>
 
               {/* Powerstations */}
-              <div className="space-y-4 max-h-[calc(100vh-340px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="space-y-4">
                 <h3 className="font-bold flex items-center gap-2 text-stone-700">
                   <Zap className="w-5 h-5 text-stone-900" /> Powerstations
                 </h3>
@@ -3693,10 +3717,9 @@ export default function App() {
                           >
                             <Download className="w-4 h-4" />
                           </button>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  );
+                    );
                   })
                 )}
               </div>
@@ -3843,13 +3866,13 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+              className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
             >
               <div className="p-6 border-b border-stone-100 flex items-center justify-between">
                 <h2 className="font-bold text-xl">Save Load Profile</h2>
                 <button onClick={() => setShowSaveProfile(false)} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
-              <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="p-6 space-y-4">
                 <p className="text-sm text-stone-500">
                   Save your current region, battery preferences, and device list as a reusable profile.
                 </p>
@@ -4070,21 +4093,21 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden"
+              className="bg-white w-full max-w-lg max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between">
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
                 <h2 className="font-bold text-xl">{editingMasterDevice ? "Edit" : "Add"} Master Device</h2>
                 <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
-              <form className="flex-1 flex flex-col overflow-hidden" onSubmit={saveMasterDevice}>
+              <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0" onSubmit={saveMasterDevice}>
                 <div>
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Name</label>
-                  <input name="name" defaultValue={editingMasterDevice?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
+                  <input name="name" defaultValue={itemData(editingMasterDevice)?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
-                    <select name="category" defaultValue={editingMasterDevice?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                    <select name="category" defaultValue={itemData(editingMasterDevice)?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
                       <option value="electronics">Electronics</option>
                       <option value="motor">Motor</option>
                       <option value="compressor">Compressor</option>
@@ -4094,14 +4117,14 @@ export default function App() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
-                    <input name="default_watts" type="number" defaultValue={editingMasterDevice?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                    <input name="default_watts" type="number" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
                   </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
-                  <input name="tags" defaultValue={editingMasterDevice?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />
+                  <input name="tags" defaultValue={itemData(editingMasterDevice)?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />
                 </div>
-                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4">
+                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
                   {editingMasterDevice ? "Update Device" : "Save Device"}
                 </button>
               </form>
@@ -4116,14 +4139,14 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+              className="bg-white w-full max-w-md max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between">
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
                 <h2 className="font-bold text-xl capitalize">{editingHardware ? "Edit" : "Add New"} {showAddHardware}</h2>
                 <button onClick={() => { setShowAddHardware(null); setEditingHardware(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
               </div>
               <form 
-                className="flex-1 flex flex-col overflow-hidden"
+                className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0"
                 onSubmit={(e) => {
                   e.preventDefault();
                   const fd = new FormData(e.currentTarget);
@@ -4235,15 +4258,17 @@ export default function App() {
               >
                 {(() => {
                   const currentItem = editingHardware 
-                    ? (editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
-                      : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
-                      : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
-                      : powerstations.find(ps => ps.id === editingHardware.id))
+                    ? editingHardware.item ?? itemData(
+                      editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
+                        : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
+                        : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
+                        : powerstations.find(ps => ps.id === editingHardware.id),
+                      editingHardware.type
+                    )
                     : null;
                   
                   return (
-                      <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
-                        <div className="space-y-4">
+                    <div className="space-y-4">
                       <div>
                         <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Model Name</label>
                         <input name="name" defaultValue={currentItem?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
@@ -4306,12 +4331,9 @@ export default function App() {
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label><input name="price" type="number" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                       </div>
                     </div>
-                      </div>
-                    </div>
-                  </div>
                   );
                 })()}
-                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4">
+                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
                   {editingHardware ? "Update Component" : "Save Component"}
                 </button>
               </form>
