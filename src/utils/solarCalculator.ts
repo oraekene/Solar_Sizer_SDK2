@@ -181,6 +181,25 @@ export function getLoadSheddingAdvice(devices: Device[], deficit: number): strin
   }
 }
 
+function getNominalBatteryVoltage(voltage: number): number {
+  // Standard LiFePO4 nominal classes
+  if (voltage <= 14.4) return 12;
+  if (voltage <= 28.8) return 24;
+  if (voltage <= 57.6) return 48;
+  return Math.round(voltage);
+}
+
+function isBatteryVoltageCompatible(systemVdc: number, batteryVoltage: number): boolean {
+  const nominal = getNominalBatteryVoltage(batteryVoltage);
+
+  // Keep this tolerant so 12.8V batteries work on 12V systems,
+  // 25.6V on 24V systems, and 51.2V on 48V systems.
+  const voltageMatch = Math.abs(batteryVoltage - nominal) / nominal <= 0.2;
+  const systemMatch = systemVdc % nominal === 0;
+
+  return voltageMatch && systemMatch;
+}
+
 export function buildCombinations(
   location: Region,
   devices: Device[],
@@ -190,7 +209,6 @@ export function buildCombinations(
   products: Product[] = [],
   margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 }
 ): { analysis: LoadAnalysis; systems: SystemCombination[]; allLogs: string[][] } {
-  // Defensive checks
   const safeDevices = Array.isArray(devices) ? devices : [];
   const safeHardware = {
     inverters: Array.isArray(hardware?.inverters) ? hardware.inverters : [],
@@ -202,26 +220,28 @@ export function buildCombinations(
 
   const analysis = calculateUserNeeds(safeDevices);
   const { max_surge, nighttime_wh, total_daily_wh } = analysis;
-  const psh = LOCATION_PSH[location] || 2.6; // Fallback to 2.6 if location missing
+  const psh = LOCATION_PSH[location] || 2.6;
 
   const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
 
   const validSystems: SystemCombination[] = [];
   const allLogs: string[][] = [];
 
-  // --- 1. Check Pre-configured Products (Kits/Powerstations) ---
+  const isAcceptableStatus = (status: "Optimal" | "Conditional" | "High Risk") => status !== "High Risk";
+
+  // --- 1. Pre-configured Kits ---
   for (const prod of safeProducts) {
-    if (prod.type !== 'combination' || !prod.combination_data) continue;
-    
+    if (prod.type !== "combination" || !prod.combination_data) continue;
+
     const prodLog: string[] = [];
     const data = prod.combination_data;
+
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;
     const panW = data.panel_w || 0;
 
     prodLog.push(`Checking Pre-configured Kit: ${prod.name}`);
-    
-    // Surge Check
+
     if (invW < max_surge) {
       prodLog.push(`❌ Rejected: Kit inverter (${invW}W) is less than peak surge (${max_surge}W).`);
       allLogs.push(prodLog);
@@ -229,24 +249,23 @@ export function buildCombinations(
     }
     prodLog.push(`✅ Kit inverter (${invW}W) matches surge requirements.`);
 
-    // Yield Calculation (Dynamic based on PSH)
-    const dailyYield = panW * psh * 0.8; // 0.8 system efficiency
+    const dailyYield = panW * psh * 0.8;
     prodLog.push(`Dynamic Daily Yield (${psh} PSH): ${dailyYield.toFixed(0)}Wh.`);
 
-    // Simulation
     const sim = simulateHourlySoC(
       analysis.hourly_consumption,
       dailyYield,
-      batWh, // Assuming usableWh is already provided or we use a generic 0.8 for lithium
-      invW, // Max charge proxy
-      "mppt", // Most kits use MPPT
+      batWh,
+      invW,
+      "mppt",
       location
     );
 
-    let status: "Optimal" | "Conditional" | "High Risk" | null = null;
-    let advice = "";
     const simDeficit = sim.finalDeficitWh;
     const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
+
+    let status: "Optimal" | "Conditional" | "High Risk";
+    let advice: string;
 
     if (sim.passed) {
       status = "Optimal";
@@ -257,6 +276,13 @@ export function buildCombinations(
     } else {
       status = "High Risk";
       advice = `🚨 High Blackout Risk: This kit is undersized for your current load. Drains at ${sim.failureTime}.`;
+    }
+
+    prodLog.push(`Status: ${status}.`);
+
+    if (!isAcceptableStatus(status)) {
+      allLogs.push(prodLog);
+      continue;
     }
 
     const totalPrice = applyMargin(prod.price, margins.product);
@@ -273,21 +299,21 @@ export function buildCombinations(
       total_price: totalPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
-      status: status || "High Risk",
+      status,
       advice,
       log: prodLog,
       is_preconfigured: true,
       product_id: prod.id
     });
+
     allLogs.push(prodLog);
   }
 
-  // --- 1.5 Check Powerstations ---
+  // --- 1.5 Powerstations ---
   for (const ps of safeHardware.powerstations) {
     const psLog: string[] = [];
     psLog.push(`Checking Powerstation: ${ps.name} (${ps.capacity_wh}Wh, ${ps.max_output_w}W)`);
 
-    // Surge Check
     if (ps.max_output_w < max_surge) {
       psLog.push(`❌ Rejected: Powerstation output (${ps.max_output_w}W) is less than peak surge (${max_surge}W).`);
       allLogs.push(psLog);
@@ -295,20 +321,15 @@ export function buildCombinations(
     }
     psLog.push(`✅ Powerstation output (${ps.max_output_w}W) matches surge requirements.`);
 
-    // Simulation
-    // Use powerstation's own specs if available, otherwise fallback to defaults
-    const usableWh = ps.capacity_wh * (ps.battery_type === 'lithium' ? 0.9 : 0.8);
-    const maxChargeW = ps.max_charge_amps && ps.system_vdc 
-      ? ps.max_charge_amps * ps.system_vdc 
-      : ps.max_pv_input_w; // Fallback to PV input if charge amps missing
-    
+    const usableWh = ps.capacity_wh * (ps.battery_type === "lithium" ? 0.9 : 0.8);
+    const maxChargeW = ps.max_charge_amps && ps.system_vdc
+      ? ps.max_charge_amps * ps.system_vdc
+      : ps.max_pv_input_w;
+
     const ccType = ps.cc_type || "mppt";
-    
-    // Pair with panels up to its max PV input
-    const standardPanelW = 350;
-    const maxPanels = Math.floor(ps.max_pv_input_w / standardPanelW);
-    const actualPanW = maxPanels * standardPanelW;
-    const dailyYield = actualPanW * psh * 0.8;
+
+    // Use the real PV input rating, not a fixed 350W panel assumption.
+    const dailyYield = ps.max_pv_input_w * psh * 0.8;
 
     const sim = simulateHourlySoC(
       analysis.hourly_consumption,
@@ -319,14 +340,15 @@ export function buildCombinations(
       location
     );
 
-    let status: "Optimal" | "Conditional" | "High Risk" | null = null;
-    let advice = "";
     const simDeficit = sim.finalDeficitWh;
     const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
 
+    let status: "Optimal" | "Conditional" | "High Risk";
+    let advice: string;
+
     if (sim.passed) {
       status = "Optimal";
-      advice = `This powerstation covers your load when paired with ${maxPanels}x 350W panels.`;
+      advice = `This powerstation covers your load with its available PV input.`;
     } else if (deficitPercentage <= tolerance) {
       status = "Conditional";
       advice = `⚠️ Blackout Risk: Powerstation will drain at ${sim.failureTime}. Short by ${simDeficit.toFixed(0)}Wh.`;
@@ -335,42 +357,53 @@ export function buildCombinations(
       advice = `🚨 High Blackout Risk: This powerstation is undersized for your current load.`;
     }
 
+    psLog.push(`Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+    psLog.push(`Status: ${status}.`);
+
+    if (!isAcceptableStatus(status)) {
+      allLogs.push(psLog);
+      continue;
+    }
+
     const psPrice = applyMargin(ps.price, margins.powerstation);
-    const panelPrice = applyMargin(maxPanels * 95000, margins.panel);
+    const panelEquivalentCount = Math.max(1, Math.ceil(ps.max_pv_input_w / 350));
+    const panelPrice = applyMargin(panelEquivalentCount * 95000, margins.panel);
 
     validSystems.push({
       inverter: `${ps.name} (Built-in Inverter)`,
       inverter_price: psPrice,
       battery_config: `${ps.name} (Built-in Battery)`,
       battery_price: 0,
-      panel_config: maxPanels > 0 ? `${maxPanels}x 350W Panels` : "No Panels",
+      panel_config: `${ps.max_pv_input_w}W PV Input`,
       panel_price: panelPrice,
-      array_size_w: actualPanW,
+      array_size_w: ps.max_pv_input_w,
       battery_total_wh: ps.capacity_wh,
       total_price: psPrice + panelPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
-      status: status || "High Risk",
+      status,
       advice,
       log: psLog,
       is_preconfigured: true
     });
+
     allLogs.push(psLog);
   }
 
-  // --- 2. Build Custom Combinations from Hardware ---
+  // --- 2. Custom inverter + battery + panel combinations ---
   for (const inv of safeHardware.inverters) {
     const minUnitsForSurge = Math.ceil(max_surge / inv.max_ac_w);
-    
+
     if (minUnitsForSurge > inv.max_parallel_units) {
       const invLog: string[] = [];
       invLog.push(`Checking inverter: ${inv.name} (Max AC: ${inv.max_ac_w}W)`);
-      invLog.push(`❌ Rejected: Even with max parallel units (${inv.max_parallel_units}), total AC output (${inv.max_ac_w * inv.max_parallel_units}W) is less than peak surge (${max_surge}W).`);
+      invLog.push(
+        `❌ Rejected: Even with max parallel units (${inv.max_parallel_units}), total AC output (${inv.max_ac_w * inv.max_parallel_units}W) is less than peak surge (${max_surge}W).`
+      );
       allLogs.push(invLog);
       continue;
     }
 
-    // Try minimum units needed for surge, and optionally one more for extra charging/PV capacity
     const unitsToTry = [minUnitsForSurge];
     if (minUnitsForSurge + 1 <= inv.max_parallel_units) {
       unitsToTry.push(minUnitsForSurge + 1);
@@ -387,199 +420,190 @@ export function buildCombinations(
       invLog.push(`Checking setup: ${inverterDisplayName} (Total Max AC: ${totalMaxAcW}W)`);
       invLog.push(`✅ Inverter setup matches surge requirements.`);
 
-      for (const bat of hardware.batteries) {
-      const batLog = [...invLog];
-      batLog.push(`Checking battery: ${bat.name} (${bat.voltage}V, ${bat.capacity_ah}Ah)`);
+      for (const bat of safeHardware.batteries) {
+        const batLog = [...invLog];
+        batLog.push(`Checking battery: ${bat.name} (${bat.voltage}V, ${bat.capacity_ah}Ah)`);
 
-      // Battery Preference Filter
-      if (batteryPreference !== "any" && bat.type !== batteryPreference) {
-        batLog.push(`❌ Rejected: Battery type (${bat.type}) does not match preference (${batteryPreference}).`);
-        allLogs.push(batLog);
-        continue;
-      }
-
-      // 1. System DC Voltage Compatibility
-      if (inv.system_vdc % bat.voltage !== 0) {
-        batLog.push(`❌ Rejected: Battery voltage (${bat.voltage}V) is not a factor of Inverter DC voltage (${inv.system_vdc}V).`);
-        allLogs.push(batLog);
-        continue;
-      }
-
-      const batteriesInSeries = inv.system_vdc / bat.voltage;
-      batLog.push(`System requires ${batteriesInSeries} battery(ies) in series to match ${inv.system_vdc}V DC.`);
-
-      // 2. Capacity & Parallel Strings Math
-      const dodLimit = bat.type === "lead-acid" ? 0.5 : 0.8;
-      const usableWhPerBattery = bat.voltage * bat.capacity_ah * dodLimit;
-      const totalUsablePerString = usableWhPerBattery * batteriesInSeries;
-      batLog.push(`Usable energy per series string: ${totalUsablePerString}Wh (DoD: ${dodLimit * 100}%).`);
-
-      let parallelStrings = 1;
-      if (nighttime_wh > 0) {
-        parallelStrings = Math.ceil(nighttime_wh / totalUsablePerString);
-        batLog.push(`Required nighttime energy (${nighttime_wh}Wh) requires ${parallelStrings} parallel string(s).`);
-      } else {
-        batLog.push(`No nighttime load detected. Using 1 parallel string.`);
-      }
-
-      // 3. Physical Parallel Wiring Limits
-      if (parallelStrings > bat.max_parallel_strings) {
-        batLog.push(`❌ Rejected: Required parallel strings (${parallelStrings}) exceeds battery's physical limit (${bat.max_parallel_strings}).`);
-        allLogs.push(batLog);
-        continue;
-      }
-
-      const totalBatteries = parallelStrings * batteriesInSeries;
-      batLog.push(`Total batteries in bank: ${totalBatteries} (${batteriesInSeries}S x ${parallelStrings}P).`);
-
-      // 4. Charge Current (C-Rate) Bottleneck Check
-      const totalAhBank = bat.capacity_ah * parallelStrings;
-      const minChargeAmpsNeeded = totalAhBank * bat.min_c_rate;
-      batLog.push(`Battery bank requires min ${minChargeAmpsNeeded.toFixed(1)}A charging current (C-Rate: ${bat.min_c_rate}).`);
-
-      if (totalMaxChargeAmps < minChargeAmpsNeeded) {
-        batLog.push(`❌ Rejected: Inverter setup max charge current (${totalMaxChargeAmps}A) is less than required (${minChargeAmpsNeeded.toFixed(1)}A).`);
-        allLogs.push(batLog);
-        continue;
-      }
-      batLog.push(`✅ Battery bank is compatible with inverter charging capacity.`);
-
-      const totalBatteryPrice = applyMargin(bat.price * totalBatteries, margins.battery);
-
-      for (const panel of hardware.panels) {
-        const panelLog = [...batLog];
-        panelLog.push(`Checking panel: ${panel.name} (${panel.watts}W, Voc: ${panel.voc}V, Isc: ${panel.isc}A)`);
-
-        // 1. Find the physical limits of the Inverter's Charge Controller
-        const maxSeries = Math.floor(inv.cc_max_voc / panel.voc);
-        const maxParallel = Math.floor(totalMaxCcAmps / panel.isc);
-        const maxAllowedPanels = maxSeries * maxParallel;
-        panelLog.push(`Charge controller limits: Max ${maxSeries} in series, Max ${maxParallel} in parallel (Total: ${maxAllowedPanels} panels).`);
-
-        if (maxAllowedPanels === 0) {
-          panelLog.push(`❌ Rejected: Panel electrical specs exceed charge controller limits.`);
-          allLogs.push(panelLog);
+        if (batteryPreference !== "any" && bat.type !== batteryPreference) {
+          batLog.push(`❌ Rejected: Battery type (${bat.type}) does not match preference (${batteryPreference}).`);
+          allLogs.push(batLog);
           continue;
         }
 
-        // --- NEW: Dynamic MPPT vs PWM Power Calculation ---
-        const ccType = (inv.cc_type || "pwm").toLowerCase();
-        let usableWattsPerPanel = 0;
-        let ccEfficiency = 0;
-
-        if (ccType === "mppt") {
-          ccEfficiency = 0.95;
-          usableWattsPerPanel = panel.watts * ccEfficiency;
-          panelLog.push(`Charge Controller: MPPT (Efficiency: 95%). Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W.`);
-        } else {
-          // PWM Logic: Calculate nominal charging voltage (13.5V per 12V block)
-          const chargingVoltage = (inv.system_vdc / 12) * 13.5;
-          // PWM Usable Power = Battery Voltage x Panel Amps (Isc is a safe proxy for Imp in sizing)
-          usableWattsPerPanel = chargingVoltage * panel.isc;
-          ccEfficiency = usableWattsPerPanel / panel.watts;
-          panelLog.push(`Charge Controller: PWM. Panel voltage dragged to ${chargingVoltage}V. Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W (Effective Efficiency: ${(ccEfficiency * 100).toFixed(1)}%).`);
-        }
-
-        // --- Calculate MINIMUM panels needed using physically accurate wattage ---
-        // Formula: Required Array Watts = Daily_Wh / (PSH * System Efficiency)
-        // 0.8 is standard system loss (wiring, dust, etc.)
-        const requiredArrayWatts = total_daily_wh / (psh * 0.8);
-        let minPanelsNeeded = Math.ceil(requiredArrayWatts / usableWattsPerPanel);
-
-        // Even if load is tiny (or 0), we need at least 1 panel to charge the battery
-        if (minPanelsNeeded === 0) {
-          minPanelsNeeded = 1;
-        }
-        panelLog.push(`Minimum panels needed to meet load (${total_daily_wh}Wh): ${minPanelsNeeded}.`);
-
-        // Check if the inverter can physically fit the number of panels we need
-        if (minPanelsNeeded > maxAllowedPanels) {
-          panelLog.push(`❌ Rejected: Required panels (${minPanelsNeeded}) exceeds inverter's physical limit (${maxAllowedPanels}).`);
-          allLogs.push(panelLog);
+        if (!isBatteryVoltageCompatible(inv.system_vdc, bat.voltage)) {
+          batLog.push(
+            `❌ Rejected: Battery voltage (${bat.voltage}V) is not compatible with inverter DC voltage (${inv.system_vdc}V).`
+          );
+          allLogs.push(batLog);
           continue;
         }
 
-        // Use the MINIMUM required panels for the final setup!
-        const totalPanels = minPanelsNeeded;
-        const arrayWattsRaw = totalPanels * panel.watts; // What's on the roof
-        const arrayWattsActual = totalPanels * usableWattsPerPanel; // What actually makes it through
-        
-        // Calculate the actual daily yield of this right-sized array
-        // We cap the actual throughput by the CC's PV input limit
-        const usableArrayWatts = Math.min(arrayWattsActual, totalMaxPvW);
-        if (arrayWattsRaw > totalMaxPvW) {
-          panelLog.push(`Note: Array size (${arrayWattsRaw}W) exceeds charge controller PV input (${totalMaxPvW}W). Clipping will occur.`);
-        }
+        const nominalBatteryV = getNominalBatteryVoltage(bat.voltage);
+        const batteriesInSeries = inv.system_vdc / nominalBatteryV;
+        batLog.push(`System requires ${batteriesInSeries} battery(ies) in series to match ${inv.system_vdc}V DC.`);
 
-        const dailyYield = usableArrayWatts * psh; 
-        panelLog.push(`Adjusted Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
-        
-        // --- THE NEW HOURLY PHYSICS ENGINE ---
-        const totalUsableBatteryWh = totalUsablePerString * parallelStrings;
-        const maxChargeW = totalMaxChargeAmps * inv.system_vdc;
-        
-        const sim = simulateHourlySoC(
-          analysis.hourly_consumption,
-          dailyYield,
-          totalUsableBatteryWh,
-          maxChargeW,
-          ccType as "pwm" | "mppt",
-          location
-        );
+        const dodLimit = bat.type === "lead-acid" ? 0.5 : 0.8;
+        const usableWhPerBattery = bat.voltage * bat.capacity_ah * dodLimit;
+        const totalUsablePerString = usableWhPerBattery * batteriesInSeries;
+        batLog.push(`Usable energy per series string: ${totalUsablePerString}Wh (DoD: ${dodLimit * 100}%).`);
 
-        let status: "Optimal" | "Conditional" | "High Risk" | null = null;
-        let advice = "";
-        const simDeficit = sim.finalDeficitWh;
-        const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
-
-        if (sim.passed) {
-          status = "Optimal";
-          advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
-          panelLog.push(`✅ System passed 24-hour hourly stress test.`);
-        } else if (deficitPercentage <= tolerance) {
-          // ALLOWED: It failed, but it's close enough for the user to fix!
-          status = "Conditional";
-          const controllerWarning = ccType.toUpperCase();
-          advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
-          panelLog.push(`⚠️ System failed hourly simulation (${deficitPercentage.toFixed(0)}% deficit), but within tolerance.`);
+        let parallelStrings = 1;
+        if (nighttime_wh > 0) {
+          parallelStrings = Math.ceil(nighttime_wh / totalUsablePerString);
+          batLog.push(`Required nighttime energy (${nighttime_wh}Wh) requires ${parallelStrings} parallel string(s).`);
         } else {
-          // PREVIOUSLY REJECTED, NOW INCLUDED AS HIGH RISK
-          status = "High Risk";
-          const controllerWarning = ccType.toUpperCase();
-          advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
-          panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
+          batLog.push(`No nighttime load detected. Using 1 parallel string.`);
         }
 
-        const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
-        const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
-        const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;
-        
-        validSystems.push({
-          inverter: inverterDisplayName,
-          inverter_price: totalInverterPrice,
-          battery_config: `${totalBatteries}x ${bat.name} (${batteriesInSeries}S${parallelStrings}P)`,
-          battery_price: totalBatteryPrice,
-          panel_config: `${totalPanels}x ${panel.name}`,
-          panel_price: totalPanelPrice,
-          array_size_w: arrayWattsActual, // Showing the actual usable watts!
-          battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
-          total_price: totalSystemPrice,
-          daily_yield: dailyYield,
-          deficit: Math.max(0, simDeficit), // Passes the exact deficit to the UI sliders!
-          status,
-          advice,
-          log: panelLog,
-          inverter_data: inv,
-          panel_data: panel,
-          battery_data: bat,
-        });
-        allLogs.push(panelLog);
+        if (parallelStrings > bat.max_parallel_strings) {
+          batLog.push(
+            `❌ Rejected: Required parallel strings (${parallelStrings}) exceeds battery's physical limit (${bat.max_parallel_strings}).`
+          );
+          allLogs.push(batLog);
+          continue;
+        }
+
+        const totalBatteries = parallelStrings * batteriesInSeries;
+        batLog.push(`Total batteries in bank: ${totalBatteries} (${batteriesInSeries}S x ${parallelStrings}P).`);
+
+        const totalAhBank = bat.capacity_ah * parallelStrings;
+        const minChargeAmpsNeeded = totalAhBank * bat.min_c_rate;
+        batLog.push(`Battery bank requires min ${minChargeAmpsNeeded.toFixed(1)}A charging current (C-Rate: ${bat.min_c_rate}).`);
+
+        if (totalMaxChargeAmps < minChargeAmpsNeeded) {
+          batLog.push(
+            `❌ Rejected: Inverter setup max charge current (${totalMaxChargeAmps}A) is less than required (${minChargeAmpsNeeded.toFixed(1)}A).`
+          );
+          allLogs.push(batLog);
+          continue;
+        }
+
+        batLog.push(`✅ Battery bank is compatible with inverter charging capacity.`);
+        const totalBatteryPrice = applyMargin(bat.price * totalBatteries, margins.battery);
+
+        for (const panel of safeHardware.panels) {
+          const panelLog = [...batLog];
+          panelLog.push(`Checking panel: ${panel.name} (${panel.watts}W, Voc: ${panel.voc}V, Isc: ${panel.isc}A)`);
+
+          const maxSeries = Math.floor(inv.cc_max_voc / panel.voc);
+          const maxParallel = Math.floor(totalMaxCcAmps / panel.isc);
+          const maxAllowedPanels = maxSeries * maxParallel;
+          panelLog.push(`Charge controller limits: Max ${maxSeries} in series, Max ${maxParallel} in parallel (Total: ${maxAllowedPanels} panels).`);
+
+          if (maxAllowedPanels === 0) {
+            panelLog.push(`❌ Rejected: Panel electrical specs exceed charge controller limits.`);
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const ccType = (inv.cc_type || "pwm").toLowerCase();
+          let usableWattsPerPanel = 0;
+
+          if (ccType === "mppt") {
+            usableWattsPerPanel = panel.watts * 0.95;
+            panelLog.push(`Charge Controller: MPPT (Efficiency: 95%). Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W.`);
+          } else {
+            const chargingVoltage = (inv.system_vdc / 12) * 13.5;
+            usableWattsPerPanel = chargingVoltage * panel.isc;
+            const ccEfficiency = usableWattsPerPanel / panel.watts;
+            panelLog.push(
+              `Charge Controller: PWM. Panel voltage dragged to ${chargingVoltage}V. Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W (Effective Efficiency: ${(ccEfficiency * 100).toFixed(1)}%).`
+            );
+          }
+
+          const requiredArrayWatts = total_daily_wh / (psh * 0.8);
+          let minPanelsNeeded = Math.ceil(requiredArrayWatts / usableWattsPerPanel);
+          if (minPanelsNeeded < 1) minPanelsNeeded = 1;
+
+          panelLog.push(`Minimum panels needed to meet load (${total_daily_wh}Wh): ${minPanelsNeeded}.`);
+
+          if (minPanelsNeeded > maxAllowedPanels) {
+            panelLog.push(`❌ Rejected: Required panels (${minPanelsNeeded}) exceeds inverter's physical limit (${maxAllowedPanels}).`);
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const totalPanels = minPanelsNeeded;
+          const arrayWattsRaw = totalPanels * panel.watts;
+          const arrayWattsActual = totalPanels * usableWattsPerPanel;
+          const usableArrayWatts = Math.min(arrayWattsActual, totalMaxPvW);
+
+          if (arrayWattsRaw > totalMaxPvW) {
+            panelLog.push(`Note: Array size (${arrayWattsRaw}W) exceeds charge controller PV input (${totalMaxPvW}W). Clipping will occur.`);
+          }
+
+          const dailyYield = usableArrayWatts * psh;
+          panelLog.push(`Adjusted Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+
+          const totalUsableBatteryWh = totalUsablePerString * parallelStrings;
+          const maxChargeW = totalMaxChargeAmps * inv.system_vdc;
+
+          const sim = simulateHourlySoC(
+            analysis.hourly_consumption,
+            dailyYield,
+            totalUsableBatteryWh,
+            maxChargeW,
+            ccType as "pwm" | "mppt",
+            location
+          );
+
+          const simDeficit = sim.finalDeficitWh;
+          const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
+
+          let status: "Optimal" | "Conditional" | "High Risk";
+          let advice: string;
+
+          if (sim.passed) {
+            status = "Optimal";
+            advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
+            panelLog.push(`✅ System passed 24-hour hourly stress test.`);
+          } else if (deficitPercentage <= tolerance) {
+            status = "Conditional";
+            const controllerWarning = ccType.toUpperCase();
+            advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
+            panelLog.push(`⚠️ System failed hourly simulation (${deficitPercentage.toFixed(0)}% deficit), but within tolerance.`);
+          } else {
+            status = "High Risk";
+            const controllerWarning = ccType.toUpperCase();
+            advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
+            panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
+          }
+
+          if (status === "High Risk") {
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
+          const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
+          const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;
+
+          validSystems.push({
+            inverter: inverterDisplayName,
+            inverter_price: totalInverterPrice,
+            battery_config: `${totalBatteries}x ${bat.name} (${batteriesInSeries}S${parallelStrings}P)`,
+            battery_price: totalBatteryPrice,
+            panel_config: `${totalPanels}x ${panel.name}`,
+            panel_price: totalPanelPrice,
+            array_size_w: arrayWattsActual,
+            battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
+            total_price: totalSystemPrice,
+            daily_yield: dailyYield,
+            deficit: Math.max(0, simDeficit),
+            status,
+            advice,
+            log: panelLog,
+            inverter_data: inv,
+            panel_data: panel,
+            battery_data: bat,
+          });
+
+          allLogs.push(panelLog);
+        }
       }
     }
   }
-}
 
   validSystems.sort((a, b) => a.total_price - b.total_price);
-
   return { analysis, systems: validSystems, allLogs };
 }
