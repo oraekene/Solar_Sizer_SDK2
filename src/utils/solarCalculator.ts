@@ -200,6 +200,24 @@ function isBatteryVoltageCompatible(systemVdc: number, batteryVoltage: number): 
   return voltageMatch && systemMatch;
 }
 
+function getHourlyDeficitPct(totalDailyWh: number, simDeficitWh: number): number {
+  if (totalDailyWh <= 0) return 0;
+  return (simDeficitWh / totalDailyWh) * 100;
+}
+
+function getStatusFromSimulation(
+  simPassed: boolean,
+  simDeficitWh: number,
+  totalDailyWh: number,
+  tolerance: number
+): "Optimal" | "Conditional" | "High Risk" {
+  const deficitPct = getHourlyDeficitPct(totalDailyWh, simDeficitWh);
+
+  if (simPassed) return "Optimal";
+  if (deficitPct <= tolerance) return "Conditional";
+  return "High Risk";
+}
+
 export function buildCombinations(
   location: Region,
   devices: Device[],
@@ -255,29 +273,30 @@ export function buildCombinations(
     const sim = simulateHourlySoC(
       analysis.hourly_consumption,
       dailyYield,
-      batWh,
-      invW,
-      "mppt",
+      usableWh,
+      maxChargeW,
+      ccType,
       location
     );
-
+    
     const simDeficit = sim.finalDeficitWh;
-    const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
-
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
+    
     let status: "Optimal" | "Conditional" | "High Risk";
     let advice: string;
-
+    
     if (sim.passed) {
       status = "Optimal";
-      advice = `This pre-configured kit perfectly covers your load.`;
+      advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
     } else if (deficitPercentage <= tolerance) {
       status = "Conditional";
-      advice = `⚠️ Blackout Risk: This kit will drain at ${sim.failureTime}. Short by ${simDeficit.toFixed(0)}Wh.`;
+      advice = `⚠️ Blackout Risk: You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
       status = "High Risk";
-      advice = `🚨 High Blackout Risk: This kit is undersized for your current load. Drains at ${sim.failureTime}.`;
+      advice = `🚨 High Blackout Risk: You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      allLogs.push(prodLog);
+      continue;
     }
-
     prodLog.push(`Status: ${status}.`);
 
     if (!isAcceptableStatus(status)) {
@@ -339,24 +358,25 @@ export function buildCombinations(
       ccType,
       location
     );
-
+    
     const simDeficit = sim.finalDeficitWh;
-    const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
-
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
+    
     let status: "Optimal" | "Conditional" | "High Risk";
     let advice: string;
-
+    
     if (sim.passed) {
       status = "Optimal";
-      advice = `This powerstation covers your load with its available PV input.`;
+      advice = `This powerstation covers your load.`;
     } else if (deficitPercentage <= tolerance) {
       status = "Conditional";
-      advice = `⚠️ Blackout Risk: Powerstation will drain at ${sim.failureTime}. Short by ${simDeficit.toFixed(0)}Wh.`;
+      advice = `⚠️ Blackout Risk: Short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
       status = "High Risk";
-      advice = `🚨 High Blackout Risk: This powerstation is undersized for your current load.`;
+      advice = `🚨 High Blackout Risk: Short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      allLogs.push(psLog);
+      continue;
     }
-
     psLog.push(`Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
     psLog.push(`Status: ${status}.`);
 
@@ -548,7 +568,10 @@ export function buildCombinations(
           );
 
           const simDeficit = sim.finalDeficitWh;
-          const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
+          const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
+          // OLDER VERSION
+          // const simDeficit = sim.finalDeficitWh;
+          // const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
 
           let status: "Optimal" | "Conditional" | "High Risk";
           let advice: string;
