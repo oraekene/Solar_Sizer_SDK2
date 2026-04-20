@@ -214,9 +214,8 @@ try {
     seedDevices.forEach(d => insert.run(d.id, d.name, d.category, d.watts, JSON.stringify(d.tags || [])));
 
     // Seed Flagship Products and Hardware
-  // 1. Seed Products (Kits/Powerstations)
-  const seedProducts = [
-      // TAB 1: Flagship Products
+    // 1. Seed Products (Kits/Powerstations)
+    const seedProducts = [
       {
         id: 'p1',
         name: 'SolarOne A300 Plug-and-Play Power Box',
@@ -231,7 +230,30 @@ try {
           panel_w: 250,
           total_price: 185000,
           status: 'Optimal',
-          advice: 'Perfect for exams and studio sessions.'
+          advice: 'Perfect for exams and studio sessions.',
+          kit_type: 'solar',
+          product_name: 'SolarOne A300 Plug-and-Play Power Box',
+          product_description: 'True plug-and-play "Setup in a Box" — unbox, plug in, and power up with zero installation labor fees.',
+          component_specs: [
+            {
+              role: 'inverter',
+              name: '300W Pure Sine Wave',
+              quantity: 1,
+              specs: { watts: 300 }
+            },
+            {
+              role: 'battery',
+              name: '390Wh Deep Cycle',
+              quantity: 1,
+              specs: { usable_wh: 390 }
+            },
+            {
+              role: 'panel',
+              name: '1x 250W Mono',
+              quantity: 1,
+              specs: { watts: 250 }
+            }
+          ]
         },
         tags: ['flagship', 'kit', 'powerstation', 'solar'],
         price: 185000
@@ -250,12 +272,34 @@ try {
           panel_w: 350,
           total_price: 300000,
           status: 'Optimal',
-          advice: 'Premium power for sensitive electronics.'
+          advice: 'Premium power for sensitive electronics.',
+          kit_type: 'solar',
+          product_name: 'SolarOne A500 Pro Power Box',
+          product_description: 'Whole-house power without the installation: custom generator-style outlet plugs directly into your home wiring.',
+          component_specs: [
+            {
+              role: 'inverter',
+              name: '500W Pure Sine Wave',
+              quantity: 1,
+              specs: { watts: 500 }
+            },
+            {
+              role: 'battery',
+              name: '600Wh LiFePO4',
+              quantity: 1,
+              specs: { usable_wh: 600 }
+            },
+            {
+              role: 'panel',
+              name: '1x 350W Mono',
+              quantity: 1,
+              specs: { watts: 350 }
+            }
+          ]
         },
         tags: ['flagship', 'kit', 'powerstation', 'solar'],
         price: 300000
       },
-      // TAB 2: Solar / Other Products
       {
         id: 'p3',
         name: 'Itel Energy iESS 320T + 200W Panel Kit',
@@ -270,7 +314,30 @@ try {
           panel_w: 200,
           total_price: 185000,
           status: 'Optimal',
-          advice: 'Built for students. Direct laptop charging via Type-C.'
+          advice: 'Built for students. Direct laptop charging via Type-C.',
+          kit_type: 'solar',
+          product_name: 'Itel Energy iESS 320T + 200W Panel Kit',
+          product_description: 'True plug-and-play setup: 130W pure sine wave inverter and 320Wh LiFePO4 battery in a compact, portable case.',
+          component_specs: [
+            {
+              role: 'inverter',
+              name: '130W Pure Sine Wave',
+              quantity: 1,
+              specs: { watts: 130 }
+            },
+            {
+              role: 'battery',
+              name: '320Wh LiFePO4',
+              quantity: 1,
+              specs: { usable_wh: 320 }
+            },
+            {
+              role: 'panel',
+              name: '1x 200W Mono',
+              quantity: 1,
+              specs: { watts: 200 }
+            }
+          ]
         },
         tags: ['solar', 'kit', 'powerstation'],
         price: 185000
@@ -289,7 +356,30 @@ try {
           panel_w: 450,
           total_price: 425000,
           status: 'Optimal',
-          advice: 'Complete one-stop solution for studio power.'
+          advice: 'Complete one-stop solution for studio power.',
+          kit_type: 'solar',
+          product_name: 'Itel 1000W Powerstation + 450W Panel',
+          product_description: 'Massive 1000Wh LiFePO4 battery paired with a 500W pure sine wave inverter for clean, stable studio power.',
+          component_specs: [
+            {
+              role: 'inverter',
+              name: '500W Pure Sine Wave',
+              quantity: 1,
+              specs: { watts: 500 }
+            },
+            {
+              role: 'battery',
+              name: '1000Wh LiFePO4',
+              quantity: 1,
+              specs: { usable_wh: 1000 }
+            },
+            {
+              role: 'panel',
+              name: '1x 450W Mono',
+              quantity: 1,
+              specs: { watts: 450 }
+            }
+          ]
         },
         tags: ['solar', 'kit', 'powerstation'],
         price: 425000
@@ -308,20 +398,35 @@ try {
           panel_w: 350,
           total_price: 310000,
           status: 'Optimal',
-          advice: 'Accessible off-grid power for daily essentials.'
+          advice: 'Accessible off-grid power for daily essentials.',
+          kit_type: 'solar',
+          product_name: '500W Powerstation + 350W Panel Combo',
+          product_description: 'Accessible off-grid power featuring a 600Wh LiFePO4 battery and 500W modified sine wave AC output.',
+          component_specs: [
+            {
+              role: 'inverter',
+              name: '500W Modified Sine',
+              quantity: 1,
+              specs: { watts: 500 }
+            },
+            {
+              role: 'battery',
+              name: '600Wh LiFePO4',
+              quantity: 1,
+              specs: { usable_wh: 600 }
+            },
+            {
+              role: 'panel',
+              name: '1x 350W Mono',
+              quantity: 1,
+              specs: { watts: 350 }
+            }
+          ]
         },
         tags: ['solar', 'kit', 'powerstation'],
         price: 310000
       },
-      // TAB 3: Internet Products & Combinations
-      {
-        id: 'p_int_1',
-        name: 'Single CPE Upgrade (ZTE MC888)',
-        description: 'Immediate speed improvement with zero plan change. Superior antenna and radio pull dramatically more signal.',
-        type: 'standalone',
-        tags: ['internet', 'tier-a', 'flagship'],
-        price: 110000
-      },
+      // Internet products
       {
         id: 'p_int_2',
         name: 'Budget Dual Stack Internet Kit',
@@ -336,7 +441,18 @@ try {
           panel_w: 0,
           total_price: 135000,
           status: 'Optimal',
-          advice: 'The cheapest genuine failover setup for remote workers.'
+          advice: 'The cheapest genuine failover setup for remote workers.',
+          kit_type: 'internet',
+          product_name: 'Budget Dual Stack Internet Kit',
+          product_description: 'Two-network redundancy. Cudy CPE on MTN + Android phone tether on Airtel.',
+          component_specs: [
+            {
+              role: 'network',
+              name: 'Budget Dual Stack Internet Kit',
+              quantity: 1,
+              specs: { watts: 10 }
+            }
+          ]
         },
         tags: ['internet', 'kit'],
         price: 135000
@@ -355,18 +471,21 @@ try {
           panel_w: 0,
           total_price: 235000,
           status: 'Optimal',
-          advice: 'Two router-grade CPE devices for full signal quality.'
+          advice: 'Two router-grade CPE devices for full signal quality.',
+          kit_type: 'internet',
+          product_name: 'Standard Dual CPE Internet Kit',
+          product_description: 'Full reliability. Huawei B818 (MTN) + Cudy LT500 (Airtel) + TP-Link ER605.',
+          component_specs: [
+            {
+              role: 'network',
+              name: 'Standard Dual CPE Internet Kit',
+              quantity: 1,
+              specs: { watts: 15 }
+            }
+          ]
         },
         tags: ['internet', 'kit'],
         price: 235000
-      },
-      {
-        id: 'p_int_4',
-        name: 'GL.iNet Spitz AX All-in-One',
-        description: 'Everything integrated: 5G modem, dual SIM, load balancing, WiFi 6, and VPN.',
-        type: 'standalone',
-        tags: ['internet', 'tier-b', 'flagship'],
-        price: 160000
       },
       {
         id: 'p_int_5',
@@ -382,7 +501,18 @@ try {
           panel_w: 0,
           total_price: 310000,
           status: 'Optimal',
-          advice: 'MTN 5G primary reaches 60-100Mbps in strong coverage areas.'
+          advice: 'MTN 5G primary reaches 60-100Mbps in strong coverage areas.',
+          kit_type: 'internet',
+          product_name: 'Dual CPE Pro Internet Kit',
+          product_description: 'High capacity 5G primary (ZTE MC888 Pro) + 4G secondary (Huawei B818).',
+          component_specs: [
+            {
+              role: 'network',
+              name: 'Dual CPE Pro Internet Kit',
+              quantity: 1,
+              specs: { watts: 20 }
+            }
+          ]
         },
         tags: ['internet', 'kit'],
         price: 310000
@@ -401,11 +531,39 @@ try {
           panel_w: 0,
           total_price: 310000,
           status: 'Optimal',
-          advice: 'True bandwidth aggregation for mission-critical tasks.'
+          advice: 'True bandwidth aggregation for mission-critical tasks.',
+          kit_type: 'internet',
+          product_name: 'Bonded Stack Internet Kit',
+          product_description: 'True packet-level bonding. Speedify + Dual CPE Pro hardware.',
+          component_specs: [
+            {
+              role: 'network',
+              name: 'Bonded Stack Internet Kit',
+              quantity: 1,
+              specs: { watts: 20 }
+            }
+          ]
         },
         tags: ['internet', 'kit', 'tier-c'],
         price: 310000
       },
+      {
+        id: 'p_int_1',
+        name: 'Single CPE Upgrade (ZTE MC888)',
+        description: 'Immediate speed improvement with zero plan change. Superior antenna and radio pull dramatically more signal.',
+        type: 'standalone',
+        tags: ['internet', 'tier-a', 'flagship'],
+        price: 110000
+      },
+      {
+        id: 'p_int_4',
+        name: 'GL.iNet Spitz AX All-in-One',
+        description: 'Everything integrated: 5G modem, dual SIM, load balancing, WiFi 6, and VPN.',
+        type: 'standalone',
+        tags: ['internet', 'tier-b', 'flagship'],
+        price: 160000
+      },
+    
       // Standalone Hardware Products (for catalog filtering)
       {
         id: 'p_h_1',
@@ -1229,6 +1387,10 @@ async function startServer() {
       }
 
       const { id, name, description, type, combination_data, tags, price } = req.body;
+      const enrichedCombinationData = enrichCombinationData(
+        { id, name, description, price },
+        combination_data
+      );
 
       if (useSupabase) {
         const { error } = await supabase.from("products").upsert({
@@ -1249,7 +1411,7 @@ async function startServer() {
         `);
         upsert.run(
           id, name, description, type,
-          JSON.stringify(combination_data || null),
+          JSON.stringify(enrichedCombinationData || null),
           JSON.stringify(tags || []),
           price
         );
@@ -1367,7 +1529,10 @@ async function startServer() {
           products = db.prepare("SELECT * FROM products").all();
           products = products.map(p => ({
             ...p,
-            combination_data: safeJsonParse(p.combination_data, null),
+            combination_data: enrichCombinationData(
+              p,
+              safeJsonParse(p.combination_data, null)
+            ),
             tags: safeJsonParse(p.tags, [])
           }));
         } catch (dbError) {
