@@ -218,6 +218,60 @@ function getStatusFromSimulation(
   return "High Risk";
 }
 
+const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
+  if ((data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0) return "solar";
+  return "internet";
+};
+
+const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComponentSpec[] => {
+  const kitType = getKitType(data);
+
+  if (kitType === "solar") {
+    return [
+      {
+        role: "inverter",
+        name: data.inverter,
+        quantity: 1,
+        specs: {
+          watts: data.inverter_w ?? 0,
+          price: data.inverter_price ?? 0,
+        },
+      },
+      {
+        role: "battery",
+        name: data.battery_config,
+        quantity: (data.battery_wh ?? 0) > 0 ? 1 : 0,
+        specs: {
+          usable_wh: data.battery_wh ?? 0,
+          price: data.battery_price ?? 0,
+        },
+      },
+      {
+        role: "panel",
+        name: data.panel_config,
+        quantity: (data.panel_w ?? 0) > 0 ? 1 : 0,
+        specs: {
+          watts: data.panel_w ?? 0,
+          price: data.panel_price ?? 0,
+        },
+      },
+    ].filter((c) => c.quantity > 0);
+  }
+
+  return [
+    {
+      role: "network",
+      name: prod.name,
+      quantity: 1,
+      specs: {
+        price: prod.price,
+        watts: data.inverter_w ?? 0,
+        note: prod.description,
+      },
+    },
+  ];
+};
+
 export function buildCombinations(
   location: Region,
   devices: Device[],
@@ -253,6 +307,7 @@ export function buildCombinations(
 
     const prodLog: string[] = [];
     const data = prod.combination_data;
+    const kitType = getKitType(data);
 
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;
@@ -260,12 +315,23 @@ export function buildCombinations(
 
     prodLog.push(`Checking Pre-configured Kit: ${prod.name}`);
 
+    // Keep non-solar kits in the catalog/UI, but skip solar simulation.
+    if (kitType !== "solar") {
+      prodLog.push("ℹ️ Non-solar kit detected. Skipping solar simulation.");
+      allLogs.push(prodLog);
+      continue;
+    }
+
     if (invW < max_surge) {
       prodLog.push(`❌ Rejected: Kit inverter (${invW}W) is less than peak surge (${max_surge}W).`);
       allLogs.push(prodLog);
       continue;
     }
     prodLog.push(`✅ Kit inverter (${invW}W) matches surge requirements.`);
+
+    const usableWh = batWh * 0.8;
+    const maxChargeW = Math.max(panW, invW);
+    const ccType = (data.cc_type || "mppt") as "pwm" | "mppt";
 
     const dailyYield = panW * psh * 0.8;
     prodLog.push(`Dynamic Daily Yield (${psh} PSH): ${dailyYield.toFixed(0)}Wh.`);
@@ -278,13 +344,13 @@ export function buildCombinations(
       ccType,
       location
     );
-    
+
     const simDeficit = sim.finalDeficitWh;
     const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
-    
+
     let status: "Optimal" | "Conditional" | "High Risk";
     let advice: string;
-    
+
     if (sim.passed) {
       status = "Optimal";
       advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
@@ -297,6 +363,7 @@ export function buildCombinations(
       allLogs.push(prodLog);
       continue;
     }
+
     prodLog.push(`Status: ${status}.`);
 
     if (!isAcceptableStatus(status)) {
@@ -304,30 +371,34 @@ export function buildCombinations(
       continue;
     }
 
-    const totalPrice = applyMargin(prod.price, margins.product);
-
     validSystems.push({
       inverter: data.inverter,
-      inverter_price: applyMargin(data.inverter_price || 0, margins.product),
+      inverter_price: data.inverter_price || 0,
       battery_config: data.battery_config,
-      battery_price: applyMargin(data.battery_price || 0, margins.product),
+      battery_price: data.battery_price || 0,
       panel_config: data.panel_config,
-      panel_price: applyMargin(data.panel_price || 0, margins.product),
+      panel_price: data.panel_price || 0,
       array_size_w: panW,
       battery_total_wh: batWh,
-      total_price: totalPrice,
+      total_price: prod.price,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
       status,
       advice,
       log: prodLog,
       is_preconfigured: true,
-      product_id: prod.id
+      product_id: prod.id,
+      inverter_w: invW,
+      battery_wh: batWh,
+      panel_w: panW,
+      kit_type: kitType,
+      component_specs: buildKitComponentSpecs(prod, data),
+      product_name: prod.name,
+      product_description: prod.description,
     });
 
     allLogs.push(prodLog);
   }
-
   // --- 1.5 Powerstations ---
   for (const ps of safeHardware.powerstations) {
     const psLog: string[] = [];
