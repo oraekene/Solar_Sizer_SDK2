@@ -118,6 +118,10 @@ export interface SystemCombination {
   inverter_w?: number;
   battery_wh?: number;
   panel_w?: number;
+  kit_type?: "solar" | "internet" | "powerstation";
+  component_specs?: KitComponentSpec[];
+  product_name?: string;
+  product_description?: string;
 }
 
 export interface CalculationAttempt {
@@ -166,10 +170,12 @@ export interface Product {
   id: string;
   name: string;
   description: string;
-  type: 'standalone' | 'combination';
+  type: "standalone" | "combination";
   combination_data?: SystemCombination;
   tags: string[];
   price: number;
+  kit_type?: "solar" | "internet" | "powerstation";
+  component_specs?: KitComponentSpec[];
 }
 
 export interface MasterDevice {
@@ -229,7 +235,7 @@ export interface SystemCombination {
   inverter_w?: number;
   battery_wh?: number;
   panel_w?: number;
-  kit_type?: KitType;
+  kit_type?: "solar" | "internet" | "powerstation";
   component_specs?: KitComponentSpec[];
   product_name?: string;
   product_description?: string;
@@ -243,6 +249,6 @@ export interface Product {
   combination_data?: SystemCombination;
   tags: string[];
   price: number;
-  kit_type?: KitType;
+  kit_type?: "solar" | "internet" | "powerstation";
   component_specs?: KitComponentSpec[];
 }
