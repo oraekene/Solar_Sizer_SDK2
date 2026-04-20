@@ -4053,7 +4053,7 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-        
+
                 {selectedSystemDetails.component_specs &&
                   selectedSystemDetails.component_specs.length > 0 && (
                     <div className="space-y-4">
@@ -4061,7 +4061,7 @@ export default function App() {
                         <Layers className="w-5 h-5 text-stone-400" />
                         Hardware Specs
                       </h4>
-        
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {selectedSystemDetails.component_specs.map((item, index) => (
                           <div
@@ -4076,9 +4076,9 @@ export default function App() {
                                 Qty: {item.quantity}
                               </span>
                             </div>
-        
+
                             <p className="text-sm text-stone-700 mb-3">{item.name}</p>
-        
+
                             <div className="space-y-1 text-xs text-stone-500">
                               {Object.entries(item.specs).map(([key, value]) => (
                                 <div
@@ -4099,7 +4099,7 @@ export default function App() {
                       </div>
                     </div>
                   )}
-        
+
                 <div className="space-y-4">
                   <h4 className="font-bold text-lg flex items-center gap-2">
                     <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
