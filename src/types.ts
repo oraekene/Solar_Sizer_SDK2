@@ -196,3 +196,53 @@ export interface PDFSettings {
 }
 
 export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";
+
+export type KitType = "solar" | "internet" | "powerstation";
+
+export interface KitComponentSpec {
+  role: "inverter" | "battery" | "panel" | "powerstation" | "internet" | "controller" | "network";
+  name: string;
+  quantity: number;
+  specs: Record<string, string | number | boolean | null>;
+}
+
+export interface SystemCombination {
+  inverter: string;
+  inverter_price: number;
+  battery_config: string;
+  battery_price: number;
+  panel_config: string;
+  panel_price: number;
+  array_size_w: number;
+  battery_total_wh: number;
+  total_price: number;
+  daily_yield: number;
+  deficit: number;
+  status: "Optimal" | "Conditional" | "High Risk";
+  advice: string;
+  log: string[];
+  inverter_data?: Inverter;
+  panel_data?: Panel;
+  battery_data?: Battery;
+  is_preconfigured?: boolean;
+  product_id?: string;
+  inverter_w?: number;
+  battery_wh?: number;
+  panel_w?: number;
+  kit_type?: KitType;
+  component_specs?: KitComponentSpec[];
+  product_name?: string;
+  product_description?: string;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  type: "standalone" | "combination";
+  combination_data?: SystemCombination;
+  tags: string[];
+  price: number;
+  kit_type?: KitType;
+  component_specs?: KitComponentSpec[];
+}
