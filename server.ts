@@ -27,6 +27,67 @@ function safeJsonParse(json: any, fallback: any = null) {
   }
 }
 
+function enrichCombinationData(product: any, combinationData: any) {
+  if (!combinationData) return null;
+
+  const kitType =
+    (combinationData.battery_wh ?? 0) > 0 || (combinationData.panel_w ?? 0) > 0
+      ? "solar"
+      : "internet";
+
+  const component_specs =
+    kitType === "solar"
+      ? [
+          {
+            role: "inverter",
+            name: combinationData.inverter,
+            quantity: 1,
+            specs: {
+              watts: combinationData.inverter_w ?? 0,
+              price: combinationData.inverter_price ?? 0,
+            },
+          },
+          {
+            role: "battery",
+            name: combinationData.battery_config,
+            quantity: (combinationData.battery_wh ?? 0) > 0 ? 1 : 0,
+            specs: {
+              usable_wh: combinationData.battery_wh ?? 0,
+              price: combinationData.battery_price ?? 0,
+            },
+          },
+          {
+            role: "panel",
+            name: combinationData.panel_config,
+            quantity: (combinationData.panel_w ?? 0) > 0 ? 1 : 0,
+            specs: {
+              watts: combinationData.panel_w ?? 0,
+              price: combinationData.panel_price ?? 0,
+            },
+          },
+        ].filter((c) => c.quantity > 0)
+      : [
+          {
+            role: "network",
+            name: product.name,
+            quantity: 1,
+            specs: {
+              price: product.price ?? 0,
+              watts: combinationData.inverter_w ?? 0,
+              note: product.description ?? "",
+            },
+          },
+        ];
+
+  return {
+    ...combinationData,
+    kit_type: kitType,
+    product_name: product.name,
+    product_description: product.description,
+    component_specs,
+  };
+}
+
 // --- Database Setup ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -1097,7 +1158,10 @@ async function startServer() {
         if (prodError) throw new Error(`Supabase products error: ${prodError.message}`);
         productsList = (prods || []).map((p: any) => ({
           ...p,
-          combination_data: safeJsonParse(p.combination_data, null),
+          combination_data: enrichCombinationData(
+            p,
+            safeJsonParse(p.combination_data, null)
+          ),
           tags: safeJsonParse(p.tags, []),
         }));
 
@@ -1112,9 +1176,12 @@ async function startServer() {
         }));
       } else {
         let prods = db.prepare("SELECT * FROM products").all();
-        productsList = prods.map((p: any) => ({
+        productsList = (prods || []).map((p: any) => ({
           ...p,
-          combination_data: safeJsonParse(p.combination_data, null),
+          combination_data: enrichCombinationData(
+            p,
+            safeJsonParse(p.combination_data, null)
+          ),
           tags: safeJsonParse(p.tags, []),
         }));
 
