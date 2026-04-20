@@ -2902,10 +2902,15 @@ export default function App() {
                           <Cpu className="w-4 h-4" /> {product.combination_data.inverter}
                         </div>
                         <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Sun className="w-4 h-4" /> {product.combination_data.panel_config}
+                          <BatteryIcon className="w-4 h-4" /> {product.combination_data.battery_config}
                         </div>
                         <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <BatteryIcon className="w-4 h-4" /> {product.combination_data.battery_config}
+                          <Sun className="w-4 h-4" /> {product.combination_data.panel_config}
+                        </div>
+                    
+                        <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 pt-2 border-t border-stone-100">
+                          <div>Type: {product.combination_data.kit_type || "solar"}</div>
+                          <div>Specs: {product.combination_data.component_specs?.length || 0}</div>
                         </div>
                       </div>
                     )}
@@ -2918,7 +2923,12 @@ export default function App() {
                     <button 
                       onClick={() => {
                         if (product.combination_data) {
-                          setSelectedSystemDetails(product.combination_data);
+                          setSelectedSystemDetails({
+                            ...product.combination_data,
+                            product_id: product.id,
+                            product_name: product.name,
+                            product_description: product.description,
+                          });
                         } else {
                           // Create a dummy system combination for standalone products so they can have a specs view
                           setSelectedSystemDetails({
@@ -3968,107 +3978,128 @@ export default function App() {
       {/* System Details Modal */}
       <AnimatePresence>
         {selectedSystemDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-4xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-emerald-600 text-white">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-6 h-6" />
-                  <h2 className="font-bold text-xl">System Configuration Details</h2>
-                </div>
-                <button 
-                  onClick={() => { 
-                    setSelectedSystemDetails(null); 
-                    setShowInteractiveBridge(false); 
-                    setAdjustedLoad(null);
-                  }}
-                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                >
-                  <X className="w-6 h-6" />
-                </button>
+          <div className="space-y-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-2xl font-bold text-stone-900">
+                  {selectedSystemDetails.product_name || "System Details"}
+                </h3>
+                {selectedSystemDetails.product_description && (
+                  <p className="text-sm text-stone-500 mt-1">
+                    {selectedSystemDetails.product_description}
+                  </p>
+                )}
               </div>
-              
-              <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-3 p-4 rounded-2xl flex items-start gap-3 border transition-colors bg-stone-50 border-stone-100">
-                    {selectedSystemDetails.status === "Optimal" ? (
-                      <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : selectedSystemDetails.status === "High Risk" ? (
-                      <AlertCircle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
-                    )}
-                    <div>
-                      <h4 className={`font-bold text-sm uppercase tracking-wider ${
-                        selectedSystemDetails.status === "Optimal" ? "text-emerald-700" : 
-                        selectedSystemDetails.status === "High Risk" ? "text-red-700" :
-                        "text-amber-700"
-                      }`}>
-                        {selectedSystemDetails.status === "Optimal" ? "Perfect Match" : 
-                         selectedSystemDetails.status === "High Risk" ? "High Risk Configuration" :
-                         "Conditional Recommendation"}
-                      </h4>
-                      <p className="text-sm text-stone-600 mt-1">{selectedSystemDetails.advice}</p>
-                      {(selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") && !showInteractiveBridge && (
-                        <button 
-                          onClick={() => setShowInteractiveBridge(true)}
-                          className="mt-3 px-4 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all flex items-center gap-2"
-                        >
-                          <Activity className="w-3 h-3" /> Bridge the Gap Interactively
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {showInteractiveBridge && (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
-                    <div className="md:col-span-3">
-                      <InteractiveBridge 
-                        devices={devices} 
-                        initialDeficit={selectedSystemDetails.deficit} 
-                        onClose={() => setShowInteractiveBridge(false)} 
-                        onChange={(adj, def) => setAdjustedLoad({ devices: adj, deficit: def })}
-                      />
-                    </div>
-                  ) : (
-                    <>
-                      <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
-                    <Cpu className="w-8 h-8 text-emerald-600 mb-4" />
-                    <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.inverter}</h3>
-                    <p className="text-sm text-stone-500">Central Power Unit</p>
-                    <div className="mt-4 space-y-2 text-xs">
-                      <div className="flex justify-between"><span>AC Output</span><span className="font-bold">Pure Sine Wave</span></div>
-                      <div className="flex justify-between"><span>Efficiency</span><span className="font-bold">~93%</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-emerald-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.inverter_price || 0).toLocaleString()}</span></div>
-                    </div>
-                  </div>
-                  <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
-                    <BatteryIcon className="w-8 h-8 text-blue-600 mb-4" />
-                    <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.battery_config}</h3>
-                    <p className="text-sm text-stone-500">Energy Storage Bank</p>
-                    <div className="mt-4 space-y-2 text-xs">
-                      <div className="flex justify-between"><span>Wiring</span><span className="font-bold">Series-Parallel</span></div>
-                      <div className="flex justify-between"><span>Usable Capacity</span><span className="font-bold">{((selectedSystemDetails.daily_yield || selectedSystemDetails.battery_wh || 0) / 0.8).toFixed(0)}Wh</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-blue-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.battery_price || 0).toLocaleString()}</span></div>
-                    </div>
-                  </div>
-                  <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
-                    <Sun className="w-8 h-8 text-amber-500 mb-4" />
-                    <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.panel_config}</h3>
-                    <p className="text-sm text-stone-500">Photovoltaic Array</p>
-                    <div className="mt-4 space-y-2 text-xs">
-                      <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w || selectedSystemDetails.panel_w || 0}W</span></div>
-                      <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{(selectedSystemDetails.daily_yield || 0).toFixed(0)}Wh</span></div>
-                      <div className="flex justify-between pt-2 border-t border-stone-200"><span className="text-amber-600 font-bold">Price</span><span className="font-bold">₦{(selectedSystemDetails.panel_price || 0).toLocaleString()}</span></div>
-                    </div>
-                  </div>
-                </>
-              )}
+        
+              <button
+                onClick={() => setSelectedSystemDetails(null)}
+                className="p-2 rounded-full hover:bg-stone-100 text-stone-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-
+        
+            <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50">
+              <p className="text-sm font-semibold text-stone-700">Status</p>
+              <p className="text-base text-stone-900 mt-1">{selectedSystemDetails.status}</p>
+              <p className="text-sm text-stone-600 mt-2">{selectedSystemDetails.advice}</p>
+            </div>
+        
+            {showInteractiveBridge &&
+            (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
+              <InteractiveBridge
+                selectedSystem={selectedSystemDetails}
+                onClose={() => setShowInteractiveBridge(false)}
+              />
+            ) : (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                      <Cpu className="w-4 h-4" />
+                      Inverter
+                    </div>
+                    <p className="mt-2 text-sm text-stone-900">
+                      {selectedSystemDetails.inverter}
+                    </p>
+                    <p className="text-xs text-stone-500 mt-1">
+                      {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
+                    </p>
+                  </div>
+        
+                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                      <BatteryIcon className="w-4 h-4" />
+                      Battery
+                    </div>
+                    <p className="mt-2 text-sm text-stone-900">
+                      {selectedSystemDetails.battery_config}
+                    </p>
+                    <p className="text-xs text-stone-500 mt-1">
+                      {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
+                    </p>
+                  </div>
+        
+                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                      <Sun className="w-4 h-4" />
+                      Panel
+                    </div>
+                    <p className="mt-2 text-sm text-stone-900">
+                      {selectedSystemDetails.panel_config}
+                    </p>
+                    <p className="text-xs text-stone-500 mt-1">
+                      {selectedSystemDetails.panel_w ? `${selectedSystemDetails.panel_w}W` : ""}
+                    </p>
+                  </div>
+                </div>
+        
+                {selectedSystemDetails.component_specs &&
+                  selectedSystemDetails.component_specs.length > 0 && (
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-lg flex items-center gap-2">
+                        <Layers className="w-5 h-5 text-stone-400" />
+                        Hardware Specs
+                      </h4>
+        
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {selectedSystemDetails.component_specs.map((item, index) => (
+                          <div
+                            key={index}
+                            className="p-4 rounded-2xl border border-stone-200 bg-white"
+                          >
+                            <div className="flex items-center justify-between gap-3 mb-3">
+                              <p className="font-bold text-stone-900 capitalize">
+                                {item.role.replace(/_/g, " ")}
+                              </p>
+                              <span className="text-xs font-bold text-stone-500">
+                                Qty: {item.quantity}
+                              </span>
+                            </div>
+        
+                            <p className="text-sm text-stone-700 mb-3">{item.name}</p>
+        
+                            <div className="space-y-1 text-xs text-stone-500">
+                              {Object.entries(item.specs).map(([key, value]) => (
+                                <div
+                                  key={key}
+                                  className="flex items-center justify-between gap-4"
+                                >
+                                  <span className="capitalize">
+                                    {key.replace(/_/g, " ")}
+                                  </span>
+                                  <span className="font-semibold text-stone-700">
+                                    {String(value)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+        
                 <div className="space-y-4">
                   <h4 className="font-bold text-lg flex items-center gap-2">
                     <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
