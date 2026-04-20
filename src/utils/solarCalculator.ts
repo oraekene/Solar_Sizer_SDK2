@@ -302,12 +302,16 @@ export function buildCombinations(
   const isAcceptableStatus = (status: "Optimal" | "Conditional" | "High Risk") => status !== "High Risk";
 
   // --- 1. Pre-configured Kits ---
+  // --- 1. Pre-configured Kits ---
   for (const prod of safeProducts) {
     if (prod.type !== "combination" || !prod.combination_data) continue;
 
     const prodLog: string[] = [];
     const data = prod.combination_data;
-    const kitType = getKitType(data);
+    const kitType =
+      (data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0
+        ? "solar"
+        : "internet";
 
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;
@@ -315,7 +319,6 @@ export function buildCombinations(
 
     prodLog.push(`Checking Pre-configured Kit: ${prod.name}`);
 
-    // Keep non-solar kits in the catalog/UI, but skip solar simulation.
     if (kitType !== "solar") {
       prodLog.push("ℹ️ Non-solar kit detected. Skipping solar simulation.");
       allLogs.push(prodLog);
@@ -371,16 +374,18 @@ export function buildCombinations(
       continue;
     }
 
+    const totalPrice = applyMargin(prod.price, margins.product);
+
     validSystems.push({
       inverter: data.inverter,
-      inverter_price: data.inverter_price || 0,
+      inverter_price: applyMargin(data.inverter_price || 0, margins.product),
       battery_config: data.battery_config,
-      battery_price: data.battery_price || 0,
+      battery_price: applyMargin(data.battery_price || 0, margins.product),
       panel_config: data.panel_config,
-      panel_price: data.panel_price || 0,
+      panel_price: applyMargin(data.panel_price || 0, margins.product),
       array_size_w: panW,
       battery_total_wh: batWh,
-      total_price: prod.price,
+      total_price: totalPrice,
       daily_yield: dailyYield,
       deficit: Math.max(0, simDeficit),
       status,
@@ -392,13 +397,42 @@ export function buildCombinations(
       battery_wh: batWh,
       panel_w: panW,
       kit_type: kitType,
-      component_specs: buildKitComponentSpecs(prod, data),
+      component_specs: [
+        {
+          role: "inverter",
+          name: data.inverter,
+          quantity: 1,
+          specs: {
+            watts: invW,
+            price: data.inverter_price || 0,
+          },
+        },
+        {
+          role: "battery",
+          name: data.battery_config,
+          quantity: batWh > 0 ? 1 : 0,
+          specs: {
+            usable_wh: batWh,
+            price: data.battery_price || 0,
+          },
+        },
+        {
+          role: "panel",
+          name: data.panel_config,
+          quantity: panW > 0 ? 1 : 0,
+          specs: {
+            watts: panW,
+            price: data.panel_price || 0,
+          },
+        },
+      ].filter((c) => c.quantity > 0),
       product_name: prod.name,
       product_description: prod.description,
     });
 
     allLogs.push(prodLog);
   }
+  
   // --- 1.5 Powerstations ---
   for (const ps of safeHardware.powerstations) {
     const psLog: string[] = [];
