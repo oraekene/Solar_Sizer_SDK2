@@ -4128,7 +4128,8 @@ export default function App() {
                   </button>
                 </div>
               </div>
-            )}
+            </div>
+          )}
       </AnimatePresence>
 
       {/* Add Hardware Modal */}
