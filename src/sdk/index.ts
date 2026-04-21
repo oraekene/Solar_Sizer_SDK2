@@ -37,10 +37,9 @@ export class SolarSizerSDK {
     return res.data;
   }
 
-  async saveMasterDevice(device: any, adminKey: string) {
-    const res = await axios.post(`${this.baseUrl}/devices`, device, {
-      headers: { "x-admin-key": adminKey }
-    });
+  async saveMasterDevice(device: any, adminKey?: string) {
+    const headers = adminKey ? { "x-admin-key": adminKey } : undefined;
+    const res = await axios.post(`${this.baseUrl}/devices`, device, headers ? { headers } : undefined);
     return res.data;
   }
 
