@@ -218,59 +218,6 @@ function getStatusFromSimulation(
   return "High Risk";
 }
 
-const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
-  if ((data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0) return "solar";
-  return "internet";
-};
-
-const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComponentSpec[] => {
-  const kitType = getKitType(data);
-
-  if (kitType === "solar") {
-    return [
-      {
-        role: "inverter",
-        name: data.inverter,
-        quantity: 1,
-        specs: {
-          watts: data.inverter_w ?? 0,
-          price: data.inverter_price ?? 0,
-        },
-      },
-      {
-        role: "battery",
-        name: data.battery_config,
-        quantity: (data.battery_wh ?? 0) > 0 ? 1 : 0,
-        specs: {
-          usable_wh: data.battery_wh ?? 0,
-          price: data.battery_price ?? 0,
-        },
-      },
-      {
-        role: "panel",
-        name: data.panel_config,
-        quantity: (data.panel_w ?? 0) > 0 ? 1 : 0,
-        specs: {
-          watts: data.panel_w ?? 0,
-          price: data.panel_price ?? 0,
-        },
-      },
-    ].filter((c) => c.quantity > 0);
-  }
-
-  return [
-    {
-      role: "network",
-      name: prod.name,
-      quantity: 1,
-      specs: {
-        price: prod.price,
-        watts: data.inverter_w ?? 0,
-        note: prod.description,
-      },
-    },
-  ];
-};
 
 const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
   if (
