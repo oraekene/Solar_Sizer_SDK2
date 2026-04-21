@@ -4012,7 +4012,7 @@ export default function App() {
                 onClose={() => setShowInteractiveBridge(false)}
               />
             ) : (
-              <>
+              <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-2xl border border-stone-200 bg-white">
                     <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
@@ -4026,7 +4026,7 @@ export default function App() {
                       {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
                     </p>
                   </div>
-        
+
                   <div className="p-4 rounded-2xl border border-stone-200 bg-white">
                     <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
                       <BatteryIcon className="w-4 h-4" />
@@ -4039,7 +4039,7 @@ export default function App() {
                       {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
                     </p>
                   </div>
-        
+
                   <div className="p-4 rounded-2xl border border-stone-200 bg-white">
                     <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
                       <Sun className="w-4 h-4" />
@@ -4127,9 +4127,8 @@ export default function App() {
                     Generate Quote <ExternalLink className="w-4 h-4" />
                   </button>
                 </div>
-              </>
-            </div>
-          )}
+              </div>
+            )}
       </AnimatePresence>
 
       {/* Add Hardware Modal */}
