@@ -4113,10 +4113,14 @@ export default function App() {
 
                 <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">Total System Investment</p>
-                    <p className="text-3xl font-black text-emerald-900">₦{(selectedSystemDetails.total_price || 0).toLocaleString()}</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
+                      Total System Investment
+                    </p>
+                    <p className="text-3xl font-black text-emerald-900">
+                      ₦{(selectedSystemDetails.total_price || 0).toLocaleString()}
+                    </p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => generateQuote(selectedSystemDetails)}
                     className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                   >
