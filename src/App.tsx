@@ -217,6 +217,57 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
   };
 };
 
+  const openSystemDetails = (system: SystemCombination) => {
+    setShowInteractiveBridge(false);
+    setSelectedSystemDetails(system);
+  };
+
+  const buildProductDetails = (product: Product): SystemCombination => {
+    if (product.combination_data) {
+      return {
+        ...product.combination_data,
+        product_id: product.id,
+        product_name: product.name,
+        product_description: product.description,
+        component_specs: product.combination_data.component_specs ?? [],
+      };
+    }
+
+    const isInternet = product.tags.includes("internet");
+
+    return {
+      inverter: product.name,
+      inverter_price: product.price,
+      battery_config: "N/A",
+      battery_price: 0,
+      panel_config: "N/A",
+      panel_price: 0,
+      array_size_w: 0,
+      battery_total_wh: 0,
+      total_price: product.price,
+      daily_yield: 0,
+      deficit: 0,
+      status: "Optimal",
+      advice: product.description,
+      log: [product.description],
+      is_preconfigured: true,
+      product_id: product.id,
+      product_name: product.name,
+      product_description: product.description,
+      kit_type: isInternet ? "internet" : "solar",
+      component_specs: [
+        {
+          role: isInternet ? "network" : "inverter",
+          name: product.name,
+          quantity: 1,
+          specs: {
+            price: product.price,
+          },
+        },
+      ],
+    };
+  };
+
 const safeNumber = (value: unknown, fallback = 0) => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -1793,8 +1844,7 @@ export default function App() {
 
   const saveMasterDevice = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) return;
+    const adminKey = sessionStorage.getItem("ss_admin_key") || "";
 
     const fd = new FormData(e.currentTarget);
     const device = {
@@ -1806,7 +1856,7 @@ export default function App() {
     };
 
     try {
-      await sdk.saveMasterDevice(device, adminKey);
+      await sdk.saveMasterDevice(device, adminKey || undefined);
       setMasterDevices(prev => {
         const idx = prev.findIndex(d => d.id === device.id);
         if (idx >= 0) {
@@ -1823,7 +1873,7 @@ export default function App() {
       alert("Failed to save master device.");
     }
   };
-
+  
   const duplicateHardware = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
     const newItem = {
       ...item,
@@ -2144,14 +2194,12 @@ export default function App() {
               >
                 <Database className="w-4 h-4" /> Hardware DB
               </button>
-              {isDeveloper && (
-                <button 
-                  onClick={() => setActiveTab("logs")}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "logs" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-                >
-                  <Terminal className="w-4 h-4" /> Logs
-                </button>
-              )}
+                  <button
+                    onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
+                    className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                  >
+                    + Add Master Device
+                  </button>
             </nav>
 
             <div className="flex items-center gap-4">
@@ -2663,7 +2711,7 @@ export default function App() {
                                     </p>
                                     <div className="mt-4 flex flex-col gap-2">
                                       <button 
-                                        onClick={() => setSelectedSystemDetails(sys)}
+                                        onClick={() => openSystemDetails(sys)}
                                         className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                                       >
                                         View Details <ChevronRight className="w-4 h-4" />
@@ -3059,8 +3107,11 @@ export default function App() {
                     </div>
                   </div>
                   <div className="p-6 border-t border-stone-100">
-                    <button className="w-full bg-stone-900 text-white py-3 rounded-2xl text-xs font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10">
-                      Find on Jiji / Jumia
+                    <button
+                      onClick={() => openSystemDetails(buildProductDetails(product))}
+                      className="w-full bg-stone-900 text-white py-3 rounded-2xl text-xs font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
+                    >
+                      View Specs
                     </button>
                   </div>
                 </motion.div>
@@ -3856,7 +3907,7 @@ export default function App() {
                             </button>
                             <div className="flex gap-2">
                               <button 
-                                onClick={() => setSelectedSystemDetails(sys)}
+                                onClick={() => openSystemDetails(buildProductDetails(product))}
                                 className="flex-1 px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                               >
                                 View Details <ChevronRight className="w-4 h-4" />
@@ -3978,158 +4029,163 @@ export default function App() {
       {/* System Details Modal */}
       <AnimatePresence>
         {selectedSystemDetails && (
-          <div className="space-y-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-2xl font-bold text-stone-900">
-                  {selectedSystemDetails.product_name || "System Details"}
-                </h3>
-                {selectedSystemDetails.product_description && (
-                  <p className="text-sm text-stone-500 mt-1">
-                    {selectedSystemDetails.product_description}
-                  </p>
-                )}
-              </div>
-        
-              <button
-                onClick={() => setSelectedSystemDetails(null)}
-                className="p-2 rounded-full hover:bg-stone-100 text-stone-500"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-        
-            <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50">
-              <p className="text-sm font-semibold text-stone-700">Status</p>
-              <p className="text-base text-stone-900 mt-1">{selectedSystemDetails.status}</p>
-              <p className="text-sm text-stone-600 mt-2">{selectedSystemDetails.advice}</p>
-            </div>
-        
-            {showInteractiveBridge &&
-            (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
-              <InteractiveBridge
-                selectedSystem={selectedSystemDetails}
-                onClose={() => setShowInteractiveBridge(false)}
-              />
-            ) : (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                      <Cpu className="w-4 h-4" />
-                      Inverter
-                    </div>
-                    <p className="mt-2 text-sm text-stone-900">
-                      {selectedSystemDetails.inverter}
-                    </p>
-                    <p className="text-xs text-stone-500 mt-1">
-                      {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                      <BatteryIcon className="w-4 h-4" />
-                      Battery
-                    </div>
-                    <p className="mt-2 text-sm text-stone-900">
-                      {selectedSystemDetails.battery_config}
-                    </p>
-                    <p className="text-xs text-stone-500 mt-1">
-                      {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
-                    </p>
-                  </div>
-
-                  <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                      <Sun className="w-4 h-4" />
-                      Panel
-                    </div>
-                    <p className="mt-2 text-sm text-stone-900">
-                      {selectedSystemDetails.panel_config}
-                    </p>
-                    <p className="text-xs text-stone-500 mt-1">
-                      {selectedSystemDetails.panel_w ? `${selectedSystemDetails.panel_w}W` : ""}
-                    </p>
-                  </div>
-                </div>
-
-                {selectedSystemDetails.component_specs &&
-                  selectedSystemDetails.component_specs.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-lg flex items-center gap-2">
-                        <Layers className="w-5 h-5 text-stone-400" />
-                        Hardware Specs
-                      </h4>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {selectedSystemDetails.component_specs.map((item, index) => (
-                          <div
-                            key={index}
-                            className="p-4 rounded-2xl border border-stone-200 bg-white"
-                          >
-                            <div className="flex items-center justify-between gap-3 mb-3">
-                              <p className="font-bold text-stone-900 capitalize">
-                                {item.role.replace(/_/g, " ")}
-                              </p>
-                              <span className="text-xs font-bold text-stone-500">
-                                Qty: {item.quantity}
-                              </span>
-                            </div>
-
-                            <p className="text-sm text-stone-700 mb-3">{item.name}</p>
-
-                            <div className="space-y-1 text-xs text-stone-500">
-                              {Object.entries(item.specs).map(([key, value]) => (
-                                <div
-                                  key={key}
-                                  className="flex items-center justify-between gap-4"
-                                >
-                                  <span className="capitalize">
-                                    {key.replace(/_/g, " ")}
-                                  </span>
-                                  <span className="font-semibold text-stone-700">
-                                    {String(value)}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                <div className="space-y-4">
-                  <h4 className="font-bold text-lg flex items-center gap-2">
-                    <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
-                  </h4>
-                  <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100 space-y-4 text-sm text-stone-600 leading-relaxed">
-                    <p>• <strong>DC Bus:</strong> Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration.</p>
-                    <p>• <strong>PV String:</strong> Connect panels in the specified series-parallel configuration to stay within the {selectedSystemDetails.inverter}'s MPPT window.</p>
-                    <p>• <strong>Protection:</strong> Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm p-4 flex items-center justify-center"
+            onClick={() => setSelectedSystemDetails(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 16 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.96, y: 16 }}
+              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-stone-200 p-6 md:p-8"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="space-y-6">
+                <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
-                      Total System Investment
-                    </p>
-                    <p className="text-3xl font-black text-emerald-900">
-                      ₦{(selectedSystemDetails.total_price || 0).toLocaleString()}
-                    </p>
+                    <h3 className="text-2xl font-bold text-stone-900">
+                      {selectedSystemDetails.product_name || "System Details"}
+                    </h3>
+                    {selectedSystemDetails.product_description && (
+                      <p className="text-sm text-stone-500 mt-1">
+                        {selectedSystemDetails.product_description}
+                      </p>
+                    )}
                   </div>
+
                   <button
-                    onClick={() => generateQuote(selectedSystemDetails)}
-                    className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
+                    onClick={() => setSelectedSystemDetails(null)}
+                    className="p-2 rounded-full hover:bg-stone-100 text-stone-500"
                   >
-                    Generate Quote <ExternalLink className="w-4 h-4" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
+
+                <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50">
+                  <p className="text-sm font-semibold text-stone-700">Status</p>
+                  <p className="text-base text-stone-900 mt-1">{selectedSystemDetails.status}</p>
+                  <p className="text-sm text-stone-600 mt-2">{selectedSystemDetails.advice}</p>
+                </div>
+
+                {showInteractiveBridge &&
+                (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
+                  <InteractiveBridge
+                    selectedSystem={selectedSystemDetails}
+                    onClose={() => setShowInteractiveBridge(false)}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                          <Cpu className="w-4 h-4" />
+                          Inverter
+                        </div>
+                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.inverter}</p>
+                        <p className="text-xs text-stone-500 mt-1">
+                          {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                          <BatteryIcon className="w-4 h-4" />
+                          Battery
+                        </div>
+                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.battery_config}</p>
+                        <p className="text-xs text-stone-500 mt-1">
+                          {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
+                        </p>
+                      </div>
+
+                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                          <Sun className="w-4 h-4" />
+                          Panel
+                        </div>
+                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.panel_config}</p>
+                        <p className="text-xs text-stone-500 mt-1">
+                          {selectedSystemDetails.panel_w ? `${selectedSystemDetails.panel_w}W` : ""}
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedSystemDetails.component_specs &&
+                      selectedSystemDetails.component_specs.length > 0 && (
+                        <div className="space-y-4">
+                          <h4 className="font-bold text-lg flex items-center gap-2">
+                            <Layers className="w-5 h-5 text-stone-400" />
+                            Hardware Specs
+                          </h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {selectedSystemDetails.component_specs.map((item, index) => (
+                              <div
+                                key={index}
+                                className="p-4 rounded-2xl border border-stone-200 bg-white"
+                              >
+                                <div className="flex items-center justify-between gap-3 mb-3">
+                                  <p className="font-bold text-stone-900 capitalize">
+                                    {item.role.replace(/_/g, " ")}
+                                  </p>
+                                  <span className="text-xs font-bold text-stone-500">
+                                    Qty: {item.quantity}
+                                  </span>
+                                </div>
+
+                                <p className="text-sm text-stone-700 mb-3">{item.name}</p>
+
+                                <div className="space-y-1 text-xs text-stone-500">
+                                  {Object.entries(item.specs).map(([key, value]) => (
+                                    <div key={key} className="flex items-center justify-between gap-4">
+                                      <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                      <span className="font-semibold text-stone-700">
+                                        {String(value)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-lg flex items-center gap-2">
+                        <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
+                      </h4>
+                      <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100 space-y-4 text-sm text-stone-600 leading-relaxed">
+                        <p>• <strong>DC Bus:</strong> Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration.</p>
+                        <p>• <strong>PV String:</strong> Connect panels in the specified series-parallel configuration to stay within the {selectedSystemDetails.inverter}'s MPPT window.</p>
+                        <p>• <strong>Protection:</strong> Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array.</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
+                          Total System Investment
+                        </p>
+                        <p className="text-3xl font-black text-emerald-900">
+                          ₦{(selectedSystemDetails.total_price || 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => generateQuote(selectedSystemDetails)}
+                        className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
+                      >
+                        Generate Quote <ExternalLink className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
 
