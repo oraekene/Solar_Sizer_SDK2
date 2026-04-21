@@ -31,53 +31,70 @@ function enrichCombinationData(product: any, combinationData: any) {
   if (!combinationData) return null;
 
   const kitType =
-    (combinationData.battery_wh ?? 0) > 0 || (combinationData.panel_w ?? 0) > 0
+    (combinationData.kit_type as "solar" | "internet" | "powerstation" | undefined) ??
+    (((combinationData.battery_wh ?? 0) > 0 || (combinationData.panel_w ?? 0) > 0)
       ? "solar"
-      : "internet";
+      : "internet");
 
   const component_specs =
-    kitType === "solar"
-      ? [
-          {
-            role: "inverter",
-            name: combinationData.inverter,
-            quantity: 1,
-            specs: {
-              watts: combinationData.inverter_w ?? 0,
-              price: combinationData.inverter_price ?? 0,
+    Array.isArray(combinationData.component_specs) && combinationData.component_specs.length > 0
+      ? combinationData.component_specs
+      : kitType === "solar"
+        ? [
+            {
+              role: "inverter",
+              name: combinationData.inverter,
+              quantity: 1,
+              specs: {
+                watts: combinationData.inverter_w ?? 0,
+                price: combinationData.inverter_price ?? 0,
+              },
             },
-          },
-          {
-            role: "battery",
-            name: combinationData.battery_config,
-            quantity: (combinationData.battery_wh ?? 0) > 0 ? 1 : 0,
-            specs: {
-              usable_wh: combinationData.battery_wh ?? 0,
-              price: combinationData.battery_price ?? 0,
+            {
+              role: "battery",
+              name: combinationData.battery_config,
+              quantity: (combinationData.battery_wh ?? 0) > 0 ? 1 : 0,
+              specs: {
+                usable_wh: combinationData.battery_wh ?? 0,
+                price: combinationData.battery_price ?? 0,
+              },
             },
-          },
-          {
-            role: "panel",
-            name: combinationData.panel_config,
-            quantity: (combinationData.panel_w ?? 0) > 0 ? 1 : 0,
-            specs: {
-              watts: combinationData.panel_w ?? 0,
-              price: combinationData.panel_price ?? 0,
+            {
+              role: "panel",
+              name: combinationData.panel_config,
+              quantity: (combinationData.panel_w ?? 0) > 0 ? 1 : 0,
+              specs: {
+                watts: combinationData.panel_w ?? 0,
+                price: combinationData.panel_price ?? 0,
+              },
             },
-          },
-        ].filter((c) => c.quantity > 0)
-      : [
-          {
-            role: "network",
-            name: product.name,
-            quantity: 1,
-            specs: {
-              price: product.price ?? 0,
-              watts: combinationData.inverter_w ?? 0,
-              note: product.description ?? "",
-            },
-          },
-        ];
+          ].filter((c) => c.quantity > 0)
+        : kitType === "powerstation"
+          ? [
+              {
+                role: "powerstation",
+                name: product.name,
+                quantity: 1,
+                specs: {
+                  capacity_wh: combinationData.battery_wh ?? 0,
+                  max_output_w: combinationData.inverter_w ?? 0,
+                  pv_input_w: combinationData.panel_w ?? 0,
+                  price: product.price ?? 0,
+                },
+              },
+            ]
+          : [
+              {
+                role: "network",
+                name: product.name,
+                quantity: 1,
+                specs: {
+                  price: product.price ?? 0,
+                  watts: combinationData.inverter_w ?? 0,
+                  note: product.description ?? "",
+                },
+              },
+            ];
 
   return {
     ...combinationData,
