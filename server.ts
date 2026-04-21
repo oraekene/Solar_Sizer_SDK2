@@ -1265,14 +1265,8 @@ async function startServer() {
 
   app.post("/api/devices", async (req, res) => {
     try {
-      const adminKey = req.headers["x-admin-key"];
-      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-      
-      if (!ADMIN_PASSWORD || adminKey !== ADMIN_PASSWORD) {
-        return res.status(403).json({ error: "Unauthorized or Admin password not configured on server." });
-      }
-
       const { id, name, category, default_watts, tags } = req.body;
+
       if (useSupabase) {
         const { error } = await supabase.from("devices_master").upsert({
           id, name, category, default_watts, tags
@@ -1290,6 +1284,7 @@ async function startServer() {
         `);
         upsert.run(id, name, category, default_watts, JSON.stringify(tags || []));
       }
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Error saving device:", error);
