@@ -272,6 +272,93 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
   ];
 };
 
+const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
+  if (
+    data.kit_type === "solar" ||
+    data.kit_type === "internet" ||
+    data.kit_type === "powerstation"
+  ) {
+    return data.kit_type;
+  }
+
+  if ((data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0) return "solar";
+  return "internet";
+};
+
+const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComponentSpec[] => {
+  const kitType = getKitType(data);
+
+  if (kitType === "solar") {
+    return [
+      {
+        role: "inverter",
+        name: data.inverter,
+        quantity: 1,
+        specs: {
+          watts: data.inverter_w ?? 0,
+          price: data.inverter_price ?? 0,
+        },
+      },
+      {
+        role: "battery",
+        name: data.battery_config,
+        quantity: (data.battery_wh ?? 0) > 0 ? 1 : 0,
+        specs: {
+          usable_wh: data.battery_wh ?? 0,
+          price: data.battery_price ?? 0,
+        },
+      },
+      {
+        role: "panel",
+        name: data.panel_config,
+        quantity: (data.panel_w ?? 0) > 0 ? 1 : 0,
+        specs: {
+          watts: data.panel_w ?? 0,
+          price: data.panel_price ?? 0,
+        },
+      },
+    ].filter((c) => c.quantity > 0);
+  }
+
+  if (kitType === "powerstation") {
+    return [
+      {
+        role: "powerstation",
+        name: prod.name,
+        quantity: 1,
+        specs: {
+          capacity_wh: data.battery_wh ?? 0,
+          max_output_w: data.inverter_w ?? 0,
+          pv_input_w: data.panel_w ?? 0,
+          price: prod.price ?? 0,
+        },
+      },
+    ];
+  }
+
+  return [
+    {
+      role: "network",
+      name: prod.name,
+      quantity: 1,
+      specs: {
+        price: prod.price,
+        watts: data.inverter_w ?? 0,
+        note: prod.description,
+      },
+    },
+  ];
+};
+
+const getEffectiveDeficitWh = (
+  totalDailyWh: number,
+  dailyYieldWh: number,
+  simDeficitWh: number
+): number => {
+  const energyShortfallWh = Math.max(0, totalDailyWh - dailyYieldWh);
+  return Math.max(energyShortfallWh, simDeficitWh);
+};
+
 export function buildCombinations(
   location: Region,
   devices: Device[],
@@ -308,10 +395,7 @@ export function buildCombinations(
 
     const prodLog: string[] = [];
     const data = prod.combination_data;
-    const kitType =
-      (data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0
-        ? "solar"
-        : "internet";
+    const kitType = getKitType(data);
 
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;
@@ -349,20 +433,21 @@ export function buildCombinations(
     );
 
     const simDeficit = sim.finalDeficitWh;
-    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
+    const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
 
     let status: "Optimal" | "Conditional" | "High Risk";
     let advice: string;
 
-    if (sim.passed) {
+    if (sim.passed && effectiveDeficitWh === 0) {
       status = "Optimal";
       advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
     } else if (deficitPercentage <= tolerance) {
       status = "Conditional";
-      advice = `⚠️ Blackout Risk: You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      advice = `⚠️ Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
       status = "High Risk";
-      advice = `🚨 High Blackout Risk: You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
       allLogs.push(prodLog);
       continue;
     }
@@ -387,7 +472,7 @@ export function buildCombinations(
       battery_total_wh: batWh,
       total_price: totalPrice,
       daily_yield: dailyYield,
-      deficit: Math.max(0, simDeficit),
+      deficit: Math.max(0, effectiveDeficitWh),
       status,
       advice,
       log: prodLog,
@@ -397,35 +482,7 @@ export function buildCombinations(
       battery_wh: batWh,
       panel_w: panW,
       kit_type: kitType,
-      component_specs: [
-        {
-          role: "inverter",
-          name: data.inverter,
-          quantity: 1,
-          specs: {
-            watts: invW,
-            price: data.inverter_price || 0,
-          },
-        },
-        {
-          role: "battery",
-          name: data.battery_config,
-          quantity: batWh > 0 ? 1 : 0,
-          specs: {
-            usable_wh: batWh,
-            price: data.battery_price || 0,
-          },
-        },
-        {
-          role: "panel",
-          name: data.panel_config,
-          quantity: panW > 0 ? 1 : 0,
-          specs: {
-            watts: panW,
-            price: data.panel_price || 0,
-          },
-        },
-      ].filter((c) => c.quantity > 0),
+      component_specs: buildKitComponentSpecs(prod, data),
       product_name: prod.name,
       product_description: prod.description,
     });
@@ -433,6 +490,7 @@ export function buildCombinations(
     allLogs.push(prodLog);
   }
   
+  // --- 1.5 Powerstations ---
   // --- 1.5 Powerstations ---
   for (const ps of safeHardware.powerstations) {
     const psLog: string[] = [];
@@ -451,8 +509,6 @@ export function buildCombinations(
       : ps.max_pv_input_w;
 
     const ccType = ps.cc_type || "mppt";
-
-    // Use the real PV input rating, not a fixed 350W panel assumption.
     const dailyYield = ps.max_pv_input_w * psh * 0.8;
 
     const sim = simulateHourlySoC(
@@ -463,25 +519,27 @@ export function buildCombinations(
       ccType,
       location
     );
-    
+
     const simDeficit = sim.finalDeficitWh;
-    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
-    
+    const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
+
     let status: "Optimal" | "Conditional" | "High Risk";
     let advice: string;
-    
-    if (sim.passed) {
+
+    if (sim.passed && effectiveDeficitWh === 0) {
       status = "Optimal";
-      advice = `This powerstation covers your load.`;
+      advice = "This powerstation covers your load.";
     } else if (deficitPercentage <= tolerance) {
       status = "Conditional";
-      advice = `⚠️ Blackout Risk: Short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      advice = `⚠️ Blackout Risk: Short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
       status = "High Risk";
-      advice = `🚨 High Blackout Risk: Short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      advice = `🚨 High Blackout Risk: Short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
       allLogs.push(psLog);
       continue;
     }
+
     psLog.push(`Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
     psLog.push(`Status: ${status}.`);
 
@@ -505,7 +563,7 @@ export function buildCombinations(
       battery_total_wh: ps.capacity_wh,
       total_price: psPrice + panelPrice,
       daily_yield: dailyYield,
-      deficit: Math.max(0, simDeficit),
+      deficit: Math.max(0, effectiveDeficitWh),
       status,
       advice,
       log: psLog,
@@ -514,7 +572,7 @@ export function buildCombinations(
 
     allLogs.push(psLog);
   }
-
+  
   // --- 2. Custom inverter + battery + panel combinations ---
   for (const inv of safeHardware.inverters) {
     const minUnitsForSurge = Math.ceil(max_surge / inv.max_ac_w);
@@ -673,7 +731,8 @@ export function buildCombinations(
           );
 
           const simDeficit = sim.finalDeficitWh;
-          const deficitPercentage = getHourlyDeficitPct(total_daily_wh, simDeficit);
+          const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+          const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
           // OLDER VERSION
           // const simDeficit = sim.finalDeficitWh;
           // const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
@@ -681,22 +740,22 @@ export function buildCombinations(
           let status: "Optimal" | "Conditional" | "High Risk";
           let advice: string;
 
-          if (sim.passed) {
+          if (sim.passed && effectiveDeficitWh === 0) {
             status = "Optimal";
             advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
             panelLog.push(`✅ System passed 24-hour hourly stress test.`);
           } else if (deficitPercentage <= tolerance) {
             status = "Conditional";
             const controllerWarning = ccType.toUpperCase();
-            advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
+            advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
             panelLog.push(`⚠️ System failed hourly simulation (${deficitPercentage.toFixed(0)}% deficit), but within tolerance.`);
           } else {
             status = "High Risk";
             const controllerWarning = ccType.toUpperCase();
-            advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${simDeficit.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
+            advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
             panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
           }
-
+          
           if (status === "High Risk") {
             allLogs.push(panelLog);
             continue;
@@ -717,7 +776,7 @@ export function buildCombinations(
             battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
             total_price: totalSystemPrice,
             daily_yield: dailyYield,
-            deficit: Math.max(0, simDeficit),
+            deficit: Math.max(0, effectiveDeficitWh),
             status,
             advice,
             log: panelLog,
