@@ -1,4546 +1,744 @@
-// Merged App.tsx (best of v1 + v2)
-import { useState, useMemo, useEffect, ChangeEvent } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
-import { 
-  Sun, 
-  Battery as BatteryIcon, 
-  Zap, 
-  MapPin, 
-  Plus, 
-  Trash2, 
-  Calculator, 
-  ChevronRight,
-  ChevronLeft,
-  Info,
-  AlertCircle,
-  CheckCircle2,
-  ListIcon,
-  X,
-  Database,
-  Terminal,
-  ArrowLeft,
-  LayoutGrid,
-  Settings,
-  ShieldCheck,
-  ExternalLink,
-  Cpu,
-  Layers,
-  Activity,
-  Wifi,
-  Percent,
-  UserCircle,
-  Save,
-  FolderOpen,
-  Copy,
-  Download,
-  Upload,
-  Scale,
-  Columns,
-  FileJson,
-  FileText
-} from "lucide-react";
-import { 
-  Device, 
-  Region, 
-  SystemCombination, 
-  LoadAnalysis, 
-  DeviceCategory, 
-  AppTab, 
-  CalculationAttempt, 
-  Inverter, 
-  Panel, 
-  Battery, 
-  BatteryPreference, 
-  UserProfile, 
-  User, 
-  SavedResult,
-  MasterDevice,
-  Product,
-  Powerstation,
-  ProfitMargins,
-  PDFSettings
-} from "./types";
-import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
-import InteractiveBridge from "./components/InteractiveBridge";
-import { sdk } from "./sdk";
+import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES } from "../constants";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins } from "../types";
 
-const CATEGORIES: { value: DeviceCategory; label: string }[] = [
-  { value: "compressor", label: "Compressor (Fridge/AC)" },
-  { value: "motor", label: "Motor (Fan/Pump)" },
-  { value: "heating", label: "Heating (Iron/Heater)" },
-  { value: "electronics", label: "Electronics (TV/Laptop)" },
-  { value: "internet", label: "Internet (Starlink/Router)" },
-];
+export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
+  const hourlyConsumption: Record<number, number> = {};
+  const hourlySurge: Record<number, number> = {};
 
-const REGIONS: { value: Region; label: string }[] = [
-  { value: "SE_SS", label: "South East / South South" },
-  { value: "SW", label: "South West" },
-  { value: "North", label: "North" },
-];
-
-const getSystemRecommendations = (sys: SystemCombination, allSystems: SystemCombination[]) => {
-  const recommendations = [];
-  const prices = allSystems.map(s => s.total_price);
-  const minPrice = Math.min(...prices);
-  const maxPrice = Math.max(...prices);
-  const avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
-  
-  const maxBattery = Math.max(...allSystems.map(s => s.battery_total_wh));
-  const maxPanels = Math.max(...allSystems.map(s => s.array_size_w));
-
-  // Budget / Entry Level
-  if (sys.total_price === minPrice) {
-    recommendations.push("Student & Entry-Level: Most affordable entry into solar energy.");
-  } else if (sys.total_price < avgPrice * 0.8) {
-    recommendations.push("Budget Conscious: Great for small shops and provision stores.");
+  for (let h = 0; h < 24; h++) {
+    hourlyConsumption[h] = 0;
+    hourlySurge[h] = 0;
   }
 
-  // Mid-Range / Professional
-  if (sys.total_price >= avgPrice * 0.9 && sys.total_price <= avgPrice * 1.1 && sys.status === 'Optimal') {
-    recommendations.push("Mid-Level Professional: Balanced reliability for home offices and managers.");
+  for (const d of devices) {
+    const runW = d.watts * d.qty;
+    const surgeW = runW * (SURGE_MULTIPLIERS[d.category] || 1.0);
+    const surgeDiff = surgeW - runW;
+
+    for (const range of d.ranges) {
+      const start = range.start;
+      const end = range.end;
+      
+      // Calculate duration correctly including wrap-around and 24h coverage
+      const duration = end > start ? end - start : 24 - start + end;
+
+      for (let i = 0; i < duration; i++) {
+        const h = (start + i) % 24;
+        hourlyConsumption[h] += runW;
+        if (surgeDiff > hourlySurge[h]) {
+          hourlySurge[h] = surgeDiff;
+        }
+      }
+    }
   }
 
-  // High-End / Executive
-  if (sys.total_price > avgPrice * 1.3 || sys.total_price === maxPrice) {
-    recommendations.push("Executive & Senior Level: Premium capacity for large homes and high-load electronics.");
-  }
+  const maxSurge = Math.max(
+    ...Object.keys(hourlyConsumption).map(
+      (h) => hourlyConsumption[Number(h)] + hourlySurge[Number(h)]
+    )
+  );
 
-  // Heavy Duty / Commercial
-  if (sys.battery_total_wh === maxBattery && sys.array_size_w === maxPanels) {
-    recommendations.push("Coldroom & Frozen Food: Maximum storage and generation for 24/7 commercial cooling.");
-  } else if (sys.battery_total_wh > maxBattery * 0.75) {
-    recommendations.push("Food Vendor & Home Cooling: High battery autonomy specifically for freezers and fridges.");
-  } else if (sys.array_size_w === maxPanels) {
-    recommendations.push("Daytime Business: Ideal for restaurants, bukkas, and busy offices.");
-  }
+  // Nighttime: 18:00 to 07:00
+  const nightHours = [18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6];
+  const nighttimeWh = nightHours.reduce(
+    (acc, h) => acc + hourlyConsumption[h],
+    0
+  );
 
-  // Critical Infrastructure
-  if (sys.inverter.includes('Parallel') || (sys.battery_total_wh > maxBattery * 0.8 && sys.status === 'Optimal')) {
-    recommendations.push("Critical Infrastructure: Suitable for clinics, hospitals, and small data hubs.");
-  }
+  const totalDailyWh = Object.values(hourlyConsumption).reduce(
+    (acc, val) => acc + val,
+    0
+  );
 
-  // Default
-  if (recommendations.length === 0) {
-    recommendations.push("Standard Residential: Reliable power for typical household needs.");
-  }
-  
-  return recommendations;
-};
-
-interface GeneratorProfile {
-  name: string;
-  capacity_va: number;
-  fuel_type: "Petrol" | "Diesel";
-  fuel_consumption_l_hr: number;
-  price: number;
-  maintenance_mo: number;
-  lifespan_mo: number;
+  return { 
+    max_surge: maxSurge, 
+    nighttime_wh: nighttimeWh, 
+    total_daily_wh: totalDailyWh,
+    hourly_consumption: hourlyConsumption
+  };
 }
 
-const GENERATOR_PROFILES: GeneratorProfile[] = [
-  {
-    name: "Small Petrol (I Better Pass My Neighbor)",
-    capacity_va: 950,
-    fuel_type: "Petrol",
-    fuel_consumption_l_hr: 0.4,
-    price: 150000,
-    maintenance_mo: 4000,
-    lifespan_mo: 60, // 5 years
-  },
-  {
-    name: "Standard Petrol (Medium)",
-    capacity_va: 2500,
-    fuel_type: "Petrol",
-    fuel_consumption_l_hr: 0.8,
-    price: 550000,
-    maintenance_mo: 8500,
-    lifespan_mo: 96, // 8 years
-  },
-  {
-    name: "Large Petrol",
-    capacity_va: 5000,
-    fuel_type: "Petrol",
-    fuel_consumption_l_hr: 1.5,
-    price: 1000000,
-    maintenance_mo: 16500,
-    lifespan_mo: 120, // 10 years
-  },
-  {
-    name: "Small Diesel",
-    capacity_va: 10000,
-    fuel_type: "Diesel",
-    fuel_consumption_l_hr: 2.0,
-    price: 5500000,
-    maintenance_mo: 45000,
-    lifespan_mo: 180, // 15 years
-  },
-  {
-    name: "Large Diesel",
-    capacity_va: 25000,
-    fuel_type: "Diesel",
-    fuel_consumption_l_hr: 4.5,
-    price: 15000000,
-    maintenance_mo: 85000,
-    lifespan_mo: 240, // 20 years
+export function simulateHourlySoC(
+  hourlyLoad: Record<number, number>,
+  actualDailyYield: number,
+  usableBatteryWh: number,
+  maxChargeW: number,
+  ccType: "pwm" | "mppt",
+  location: Region
+): { passed: boolean; lowestSoCWh: number; finalDeficitWh: number; failureTime: string | null } {
+  // FETCH DYNAMIC REGIONAL CURVE
+  const irradianceCurve = IRRADIANCE_PROFILES[location] || IRRADIANCE_PROFILES["SW"]; // Fallback to SW if location missing
+  
+  const hourlySolarGen: Record<number, number> = {};
+  for (let h = 0; h < 24; h++) {
+    hourlySolarGen[h] = (irradianceCurve[h] || 0) * actualDailyYield;
   }
-];
 
-const FUEL_PRICES = {
-  Petrol: 1100,
-  Diesel: 1400,
-};
+  // 2. Set up the Virtual Battery
+  // Start at 18:00 (6 PM) assuming a full battery
+  let currentBatteryWh = usableBatteryWh;
+  let lowestBatteryWh = usableBatteryWh;
 
-type HardwareType = "inverter" | "panel" | "battery" | "powerstation";
+  // Loop through 48 hours to find actual failure time for unsustainable systems
+  const simulationHours = [
+    18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
+    18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
+  ];
 
-const itemData = (item: any, fallbackType?: HardwareType) => {
-  if (!item) return null;
+  for (let i = 0; i < simulationHours.length; i++) {
+    const h = simulationHours[i];
+    const load = hourlyLoad[h] || 0;
+    const gen = hourlySolarGen[h] || 0;
 
-  const nestedData = item?.data && typeof item.data === "object" && !Array.isArray(item.data)
-    ? item.data
-    : null;
+    // Priority 1: Solar powers the active load first
+    const netPower = gen - load;
 
-  const normalized = nestedData ? { ...item, ...nestedData } : { ...item };
+    if (netPower > 0) {
+      // Priority 2: Excess solar goes to the battery
+      const chargeAdded = Math.min(netPower, maxChargeW);
+      currentBatteryWh += chargeAdded;
 
-  return {
-    ...normalized,
-    id: normalized.id ?? item.id,
-    type: normalized.type ?? fallbackType ?? item.type,
-    description: normalized.description ?? item.description ?? "",
-    tags: Array.isArray(normalized.tags)
-      ? normalized.tags
-      : Array.isArray(item.tags)
-        ? item.tags
-        : [],
-  };
-};
-
-  const openSystemDetails = (system: SystemCombination) => {
-    setShowInteractiveBridge(false);
-    setSelectedSystemDetails(system);
-  };
-
-  const buildProductDetails = (product: Product): SystemCombination => {
-    if (product.combination_data) {
-      return {
-        ...product.combination_data,
-        product_id: product.id,
-        product_name: product.name,
-        product_description: product.description,
-        component_specs: product.combination_data.component_specs ?? [],
-      };
+      // Cap battery at 100% full
+      if (currentBatteryWh > usableBatteryWh) {
+        currentBatteryWh = usableBatteryWh;
+      }
+    } else {
+      // Deficit: Pull from battery
+      currentBatteryWh += netPower; // netPower is negative
     }
 
-    const isInternet = product.tags?.includes("internet") ?? false;
+    // 3. Failure Check
+    if (currentBatteryWh < lowestBatteryWh) {
+      lowestBatteryWh = currentBatteryWh;
+    }
 
-    return {
-      inverter: product.name,
-      inverter_price: product.price,
-      battery_config: "N/A",
-      battery_price: 0,
-      panel_config: "N/A",
-      panel_price: 0,
-      array_size_w: 0,
-      battery_total_wh: 0,
-      total_price: product.price,
-      daily_yield: 0,
-      deficit: 0,
-      status: "Optimal",
-      advice: product.description,
-      log: [product.description],
-      is_preconfigured: true,
-      product_id: product.id,
-      product_name: product.name,
-      product_description: product.description,
-      kit_type: isInternet ? "internet" : "solar",
-      component_specs: [
-        {
-          role: isInternet ? "network" : "inverter",
-          name: product.name,
-          quantity: 1,
-          specs: {
-            price: product.price,
-          },
-        },
-      ],
-    };
-  };
+    if (currentBatteryWh < 0) {
+      const amPm = h < 12 ? "AM" : "PM";
+      let displayHour = h % 12;
+      if (displayHour === 0) displayHour = 12;
+      const daySuffix = i >= 24 ? " (Day 2)" : "";
+      const failureTime = `${displayHour}:00 ${amPm}${daySuffix}`;
 
-  const buildInternetDeviceDetails = (md: MasterDevice): SystemCombination => ({
-    inverter: md.name,
-    inverter_price: 0,
-    battery_config: "N/A",
-    battery_price: 0,
-    panel_config: "N/A",
-    panel_price: 0,
-    array_size_w: md.default_watts,
-    battery_total_wh: 0,
-    total_price: 0,
-    daily_yield: 0,
-    deficit: 0,
-    status: "Optimal",
-    advice: `${md.name} typically draws about ${md.default_watts}W.`,
-    log: [
-      `Internet device: ${md.name}`,
-      `Category: ${md.category}`,
-      `Typical consumption: ${md.default_watts}W`,
-      md.tags.length ? `Tags: ${md.tags.join(", ")}` : "Tags: none",
-    ],
-    is_preconfigured: true,
-    product_id: md.id,
-    product_name: md.name,
-    product_description: `Internet hardware device • ${md.default_watts}W typical load`,
-    kit_type: "internet",
-    component_specs: [
+      return { passed: false, lowestSoCWh: lowestBatteryWh, finalDeficitWh: Math.abs(currentBatteryWh), failureTime };
+    }
+  }
+
+  // Check if battery recharged by end of simulation (5 PM Day 2)
+  if (currentBatteryWh < usableBatteryWh * 0.95) {
+    return { passed: false, lowestSoCWh: lowestBatteryWh, finalDeficitWh: usableBatteryWh - currentBatteryWh, failureTime: "5:00 PM (Insufficient Recharge)" };
+  }
+
+  return { passed: true, lowestSoCWh: lowestBatteryWh, finalDeficitWh: 0, failureTime: null };
+}
+
+export function getLoadSheddingAdvice(devices: Device[], deficit: number): string {
+  // Sort devices by hourly consumption (highest to lowest)
+  const sortedDevices = [...devices].sort((a, b) => (b.watts * b.qty) - (a.watts * a.qty));
+
+  let deficitRemaining = deficit;
+  const adviceSteps: string[] = [];
+
+  for (const d of sortedDevices) {
+    const hourlyWh = d.watts * d.qty;
+
+    // Calculate total run hours for this device
+    let totalRunHours = 0;
+    for (const range of d.ranges) {
+      const start = range.start;
+      const end = range.end;
+      totalRunHours += end > start ? end - start : 24 - start + end;
+    }
+
+    if (hourlyWh === 0 || totalRunHours <= 0) {
+      continue;
+    }
+
+    const hoursToCut = Math.ceil(deficitRemaining / hourlyWh);
+
+    // If we can cover the remaining deficit just by trimming this device:
+    if (hoursToCut <= totalRunHours) {
+      if (hoursToCut === totalRunHours) {
+        adviceSteps.push(`turn off the ${d.name} completely`);
+      } else {
+        adviceSteps.push(`run your ${d.name} for ${hoursToCut} hour(s) less`);
+      }
+
+      deficitRemaining = 0;
+      break; // We've covered the deficit!
+    }
+    // If this device isn't enough, we turn it off completely and keep going:
+    else {
+      adviceSteps.push(`turn off the ${d.name} completely`);
+      deficitRemaining -= (totalRunHours * hourlyWh);
+    }
+  }
+
+  // Format the final output
+  if (deficitRemaining <= 0) {
+    return `To bridge the ${deficit.toFixed(0)}Wh gap, ` + adviceSteps.join(" AND ") + ".";
+  } else {
+    return `Even after suggesting major cuts, you are still short. You must use grid power or upgrade the setup.`;
+  }
+}
+
+function getNominalBatteryVoltage(voltage: number): number {
+  // Standard LiFePO4 nominal classes
+  if (voltage <= 14.4) return 12;
+  if (voltage <= 28.8) return 24;
+  if (voltage <= 57.6) return 48;
+  return Math.round(voltage);
+}
+
+function isBatteryVoltageCompatible(systemVdc: number, batteryVoltage: number): boolean {
+  const nominal = getNominalBatteryVoltage(batteryVoltage);
+
+  // Keep this tolerant so 12.8V batteries work on 12V systems,
+  // 25.6V on 24V systems, and 51.2V on 48V systems.
+  const voltageMatch = Math.abs(batteryVoltage - nominal) / nominal <= 0.2;
+  const systemMatch = systemVdc % nominal === 0;
+
+  return voltageMatch && systemMatch;
+}
+
+function getHourlyDeficitPct(totalDailyWh: number, simDeficitWh: number): number {
+  if (totalDailyWh <= 0) return 0;
+  return (simDeficitWh / totalDailyWh) * 100;
+}
+
+function getStatusFromSimulation(
+  simPassed: boolean,
+  simDeficitWh: number,
+  totalDailyWh: number,
+  tolerance: number
+): "Optimal" | "Conditional" | "High Risk" {
+  const deficitPct = getHourlyDeficitPct(totalDailyWh, simDeficitWh);
+
+  if (simPassed) return "Optimal";
+  if (deficitPct <= tolerance) return "Conditional";
+  return "High Risk";
+}
+
+
+const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
+  if (
+    data.kit_type === "solar" ||
+    data.kit_type === "internet" ||
+    data.kit_type === "powerstation"
+  ) {
+    return data.kit_type;
+  }
+
+  if ((data.battery_wh ?? 0) > 0 || (data.panel_w ?? 0) > 0) return "solar";
+  return "internet";
+};
+
+const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComponentSpec[] => {
+  const kitType = getKitType(data);
+
+  if (kitType === "solar") {
+    return [
       {
-        role: "network",
-        name: md.name,
+        role: "inverter",
+        name: data.inverter,
         quantity: 1,
         specs: {
-          watts: md.default_watts,
-          category: md.category,
-          tags: md.tags.join(", "),
+          watts: data.inverter_w ?? 0,
+          price: data.inverter_price ?? 0,
         },
       },
-    ],
-  });
-
-const safeNumber = (value: unknown, fallback = 0) => {
-  const n = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(n) ? n : fallback;
-};
-
-const getSystemKey = (sys: SystemCombination, index: number) =>
-  [sys.inverter, sys.battery_config, sys.panel_config, safeNumber(sys.total_price), index].join("::");
-
-const getLogKey = (prefix: string, value: string, index: number) =>
-  `${prefix}::${index}::${value}`;
-
-function ComparisonModal({ 
-  systems, 
-  analysis, 
-  hasGenerator: initialHasGenerator, 
-  setHasGenerator: onHasGeneratorChange, 
-  exportComparisonToPDF,
-  onSave,
-  onClose 
-}: { 
-  systems: SystemCombination[]; 
-  analysis: LoadAnalysis;
-  hasGenerator: boolean;
-  setHasGenerator: (val: boolean) => void;
-  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null, savedAnalysis?: LoadAnalysis) => void;
-  onSave?: () => void;
-  onClose: () => void 
-}) {
-  const [hasGenerator, setHasGenerator] = useState(initialHasGenerator);
-  const [genHours, setGenHours] = useState(6);
-  const [fuelPriceOverride, setFuelPriceOverride] = useState<number | null>(null);
-
-  // Sync with parent if needed (for live comparisons)
-  useEffect(() => {
-    onHasGeneratorChange(hasGenerator);
-  }, [hasGenerator, onHasGeneratorChange]);
-
-  // Generator Selection Logic
-  const peakWatts = analysis.max_surge;
-  const requiredVA = peakWatts / 0.8; // Assuming 0.8 power factor for generators
-  
-  // Find the smallest generator that can handle the load
-  const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
-  
-  const defaultFuelPrice = FUEL_PRICES[selectedGen.fuel_type];
-  const fuelPrice = fuelPriceOverride ?? defaultFuelPrice;
-  const consumption = selectedGen.fuel_consumption_l_hr;
-  const maintenance = selectedGen.maintenance_mo;
-  const initialCost = hasGenerator ? 0 : selectedGen.price;
-  
-  const monthlyFuel = fuelPrice * consumption * genHours * 30; 
-  const monthlyTotal = monthlyFuel + maintenance;
-  const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
-
-  const exportToPDF = () => {
-    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, true, genHours, fuelPriceOverride, analysis);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-6xl max-h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col"
-      >
-        <div className="p-8 border-b border-stone-100 flex items-center justify-between bg-stone-50">
-          <div>
-            <h2 className="text-3xl font-black text-stone-900 flex items-center gap-3">
-              <Scale className="w-8 h-8 text-emerald-600" /> System Comparison
-            </h2>
-            <p className="text-stone-500 font-medium">Comparing {systems.length} Solar Setups vs. {selectedGen.name}</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-stone-200 shadow-sm">
-                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">I already own this generator</span>
-                <button 
-                  onClick={() => setHasGenerator(!hasGenerator)}
-                  className={`w-12 h-6 rounded-full transition-all relative ${hasGenerator ? 'bg-emerald-600' : 'bg-stone-200'}`}
-                >
-                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${hasGenerator ? 'left-7' : 'left-1'}`} />
-                </button>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase">Hrs/Day</span>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="24" 
-                    value={genHours} 
-                    onChange={(e) => setGenHours(Number(e.target.value))}
-                    className="w-12 text-xs font-bold text-stone-700 outline-none"
-                  />
-                </div>
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase">₦/L</span>
-                  <input 
-                    type="number" 
-                    value={fuelPrice} 
-                    onChange={(e) => setFuelPriceOverride(Number(e.target.value))}
-                    className="w-20 text-xs font-bold text-stone-700 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={exportToPDF}
-                className="flex items-center gap-2 px-4 py-2.5 bg-stone-100 text-stone-600 rounded-2xl font-bold hover:bg-stone-200 transition-all border border-stone-200"
-              >
-                <Download className="w-5 h-5" /> PDF
-              </button>
-              {onSave && (
-                <button 
-                  onClick={onSave}
-                  className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
-                >
-                  <Save className="w-5 h-5" /> Save
-                </button>
-              )}
-              <button onClick={onClose} className="p-3 bg-white hover:bg-stone-100 rounded-2xl transition-all shadow-sm border border-stone-200">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto p-8">
-          <div className="min-w-[800px]">
-            <table className="w-full border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left p-4 bg-stone-50 rounded-tl-2xl border-b border-stone-200 text-xs font-bold uppercase tracking-widest text-stone-400">Feature</th>
-                  {systems.map((s, i) => (
-                    <th key={getSystemKey(s, i)} className="text-center p-4 bg-stone-50 border-b border-stone-200 text-sm font-black text-stone-900">
-                      Option {i + 1}
-                      <div className="text-[10px] font-bold text-emerald-600 uppercase mt-1">{s.inverter.split(' ')[0]}</div>
-                    </th>
-                  ))}
-                  <th className="text-center p-4 bg-red-50 border-b border-red-100 text-sm font-black text-red-900 rounded-tr-2xl">
-                    Generator
-                    <div className="text-[10px] font-bold text-red-600 uppercase mt-1">{selectedGen.capacity_va >= 1000 ? (selectedGen.capacity_va/1000).toFixed(1) + 'kVA' : selectedGen.capacity_va + 'VA'}</div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Initial Cost</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
-                  ))}
-                  <td className="p-4 text-center font-black text-red-600">
-                    {initialCost === 0 ? (
-                      <span className="text-emerald-600">Owned</span>
-                    ) : (
-                      `₦${initialCost.toLocaleString()}`
-                    )}
-                  </td>
-                </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Monthly Running Cost</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center font-medium text-emerald-600">₦0 <span className="text-[10px] opacity-60">(Free Sun)</span></td>
-                  ))}
-                  <td className="p-4 text-center font-black text-red-600">₦{monthlyTotal.toLocaleString()}</td>
-                </tr>
-                <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">5-Year Total Cost</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
-                  ))}
-                  <td className="p-4 text-center font-black text-red-600">₦{fiveYearTotal.toLocaleString()}</td>
-                </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Amortized Monthly Cost</td>
-                  {systems.map((s, i) => {
-                    const amortized25yr = s.total_price / 300; // 25 years
-                    const amortized10yr = s.total_price / 120; // 10 years (conservative)
-                    return (
-                      <td key={getSystemKey(s, i)} className="p-4 text-center">
-                        <div className="font-black text-emerald-600 text-sm">₦{amortized25yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[10px] text-emerald-500 font-bold uppercase">25yr Standard</div>
-                        <div className="mt-1 font-bold text-stone-900 text-xs">₦{amortized10yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[9px] text-stone-400 font-bold uppercase">10yr Conservative</div>
-                      </td>
-                    );
-                  })}
-                  <td className="p-4 text-center">
-                    <div className="font-black text-red-600 text-sm">₦{((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                    <div className="text-[10px] text-red-400 font-bold uppercase">{selectedGen.lifespan_mo / 12}yr Lifespan</div>
-                  </td>
-                </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Fuel Type</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
-                  ))}
-                  <td className="p-4 text-center text-sm font-bold text-red-600">{selectedGen.fuel_type}</td>
-                </tr>
-                <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Fuel Consumption</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
-                  ))}
-                  <td className="p-4 text-center text-sm font-medium">{selectedGen.fuel_consumption_l_hr} L/hr</td>
-                </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Reliability</td>
-                  {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center text-xs font-medium text-emerald-600">Silent, Automatic</td>
-                  ))}
-                  <td className="p-4 text-center text-xs font-medium text-red-600">Noisy, Fumes, Manual Start</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-              {systems.map((s, i) => (
-                <div key={getSystemKey(s, i)} className="bg-stone-50 p-6 rounded-3xl border border-stone-100">
-                  <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">When Best to Use (Option {i+1})</h4>
-                  <ul className="space-y-3">
-                    {getSystemRecommendations(s, systems).map((rec, j) => (
-                      <li key={getLogKey("rec", rec, j)} className="flex gap-2 text-sm text-stone-700 font-medium">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                        {rec}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              <div className="bg-red-50 p-6 rounded-3xl border border-red-100">
-                <h4 className="text-xs font-black text-red-400 uppercase tracking-widest mb-4">Generator Profile: {selectedGen.name}</h4>
-                <ul className="space-y-3">
-                  <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    Capacity: {selectedGen.capacity_va}VA (Supports {peakWatts}W peak)
-                  </li>
-                  <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    Running Costs: ₦{monthlyFuel.toLocaleString()} fuel + ₦{maintenance.toLocaleString()} maintenance per month.
-                  </li>
-                  <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                    Environmental: High CO2 emissions and noise pollution.
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="p-8 bg-stone-50 border-t border-stone-100 text-center">
-          <p className="text-sm text-stone-500 font-medium">
-            Note: Generator costs are based on {selectedGen.fuel_type} at ₦{fuelPrice}/L and {genHours} hours daily usage. 
-            Solar systems pay for themselves in approximately <span className="text-emerald-600 font-bold">{(systems[0].total_price / monthlyTotal).toFixed(1)} months</span>.
-          </p>
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-const getHourLabel = (hour: number) => {
-  if (hour === 0) return "12 AM";
-  if (hour === 24) return "12 AM (Midnight)";
-  if (hour === 12) return "12 PM";
-  return hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
-};
-
-const HOUR_OPTIONS = Array.from({ length: 25 }, (_, i) => ({
-  value: i,
-  label: getHourLabel(i),
-}));
-
-function Tooltip({ content, children }: { content: string; children: React.ReactNode }) {
-  const [show, setShow] = useState(false);
-  return (
-    <div className="relative flex items-center" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-      {children}
-      <AnimatePresence>
-        {show && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-64 p-3 bg-stone-800 text-white text-[10px] rounded-xl shadow-xl z-50 pointer-events-none"
-          >
-            <div className="font-bold mb-1 border-b border-stone-700 pb-1">Example Format:</div>
-            <pre className="whitespace-pre-wrap font-mono opacity-80">{content}</pre>
-            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-stone-800" />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
-export default function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>("calculator");
-  const [region, setRegion] = useState<Region>("SE_SS");
-  const [batteryPreference, setBatteryPreference] = useState<BatteryPreference>("any");
-  const [tolerance, setTolerance] = useState<number>(20);
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [savedResults, setSavedResults] = useState<SavedResult[]>(() => {
-    const saved = localStorage.getItem("ss_results");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [masterDevices, setMasterDevices] = useState<MasterDevice[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductTag, setSelectedProductTag] = useState<string>("flagship");
-  const [isCompact, setIsCompact] = useState(false);
-
-  // URL Parameter Handling
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab") as AppTab;
-    const tag = params.get("tag");
-    const compact = params.get("compact") === "true";
-
-    if (tab) setActiveTab(tab);
-    if (tag) setSelectedProductTag(tag);
-    if (compact) setIsCompact(true);
-  }, []);
-  
-  // Developer Access Check
-  const [isDeveloper, setIsDeveloper] = useState<boolean>(() => {
-    return sessionStorage.getItem("ss_admin_unlocked") === "true";
-  });
-
-  // Unlock admin mode via URL param: ?admin=true
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("admin") === "true") {
-      const password = prompt("Enter admin password to unlock developer features:");
-      if (!password) return;
-
-      // Verify the password with the server before unlocking
-      fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.valid) {
-            sessionStorage.setItem("ss_admin_unlocked", "true");
-            sessionStorage.setItem("ss_admin_key", password);
-            setIsDeveloper(true);
-            // Clean the URL so the param doesn't stay visible
-            window.history.replaceState({}, "", window.location.pathname);
-            alert("✅ Admin mode unlocked for this session.");
-          } else {
-            alert("❌ Incorrect password.");
-          }
-        })
-        .catch(() => alert("Could not verify password with server."));
-    }
-  }, []);
-
-  // Fetch public master data — no auth needed
-  useEffect(() => {
-    // Fetch public master data — no auth needed
-    sdk.getDevices().then(setMasterDevices).catch(console.error);
-    sdk.getProducts().then(setProducts).catch(console.error);
-    sdk.getSettings("margins").then(m => m && setMargins(m)).catch(console.error);
-    sdk.getSettings("pdf_settings").then(p => p && setPdfSettings(p)).catch(console.error);
-    
-    // Fetch global hardware
-    sdk.getHardware().then(data => {
-      const globalInverters = data.filter((h: any) => h.type === 'inverter').map((h: any) => h.data);
-      const globalPanels = data.filter((h: any) => h.type === 'panel').map((h: any) => h.data);
-      const globalBatteries = data.filter((h: any) => h.type === 'battery').map((h: any) => h.data);
-      const globalPowerstations = data.filter((h: any) => h.type === 'powerstation').map((h: any) => h.data);
-
-      if (globalInverters.length > 0) setInverters(globalInverters);
-      if (globalPanels.length > 0) setPanels(globalPanels);
-      if (globalBatteries.length > 0) setBatteries(globalBatteries);
-      if (globalPowerstations.length > 0) setPowerstations(globalPowerstations);
-    }).catch(console.error);
-  }, []); // Empty dependency array — runs once on mount
-  
-  // Hardware State
-  const [inverters, setInverters] = useState<Inverter[]>(() => {
-    const saved = localStorage.getItem("ss_inverters");
-    const data: Inverter[] = saved ? JSON.parse(saved) : DEFAULT_INVERTERS;
-    // Migration: Ensure all have IDs and cc_type
-    return data.map((item, idx) => ({ 
-      ...item, 
-      id: item.id || `inv-legacy-${idx}`,
-      cc_type: item.cc_type || "pwm"
-    }));
-  });
-  const [panels, setPanels] = useState<Panel[]>(() => {
-    const saved = localStorage.getItem("ss_panels");
-    const data: Panel[] = saved ? JSON.parse(saved) : DEFAULT_PANELS;
-    return data.map((item, idx) => ({ ...item, id: item.id || `p-legacy-${idx}` }));
-  });
-  const [batteries, setBatteries] = useState<Battery[]>(() => {
-    const saved = localStorage.getItem("ss_batteries");
-    const data: Battery[] = saved ? JSON.parse(saved) : DEFAULT_BATTERIES;
-    return data.map((item, idx) => ({ ...item, id: item.id || `b-legacy-${idx}` }));
-  });
-  const [powerstations, setPowerstations] = useState<Powerstation[]>(() => {
-    const saved = localStorage.getItem("ss_powerstations");
-    const data: Powerstation[] = saved ? JSON.parse(saved) : (typeof POWERSTATIONS !== 'undefined' ? POWERSTATIONS : []);
-    return data.map((item, idx) => ({ ...item, id: item.id || `ps-legacy-${idx}` }));
-  });
-
-  // Internal Logs State
-  const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
-    const saved = localStorage.getItem("ss_internal_logs");
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Profit Margins State
-  const [margins, setMargins] = useState<ProfitMargins>(() => {
-    const saved = localStorage.getItem("ss_margins");
-    return saved ? JSON.parse(saved) : { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 };
-  });
-
-  // PDF Quote Settings State
-  const [pdfSettings, setPdfSettings] = useState<PDFSettings>(() => {
-    const saved = localStorage.getItem("ss_pdf_settings");
-    return saved ? JSON.parse(saved) : {
-      quoteTitle: "SOLARSIZER PRO QUOTE",
-      quotePrefix: "QT",
-      footerLine1: "Thank you for choosing SolarSizer Pro!",
-      footerLine2: "This quote is valid for 14 days."
-    };
-  });
-
-  const [newDevice, setNewDevice] = useState<Omit<Partial<Device>, 'qty' | 'watts'> & { qty?: number | ""; watts?: number | "" }>({
-    name: "",
-    category: "electronics",
-    qty: 1,
-    watts: 0,
-    ranges: [],
-  });
-  const [newRange, setNewRange] = useState({ start: 18, end: 23 });
-  const [selectedSystemLog, setSelectedSystemLog] = useState<string[] | null>(null);
-  const [selectedSystemDetails, setSelectedSystemDetails] = useState<SystemCombination | null>(null);
-  const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
-  const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
-  const [resultFilter, setResultFilter] = useState<"all" | "kits" | "powerstations">("all");
-  const saveAsProduct = async (system: SystemCombination) => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session expired. Visit ?admin=true to unlock again.");
-      return;
-    }
-
-    const name = prompt(
-      "Enter a name for this product combination:",
-      `${system.inverter} System`
-    );
-    if (!name) return;
-
-    const tagInput = prompt("Enter tags (comma separated):", "featured,residential");
-    const tags = tagInput
-      ? tagInput.split(",").map((t) => t.trim()).filter(Boolean)
-      : ["residential"];
-
-    const product = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      description: `Complete solar system with ${system.panel_config} and ${system.battery_config}.`,
-      type: "combination",
-      combination_data: system,
-      tags,
-      price: system.total_price,
-    };
-
-    try {
-      await sdk.saveProduct(product, adminKey);
-      alert("✅ Product saved successfully!");
-      sdk.getProducts().then(setProducts);
-    } catch (err: any) {
-      if (err.response?.status === 403) {
-        alert("❌ Admin session rejected by server. Unlock again via ?admin=true.");
-        sessionStorage.removeItem("ss_admin_unlocked");
-        sessionStorage.removeItem("ss_admin_key");
-        setIsDeveloper(false);
-      } else {
-        console.error("Failed to save product:", err);
-        alert("Failed to save product. Check console.");
-      }
-    }
-  };
-
-  const deleteProduct = async (id: string) => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session expired. Visit ?admin=true to unlock again.");
-      return;
-    }
-
-    if (!confirm("Are you sure you want to delete this product?")) return;
-    try {
-      const res = await fetch(`/api/products/${id}`, { 
-        method: 'DELETE',
-        headers: { 'x-admin-key': adminKey }
-      });
-      
-      if (res.status === 403) {
-        alert("❌ Admin session rejected by server. Unlock again via ?admin=true.");
-        sessionStorage.removeItem("ss_admin_unlocked");
-        sessionStorage.removeItem("ss_admin_key");
-        setIsDeveloper(false);
-        return;
-      }
-
-      if (!res.ok) throw new Error("Delete failed");
-
-      setProducts(prev => prev.filter(p => p.id !== id));
-      alert("✅ Product deleted.");
-    } catch (err) {
-      console.error("Failed to delete product:", err);
-      alert("Failed to delete product.");
-    }
-  };
-  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
-  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-  const [selectedSavedAnalysis, setSelectedSavedAnalysis] = useState<SavedResult | null>(null);
-  const [selectedSavedComparison, setSelectedSavedComparison] = useState<SavedResult | null>(null);
-  const [hasGenerator, setHasGenerator] = useState(() => {
-    return localStorage.getItem("ss_has_generator") === "true";
-  });
-
-  useEffect(() => {
-    localStorage.setItem("ss_has_generator", String(hasGenerator));
-  }, [hasGenerator]);
-
-  const [selectedForComparison, setSelectedForComparison] = useState<SystemCombination[]>([]);
-  const [showComparison, setShowComparison] = useState(false);
-  const toggleComparison = (sys: SystemCombination) => {
-    const isSelected = selectedForComparison.some(s => 
-      s.inverter === sys.inverter && 
-      s.battery_config === sys.battery_config && 
-      s.panel_config === sys.panel_config
-    );
-
-    if (isSelected) {
-      setSelectedForComparison(prev => prev.filter(s => 
-        !(s.inverter === sys.inverter && 
-          s.battery_config === sys.battery_config && 
-          s.panel_config === sys.panel_config)
-      ));
-    } else {
-      if (selectedForComparison.length >= 4) {
-        alert("You can compare up to 4 systems at once.");
-        return;
-      }
-      setSelectedForComparison(prev => [...prev, sys]);
-    }
-  };
-
-  const isSelectedForComparison = (sys: SystemCombination) => {
-    return selectedForComparison.some(s => 
-      s.inverter === sys.inverter && 
-      s.battery_config === sys.battery_config && 
-      s.panel_config === sys.panel_config
-    );
-  };
-
-  // Hardware Form State
-  const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | "powerstation" | null>(null);
-  const [editingHardware, setEditingHardware] = useState<{ type: HardwareType, id: string, item?: any } | null>(null);
-
-  const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
-  const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
-
-  const safeLocalStorageSet = (key: string, value: any) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (e) {
-      if (e instanceof DOMException && e.name === "QuotaExceededError") {
-        alert("⚠️ Browser Storage Full: Could not save data. Please clear some logs or saved results to free up space.");
-      } else {
-        console.error("Storage error:", e);
-      }
-      return false;
-    }
-  };
-
-  // Profile State
-  const [profiles, setProfiles] = useState<UserProfile[]>(() => {
-    const saved = localStorage.getItem("ss_profiles");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [showSaveProfile, setShowSaveProfile] = useState(false);
-  const [profileName, setProfileName] = useState("");
-
-  const results = useMemo(() => {
-    if (devices.length === 0) return null;
-    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations }, batteryPreference, tolerance, products, margins);
-    
-    // Sort systems: Optimal -> Conditional -> High Risk, then by price
-    res.systems.sort((a, b) => {
-      const statusOrder = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
-      if (statusOrder[a.status] !== statusOrder[b.status]) {
-        return statusOrder[a.status] - statusOrder[b.status];
-      }
-      return a.total_price - b.total_price;
-    });
-
-    return res;
-  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products, margins]);
-
-  // Internal Logging with Duplicate Check
-  useEffect(() => {
-    if (!results) return;
-
-    const attempt: CalculationAttempt = {
-      timestamp: new Date().toISOString(),
-      location: region,
-      devices: [...devices],
-      analysis: results.analysis,
-      totalCombinationsChecked: results.allLogs.length,
-      validSystemsCount: results.systems.length,
-      allLogs: results.allLogs,
-    };
-
-    setInternalLogs(prev => {
-      const last = prev[0];
-      if (last) {
-        // Simple duplicate check based on analysis summary and device count
-        const isDuplicate = 
-          last.analysis.max_surge === attempt.analysis.max_surge &&
-          last.analysis.total_daily_wh === attempt.analysis.total_daily_wh &&
-          last.devices.length === attempt.devices.length &&
-          last.validSystemsCount === attempt.validSystemsCount;
-        
-        if (isDuplicate) return prev;
-      }
-
-      const updated = [attempt, ...prev].slice(0, 20); // Limit to 20 entries
-      safeLocalStorageSet("ss_internal_logs", updated);
-      return updated;
-    });
-  }, [results, region, devices]);
-
-  // Reset pagination when results change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [results]);
-
-  // Persist Hardware
-  useEffect(() => {
-    safeLocalStorageSet("ss_inverters", inverters);
-    safeLocalStorageSet("ss_panels", panels);
-    safeLocalStorageSet("ss_batteries", batteries);
-    safeLocalStorageSet("ss_powerstations", powerstations);
-    safeLocalStorageSet("ss_profiles", profiles);
-    safeLocalStorageSet("ss_margins", margins);
-  }, [inverters, panels, batteries, powerstations, profiles, margins]);
-
-  const saveProfile = async () => {
-    if (!profileName.trim()) return;
-    
-    const existingIndex = profiles.findIndex(p => p.id === currentProfileId || p.name === profileName);
-    
-    const newProfile: UserProfile = {
-      id: existingIndex >= 0 ? profiles[existingIndex].id : crypto.randomUUID(),
-      name: profileName,
-      timestamp: new Date().toISOString(),
-      region,
-      batteryPreference,
-      devices: [...devices],
-    };
-
-    let updated: UserProfile[];
-    if (existingIndex >= 0) {
-      updated = [...profiles];
-      updated[existingIndex] = newProfile;
-    } else {
-      updated = [newProfile, ...profiles];
-    }
-    
-    if (safeLocalStorageSet("ss_profiles", updated)) {
-      setProfiles(updated);
-      setCurrentProfileId(newProfile.id);
-      setProfileName("");
-      setShowSaveProfile(false);
-      alert("Profile saved successfully.");
-    }
-  };
-
-  const deleteProfile = async (id: string) => {
-    const updated = profiles.filter((p) => p.id !== id);
-    if (safeLocalStorageSet("ss_profiles", updated)) {
-      setProfiles(updated);
-    }
-  };
-
-  const saveResult = async (system: SystemCombination) => {
-    const name = prompt(
-      "Enter a name for this saved result:",
-      `Result - ${new Date().toLocaleDateString()}`
-    );
-    if (!name) return;
-
-    const newResult: SavedResult = {
-      id: crypto.randomUUID(),
-      profile_name: name,
-      system_data: system,
-      devices: [...devices],
-      created_at: new Date().toISOString(),
-    };
-
-    const updated = [newResult, ...savedResults];
-    if (safeLocalStorageSet("ss_results", updated)) {
-      setSavedResults(updated);
-      alert("Result saved.");
-    }
-  };
-
-  const saveAnalysis = async () => {
-    if (!results || results.systems.length === 0) return;
-
-    const name = prompt(
-      "Enter a name for this saved analysis:",
-      `Analysis - ${new Date().toLocaleDateString()}`
-    );
-    if (!name) return;
-
-    const newResult: SavedResult = {
-      id: crypto.randomUUID(),
-      profile_name: name,
-      analysis: results.analysis,
-      systems: results.systems,
-      devices: [...devices],
-      created_at: new Date().toISOString(),
-    };
-
-    const updated = [newResult, ...savedResults];
-    if (safeLocalStorageSet("ss_results", updated)) {
-      setSavedResults(updated);
-      alert("Analysis saved.");
-    }
-  };
-  
-  const saveComparison = async () => {
-    if (selectedForComparison.length === 0 || !results) return;
-
-    const name = prompt(
-      "Enter a name for this comparison:",
-      `Comparison - ${new Date().toLocaleDateString()}`
-    );
-    if (!name) return;
-
-    const newResult: SavedResult = {
-      id: crypto.randomUUID(),
-      profile_name: name,
-      analysis: results.analysis,
-      systems: selectedForComparison,
-      devices: [...devices],
-      is_comparison: true,
-      has_generator: hasGenerator,
-      created_at: new Date().toISOString(),
-    };
-
-    const updated = [newResult, ...savedResults];
-    if (safeLocalStorageSet("ss_results", updated)) {
-      setSavedResults(updated);
-      alert("Comparison saved.");
-    }
-  };
-
-  const deleteResult = async (id: string) => {
-    setSavedResults((prev) => {
-      const updated = prev.filter((r) => r.id !== id);
-      localStorage.setItem("ss_results", JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const loadProfile = (p: UserProfile) => {
-    setRegion(p.region);
-    setBatteryPreference(p.batteryPreference);
-    setDevices([...p.devices]);
-    setCurrentProfileId(p.id);
-    setActiveTab("calculator");
-  };
-
-  const downloadFile = (content: string, fileName: string, contentType: string) => {
-    const a = document.createElement("a");
-    const file = new Blob([content], { type: contentType });
-    a.href = URL.createObjectURL(file);
-    a.download = fileName;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const exportComparisonToPDF = (
-    profileName: string, 
-    systems: SystemCombination[], 
-    hasGen: boolean = false, 
-    genHours: number = 6, 
-    fuelPriceOverride: number | null = null,
-    savedAnalysis?: LoadAnalysis
-  ) => {
-    const doc = new jsPDF('l', 'mm', 'a4');
-    const timestamp = new Date().toLocaleString();
-    
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129);
-    doc.text(`System Comparison: ${profileName}`, 14, 20);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${timestamp}`, 14, 28);
-
-    const activeAnalysis = savedAnalysis || results?.analysis;
-    const peakWatts = activeAnalysis?.max_surge || 0;
-    const requiredVA = peakWatts / 0.8;
-    const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
-    const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
-    const consumption = selectedGen.fuel_consumption_l_hr;
-    const maintenance = selectedGen.maintenance_mo;
-    const initialCost = 0; 
-    const monthlyFuel = fuelPrice * consumption * genHours * 30; 
-    const monthlyTotal = monthlyFuel + maintenance;
-    const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
-
-    const headers = ["Feature", ...systems.map((s, i) => s.inverter || `Option ${i+1}`)];
-    if (hasGen) headers.push("Generator");
-
-    const rows = [
-      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`)],
-      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), `N${monthlyTotal.toLocaleString()}`],
-      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), `N${fiveYearTotal.toLocaleString()}`],
-      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), `N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`],
-      ["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type],
-      ["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`],
-      ["Reliability", ...systems.map(_ => "Silent, Automatic"), "Noisy, Fumes, Manual"]
-    ];
-
-    autoTable(doc, {
-      startY: 35,
-      head: [headers],
-      body: rows,
-      theme: "grid",
-      headStyles: { fillColor: [16, 185, 129] },
-      styles: { fontSize: 8, cellPadding: 3 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 35 } }
-    });
-
-    if (hasGen) {
-      const finalY = (doc as any).lastAutoTable.finalY + 15;
-      doc.setFontSize(14);
-      doc.setTextColor(0);
-      doc.text("GENERATOR PROFILE DETAILS", 14, finalY);
-      
-      doc.setFontSize(10);
-      doc.setTextColor(60);
-      doc.text(`• Capacity: ${selectedGen.capacity_va}VA (Supports ${peakWatts.toFixed(0)}W peak)`, 14, finalY + 8);
-      doc.text(`• Running Costs: N${monthlyFuel.toLocaleString()} fuel + N${selectedGen.maintenance_mo.toLocaleString()} maintenance per month.`, 14, finalY + 14);
-      doc.text(`• Environmental: High CO2 emissions and noise pollution.`, 14, finalY + 20);
-    }
-
-    doc.save(`Comparison_${profileName.replace(/\s+/g, '_')}.pdf`);
-  };
-
-  const exportSingleResultToPDF = (result: SystemCombination, profileName: string) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // Header
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, 40, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont("helvetica", "bold");
-    doc.text("SolarSizer Pro", 14, 20);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("System Configuration Report", 14, 30);
-    doc.text(new Date().toLocaleDateString(), pageWidth - 35, 30);
-
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(16);
-    doc.text(`Configuration for: ${profileName}`, 14, 55);
-
-    // System Overview
-    autoTable(doc, {
-      startY: 65,
-      head: [["Component", "Configuration"]],
-      body: [
-        ["Inverter", result.inverter],
-        ["Battery Bank", result.battery_config],
-        ["Solar Array", result.panel_config],
-        ["Total Price", `N${result.total_price.toLocaleString()}`],
-      ],
-      theme: "striped",
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    // Detailed Specs
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [["Technical Specification", "Value"]],
-      body: [
-        ["System Voltage", `${result.inverter_data.system_vdc}V DC`],
-        ["AC Output", `${result.inverter_data.max_ac_w}W`],
-        ["PV Input Max", `${result.inverter_data.cc_max_pv_w}W`],
-        ["Battery Type", result.battery_data.type.toUpperCase()],
-        ["Battery Capacity", `${result.battery_data.capacity_ah}Ah`],
-        ["Panel Wattage", `${result.panel_data.watts}W`],
-      ],
-      theme: "grid",
-      headStyles: { fillColor: [15, 23, 42] },
-    });
-
-    doc.save(`SolarSizer_${profileName.replace(/\s+/g, "_")}_Config.pdf`);
-  };
-
-  const exportResultsToPDF = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }, savedDevices?: Device[]) => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    const timestamp = new Date().toLocaleString();
-    const activeDevices = savedDevices || devices;
-    
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129); // Emerald-600
-    doc.text("SolarSizer Pro - Calculation Report", 14, 20);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Generated on: ${timestamp}`, 14, 28);
-    doc.text(`Region: ${REGIONS.find(r => r.value === region)?.label}`, 14, 33);
-    
-    doc.setFontSize(16);
-    doc.setTextColor(0);
-    doc.text("Load Profile Summary", 14, 45);
-    
-    autoTable(doc, {
-      startY: 50,
-      head: [["Metric", "Value"]],
-      body: [
-        ["Peak Load", `${Math.max(...Object.values(results.analysis.hourly_consumption)).toFixed(0)}W`],
-        ["Peak Surge Load", `${results.analysis.max_surge.toFixed(0)}W`],
-        ["Daily Energy Consumption", `${results.analysis.total_daily_wh.toFixed(0)}Wh`],
-        ["Nighttime Consumption (6PM-7AM)", `${results.analysis.nighttime_wh.toFixed(0)}Wh`],
-        ["System Options Found", results.systems.length.toString()],
-      ],
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.text("Device List", 14, (doc as any).lastAutoTable.finalY + 15);
-    
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Device", "Qty", "Watts", "Category", "Schedule"]],
-      body: activeDevices.map(d => [
-        d.name,
-        d.qty.toString(),
-        `${d.watts}W`,
-        d.category,
-        d.ranges.map(r => `${r.start}:00 - ${r.end}:00`).join(", ")
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.addPage();
-    doc.text("Recommended Systems", 14, 20);
-
-    autoTable(doc, {
-      startY: 25,
-      head: [["System", "Battery", "Solar", "Price"]],
-      body: results.systems.map(sys => [
-        sys.inverter,
-        sys.battery_config,
-        sys.panel_config,
-        `₦${sys.total_price.toLocaleString()}`
-      ]),
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.save(`SolarSizer_Report_${new Date().getTime()}.pdf`);
-  };
-
-  const exportProfileToPDF = (p: UserProfile) => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129);
-    doc.text(`Profile: ${p.name}`, 14, 20);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Region: ${REGIONS.find(r => r.value === p.region)?.label}`, 14, 28);
-    doc.text(`Battery Preference: ${p.batteryPreference}`, 14, 33);
-
-    autoTable(doc, {
-      startY: 40,
-      head: [["Device", "Qty", "Watts", "Category", "Schedule"]],
-      body: p.devices.map(d => [
-        d.name,
-        d.qty.toString(),
-        `${d.watts}W`,
-        d.category,
-        d.ranges.map(r => `${r.start}:00 - ${r.end}:00`).join(", ")
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.save(`SolarSizer_Profile_${p.name.replace(/\s+/g, '_')}.pdf`);
-  };
-
-  const exportHardwareDatabaseToPDF = () => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129);
-    doc.text("Complete Product Catalog", 14, 20);
-
-    doc.setFontSize(14);
-    doc.text("Inverters", 14, 35);
-    autoTable(doc, {
-      startY: 40,
-      head: [["Name", "Max AC", "DC Volts", "PV Input", "Price"]],
-      body: inverters.map(inv => [inv.name, `${inv.max_ac_w}W`, `${inv.system_vdc}V`, `${inv.cc_max_pv_w}W`, `₦${inv.price.toLocaleString()}`]),
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.text("Solar Panels", 14, (doc as any).lastAutoTable.finalY + 15);
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Name", "Watts", "Voc", "Isc", "Price"]],
-      body: panels.map(p => [p.name, `${p.watts}W`, `${p.voc}V`, `${p.isc}A`, `₦${p.price.toLocaleString()}`]),
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.text("Batteries", 14, (doc as any).lastAutoTable.finalY + 15);
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Name", "Voltage", "Capacity", "Type", "Price"]],
-      body: batteries.map(b => [b.name, `${b.voltage}V`, `${b.capacity_ah}Ah`, b.type, `₦${b.price.toLocaleString()}`]),
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.text("Powerstations", 14, (doc as any).lastAutoTable.finalY + 15);
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 20,
-      head: [["Name", "Capacity", "Max Output", "PV Input", "Price"]],
-      body: powerstations.map(ps => [ps.name, `${ps.capacity_wh}Wh`, `${ps.max_output_w}W`, `${ps.max_pv_input_w}W`, `₦${ps.price.toLocaleString()}`]),
-      theme: 'striped',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.save("SolarSizer_Complete_Product_Catalog.pdf");
-  };
-
-  const exportResultsJSON = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }) => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const data = {
-      metadata: {
-        generated: new Date().toISOString(),
-        region,
-        batteryPreference
+      {
+        role: "battery",
+        name: data.battery_config,
+        quantity: (data.battery_wh ?? 0) > 0 ? 1 : 0,
+        specs: {
+          usable_wh: data.battery_wh ?? 0,
+          price: data.battery_price ?? 0,
+        },
       },
-      analysis: results.analysis,
-      devices,
-      systems: results.systems
-    };
-    downloadFile(JSON.stringify(data, null, 2), `SolarSizer_Results_${timestamp}.json`, "application/json");
+      {
+        role: "panel",
+        name: data.panel_config,
+        quantity: (data.panel_w ?? 0) > 0 ? 1 : 0,
+        specs: {
+          watts: data.panel_w ?? 0,
+          price: data.panel_price ?? 0,
+        },
+      },
+    ].filter((c) => c.quantity > 0);
+  }
+
+  if (kitType === "powerstation") {
+    return [
+      {
+        role: "powerstation",
+        name: prod.name,
+        quantity: 1,
+        specs: {
+          capacity_wh: data.battery_wh ?? 0,
+          max_output_w: data.inverter_w ?? 0,
+          pv_input_w: data.panel_w ?? 0,
+          price: prod.price ?? 0,
+        },
+      },
+    ];
+  }
+
+  return [
+    {
+      role: "network",
+      name: prod.name,
+      quantity: 1,
+      specs: {
+        price: prod.price,
+        watts: data.inverter_w ?? 0,
+        note: prod.description,
+      },
+    },
+  ];
+};
+
+const getEffectiveDeficitWh = (
+  totalDailyWh: number,
+  dailyYieldWh: number,
+  simDeficitWh: number
+): number => {
+  const energyShortfallWh = Math.max(0, totalDailyWh - dailyYieldWh);
+  return Math.max(energyShortfallWh, simDeficitWh);
+};
+
+export function buildCombinations(
+  location: Region,
+  devices: Device[],
+  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[] },
+  batteryPreference: BatteryPreference = "any",
+  tolerance: number = 20,
+  products: Product[] = [],
+  margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 }
+): { analysis: LoadAnalysis; systems: SystemCombination[]; allLogs: string[][] } {
+  const safeDevices = Array.isArray(devices) ? devices : [];
+  const safeHardware = {
+    inverters: Array.isArray(hardware?.inverters) ? hardware.inverters : [],
+    panels: Array.isArray(hardware?.panels) ? hardware.panels : [],
+    batteries: Array.isArray(hardware?.batteries) ? hardware.batteries : [],
+    powerstations: Array.isArray(hardware?.powerstations) ? hardware.powerstations : []
   };
+  const safeProducts = Array.isArray(products) ? products : [];
 
-  const exportHardwareDatabaseJSON = () => {
-    const data = { inverters, panels, batteries };
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadFile(JSON.stringify(data, null, 2), `SolarSizer_Hardware_${timestamp}.json`, "application/json");
-  };
+  const analysis = calculateUserNeeds(safeDevices);
+  const { max_surge, nighttime_wh, total_daily_wh } = analysis;
+  const psh = LOCATION_PSH[location] || 2.6;
 
-  const importHardwareDatabase = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        let importedCount = 0;
+  const validSystems: SystemCombination[] = [];
+  const allLogs: string[][] = [];
 
-        if (data.inverters && Array.isArray(data.inverters)) {
-          const sanitizedInverters = data.inverters.map((inv: any) => ({
-            ...inv,
-            id: inv.id || crypto.randomUUID(),
-            max_ac_w: Number(inv.max_ac_w) || 0,
-            cc_max_pv_w: Number(inv.cc_max_pv_w) || 0,
-            cc_max_voc: Number(inv.cc_max_voc) || 0,
-            cc_max_amps: Number(inv.cc_max_amps) || 0,
-            system_vdc: Number(inv.system_vdc) || 0,
-            max_charge_amps: Number(inv.max_charge_amps) || 0,
-            cc_type: inv.cc_type === "mppt" ? "mppt" : "pwm",
-            price: Number(inv.price) || 0,
-          }));
-          setInverters(prev => {
-            const merged = [...prev];
-            sanitizedInverters.forEach(newItem => {
-              const index = merged.findIndex(item => item.id === newItem.id);
-              if (index !== -1) {
-                merged[index] = newItem;
-              } else {
-                merged.push(newItem);
-              }
-            });
-            return merged;
-          });
-          importedCount++;
-        }
+  const isAcceptableStatus = (status: "Optimal" | "Conditional" | "High Risk") => status !== "High Risk";
 
-        if (data.panels && Array.isArray(data.panels)) {
-          const sanitizedPanels = data.panels.map((p: any) => ({
-            ...p,
-            id: p.id || crypto.randomUUID(),
-            watts: Number(p.watts) || 0,
-            voc: Number(p.voc) || 0,
-            isc: Number(p.isc) || 0,
-            price: Number(p.price) || 0,
-          }));
-          setPanels(prev => {
-            const merged = [...prev];
-            sanitizedPanels.forEach(newItem => {
-              const index = merged.findIndex(item => item.id === newItem.id);
-              if (index !== -1) {
-                merged[index] = newItem;
-              } else {
-                merged.push(newItem);
-              }
-            });
-            return merged;
-          });
-          importedCount++;
-        }
+  // --- 1. Pre-configured Kits ---
+  // --- 1. Pre-configured Kits ---
+  for (const prod of safeProducts) {
+    if (prod.type !== "combination" || !prod.combination_data) continue;
 
-        if (data.batteries && Array.isArray(data.batteries)) {
-          const sanitizedBatteries = data.batteries.map((b: any) => ({
-            ...b,
-            id: b.id || crypto.randomUUID(),
-            voltage: Number(b.voltage) || 0,
-            capacity_ah: Number(b.capacity_ah) || 0,
-            min_c_rate: Number(b.min_c_rate) || 0.1,
-            price: Number(b.price) || 0,
-          }));
-          setBatteries(prev => {
-            const merged = [...prev];
-            sanitizedBatteries.forEach(newItem => {
-              const index = merged.findIndex(item => item.id === newItem.id);
-              if (index !== -1) {
-                merged[index] = newItem;
-              } else {
-                merged.push(newItem);
-              }
-            });
-            return merged;
-          });
-          importedCount++;
-        }
+    const prodLog: string[] = [];
+    const data = prod.combination_data;
+    const kitType = getKitType(data);
 
-        if (data.powerstations && Array.isArray(data.powerstations)) {
-          const sanitizedPS = data.powerstations.map((ps: any) => ({
-            ...ps,
-            id: ps.id || crypto.randomUUID(),
-            capacity_wh: Number(ps.capacity_wh) || 0,
-            max_output_w: Number(ps.max_output_w) || 0,
-            max_pv_input_w: Number(ps.max_pv_input_w) || 0,
-            price: Number(ps.price) || 0,
-          }));
-          setPowerstations(prev => {
-            const merged = [...prev];
-            sanitizedPS.forEach(newItem => {
-              const index = merged.findIndex(item => item.id === newItem.id);
-              if (index !== -1) {
-                merged[index] = newItem;
-              } else {
-                merged.push(newItem);
-              }
-            });
-            return merged;
-          });
-          importedCount++;
-        }
+    const invW = data.inverter_w || 0;
+    const batWh = data.battery_wh || 0;
+    const panW = data.panel_w || 0;
 
-        if (importedCount > 0) {
-          alert("Hardware database updated successfully!");
-        } else {
-          alert("Invalid hardware database file format. Please ensure it contains 'inverters', 'panels', 'batteries', or 'powerstations' arrays.");
-        }
-      } catch (err) {
-        alert("Failed to parse the file. Please ensure it is a valid JSON.");
-      }
-    };
-    reader.readAsText(file);
-  };
+    prodLog.push(`Checking Pre-configured Kit: ${prod.name}`);
 
-  const importMasterDevices = async (event: ChangeEvent<HTMLInputElement>) => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session required. Visit ?admin=true to unlock.");
-      return;
-    }
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        if (Array.isArray(data)) {
-          for (const item of data) {
-            await sdk.saveMasterDevice(item, adminKey);
-          }
-          const updated = await sdk.getDevices();
-          setMasterDevices(updated);
-          alert("Master devices imported successfully!");
-        } else {
-          alert("Invalid format. Expected an array of devices.");
-        }
-      } catch (err) {
-        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const importProducts = async (event: ChangeEvent<HTMLInputElement>) => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session required. Visit ?admin=true to unlock.");
-      return;
-    }
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        if (Array.isArray(data)) {
-          for (const item of data) {
-            await sdk.saveProduct(item, adminKey);
-          }
-          const updated = await sdk.getProducts();
-          setProducts(updated);
-          alert("Products imported successfully!");
-        } else {
-          alert("Invalid format. Expected an array of products.");
-        }
-      } catch (err) {
-        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const saveGlobalSettings = async () => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session required to save global settings. Visit ?admin=true to unlock.");
-      return;
+    if (kitType !== "solar") {
+      prodLog.push("ℹ️ Non-solar kit detected. Skipping solar simulation.");
+      allLogs.push(prodLog);
+      continue;
     }
 
-    try {
-      await sdk.saveSettings("margins", margins, adminKey);
-      await sdk.saveSettings("pdf_settings", pdfSettings, adminKey);
-      localStorage.setItem("ss_margins", JSON.stringify(margins));
-      localStorage.setItem("ss_pdf_settings", JSON.stringify(pdfSettings));
-      alert("✅ Global settings (margins & PDF customization) saved to server successfully!");
-    } catch (err) {
-      alert("Failed to save settings: " + (err instanceof Error ? err.message : String(err)));
+    if (invW < max_surge) {
+      prodLog.push(`❌ Rejected: Kit inverter (${invW}W) is less than peak surge (${max_surge}W).`);
+      allLogs.push(prodLog);
+      continue;
     }
-  };
+    prodLog.push(`✅ Kit inverter (${invW}W) matches surge requirements.`);
 
-  const exportProductsJSON = () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadFile(JSON.stringify(products, null, 2), `SolarSizer_Products_${timestamp}.json`, "application/json");
-  };
+    const usableWh = batWh * 0.8;
+    const maxChargeW = Math.max(panW, invW);
+    const ccType = (data.cc_type || "mppt") as "pwm" | "mppt";
 
-  const exportInternetDataJSON = () => {
-    const internetMasterDevices = masterDevices.filter(md => md.category === 'internet' || md.tags.includes('internet'));
-    const internetProducts = products.filter(p => p.tags.includes('internet'));
-    const data = { masterDevices: internetMasterDevices, products: internetProducts };
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadFile(JSON.stringify(data, null, 2), `SolarSizer_InternetData_${timestamp}.json`, "application/json");
-  };
+    const dailyYield = panW * psh * 0.8;
+    prodLog.push(`Dynamic Daily Yield (${psh} PSH): ${dailyYield.toFixed(0)}Wh.`);
 
-  const importInternetData = async (event: ChangeEvent<HTMLInputElement>) => {
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) {
-      alert("Admin session required. Visit ?admin=true to unlock.");
-      return;
-    }
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const sim = simulateHourlySoC(
+      analysis.hourly_consumption,
+      dailyYield,
+      usableWh,
+      maxChargeW,
+      ccType,
+      location
+    );
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        let importedMaster = 0;
-        let importedProducts = 0;
+    const simDeficit = sim.finalDeficitWh;
+    const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
 
-        if (data.masterDevices && Array.isArray(data.masterDevices)) {
-          for (const item of data.masterDevices) {
-            await sdk.saveMasterDevice(item, adminKey);
-            importedMaster++;
-          }
-        }
-        if (data.products && Array.isArray(data.products)) {
-          for (const item of data.products) {
-            await sdk.saveProduct(item, adminKey);
-            importedProducts++;
-          }
-        }
+    let status: "Optimal" | "Conditional" | "High Risk";
+    let advice: string;
 
-        if (importedMaster > 0 || importedProducts > 0) {
-          const [updatedDevices, updatedProducts] = await Promise.all([
-            sdk.getDevices(),
-            sdk.getProducts()
-          ]);
-          setMasterDevices(updatedDevices);
-          setProducts(updatedProducts);
-          alert(`Import successful: ${importedMaster} devices and ${importedProducts} products.`);
-        } else {
-          alert("Invalid format. Expected an object with 'masterDevices' and 'products' arrays.");
-        }
-      } catch (err) {
-        alert("Import failed: " + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const exportProfilesJSON = () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    downloadFile(JSON.stringify(profiles, null, 2), `SolarSizer_Profiles_${timestamp}.json`, "application/json");
-  };
-
-  const importProfiles = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target?.result as string);
-        if (Array.isArray(data)) {
-          setProfiles([...profiles, ...data]);
-          alert("Profiles imported successfully!");
-        } else {
-          alert("Invalid profiles file format.");
-        }
-      } catch (err) {
-        alert("Failed to parse the file. Please ensure it is a valid JSON.");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const exportFullLogs = () => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    let content = `SOLARSIZER PRO - FULL CALCULATION LOGS\n`;
-    content += `Exported: ${new Date().toLocaleString()}\n`;
-    content += `------------------------------------------\n\n`;
-
-    internalLogs.forEach((log, i) => {
-      content += `LOG ATTEMPT #${i + 1} - ${new Date(log.timestamp).toLocaleString()}\n`;
-      content += `Region: ${log.location}\n`;
-      content += `Devices: ${log.devices.length}\n`;
-      content += `Analysis: Surge=${log.analysis.max_surge}W, Night=${log.analysis.nighttime_wh}Wh, Daily=${log.analysis.total_daily_wh}Wh\n`;
-      content += `Checked: ${log.totalCombinationsChecked}, Valid: ${log.validSystemsCount}\n`;
-      content += `--- LOG TRACE ---\n`;
-      log.allLogs.forEach(path => {
-        content += path.join("\n") + "\n---\n";
-      });
-      content += `\n==========================================\n\n`;
-    });
-
-    downloadFile(content, `SolarSizer_Full_Logs_${timestamp}.txt`, "text/plain");
-  };
-
-  const exportSingleLog = (log: CalculationAttempt) => {
-    const timestamp = new Date(log.timestamp).toISOString().replace(/[:.]/g, '-');
-    let content = `SOLARSIZER PRO - CALCULATION LOG ATTEMPT\n`;
-    content += `Timestamp: ${new Date(log.timestamp).toLocaleString()}\n`;
-    content += `Region: ${log.location}\n`;
-    content += `------------------------------------------\n\n`;
-    
-    content += `DEVICES LIST\n`;
-    log.devices.forEach(d => {
-      content += `- ${d.name}: ${d.qty}x ${d.watts}W\n`;
-    });
-    content += `\n`;
-
-    content += `ANALYSIS SUMMARY\n`;
-    content += `Peak Surge: ${log.analysis.max_surge}W\n`;
-    content += `Night Usage: ${log.analysis.nighttime_wh}Wh\n`;
-    content += `Daily Total: ${log.analysis.total_daily_wh}Wh\n\n`;
-
-    content += `CALCULATION STATS\n`;
-    content += `Total Combinations Checked: ${log.totalCombinationsChecked}\n`;
-    content += `Valid Systems Found: ${log.validSystemsCount}\n\n`;
-
-    content += `--- FULL LOG TRACE ---\n`;
-    log.allLogs.forEach((path, i) => {
-      content += `Path #${i + 1}:\n`;
-      content += path.join("\n") + "\n---\n";
-    });
-
-    downloadFile(content, `SolarSizer_Log_${timestamp}.txt`, "text/plain");
-  };
-
-
-  const exportHardwareDatabase = () => {
-    const timestamp = new Date().toISOString().split('T')[0];
-    let content = `# Solar Sizing Hardware Database Export\n`;
-    content += `Generated on: ${new Date().toLocaleString()}\n\n`;
-
-    content += `## 1. INVERTERS\n`;
-    content += `| Name | Max AC (W) | DC Volts (V) | PV Input (W) | CC Type | Max Charge (A) | Price (₦) |\n`;
-    content += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
-    inverters.forEach(inv => {
-      content += `| ${inv.name} | ${inv.max_ac_w} | ${inv.system_vdc} | ${inv.cc_max_pv_w} | ${(inv.cc_type || "pwm").toUpperCase()} | ${inv.max_charge_amps} | ${inv.price.toLocaleString()} |\n`;
-    });
-    content += `\n`;
-
-    content += `## 2. SOLAR PANELS\n`;
-    content += `| Name | Watts (W) | Voc (V) | Isc (A) | Price (₦) |\n`;
-    content += `| :--- | :--- | :--- | :--- | :--- |\n`;
-    panels.forEach(p => {
-      content += `| ${p.name} | ${p.watts} | ${p.voc} | ${p.isc} | ${p.price.toLocaleString()} |\n`;
-    });
-    content += `\n`;
-
-    content += `## 3. BATTERIES\n`;
-    content += `| Name | Voltage (V) | Capacity (Ah) | Type | Min C-Rate | Price (₦) |\n`;
-    content += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
-    batteries.forEach(b => {
-      content += `| ${b.name} | ${b.voltage} | ${b.capacity_ah} | ${b.type} | ${b.min_c_rate} | ${b.price.toLocaleString()} |\n`;
-    });
-
-    const blob = new Blob([content], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Solar_Hardware_Database_${timestamp}.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
-
-  const addDevice = () => {
-    if (!newDevice.name || !newDevice.watts || (newDevice.ranges?.length === 0 && !newRange)) return;
-    
-    const finalRanges = [...(newDevice.ranges || [])];
-    // If user hasn't added any ranges yet but has values in the range inputs, add it automatically
-    if (finalRanges.length === 0) {
-      finalRanges.push({ ...newRange });
-    }
-
-    if (editingDeviceId) {
-      setDevices(devices.map(d => d.id === editingDeviceId ? {
-        ...d,
-        name: newDevice.name || "Unnamed Device",
-        category: newDevice.category as DeviceCategory,
-        qty: newDevice.qty || 1,
-        watts: newDevice.watts || 0,
-        ranges: finalRanges,
-      } : d));
-      setEditingDeviceId(null);
+    if (sim.passed && effectiveDeficitWh === 0) {
+      status = "Optimal";
+      advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
+    } else if (deficitPercentage <= tolerance) {
+      status = "Conditional";
+      advice = `⚠️ Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
-      const device: Device = {
-        id: crypto.randomUUID(),
-        name: newDevice.name || "Unnamed Device",
-        category: newDevice.category as DeviceCategory,
-        qty: newDevice.qty || 1,
-        watts: newDevice.watts || 0,
-        ranges: finalRanges,
-      };
-      setDevices([...devices, device]);
+      status = "High Risk";
+      advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      allLogs.push(prodLog);
+      continue;
     }
 
-    setNewDevice({
-      name: "",
-      category: "electronics",
-      qty: 1,
-      watts: 0,
-      ranges: [],
-    });
-    setNewRange({ start: 18, end: 23 });
-  };
+    prodLog.push(`Status: ${status}.`);
 
-  const startEditingDevice = (device: Device) => {
-    setEditingDeviceId(device.id);
-    setNewDevice({
-      name: device.name,
-      category: device.category,
-      qty: device.qty,
-      watts: device.watts,
-      ranges: [...device.ranges],
-    });
-  };
-
-  const addRange = () => {
-    setNewDevice({
-      ...newDevice,
-      ranges: [...(newDevice.ranges || []), { ...newRange }],
-    });
-  };
-
-  const removeRange = (index: number) => {
-    setNewDevice({
-      ...newDevice,
-      ranges: (newDevice.ranges || []).filter((_, i) => i !== index),
-    });
-  };
-
-  const removeDevice = (id: string) => {
-    setDevices(devices.filter((d) => d.id !== id));
-  };
-
-  const deleteHardware = async (type: "inverter" | "panel" | "battery" | "powerstation", id: string) => {
-    if (isDeveloper) {
-      const adminKey = sessionStorage.getItem("ss_admin_key");
-      if (adminKey) {
-        try {
-          await sdk.deleteHardware(id, adminKey);
-        } catch (e) {
-          console.error("Failed to delete global hardware:", e);
-        }
-      }
+    if (!isAcceptableStatus(status)) {
+      allLogs.push(prodLog);
+      continue;
     }
 
-    if (type === "inverter") setInverters(inverters.filter(i => i.id !== id));
-    if (type === "panel") setPanels(panels.filter(p => p.id !== id));
-    if (type === "battery") setBatteries(batteries.filter(b => b.id !== id));
-    if (type === "powerstation") setPowerstations(powerstations.filter(ps => ps.id !== id));
-  };
+    const totalPrice = applyMargin(prod.price, margins.product);
 
-  const deleteMasterDevice = async (id: string) => {
-    if (!isDeveloper) return;
-    const adminKey = sessionStorage.getItem("ss_admin_key");
-    if (!adminKey) return;
-    if (!confirm("Are you sure you want to delete this master device?")) return;
+    validSystems.push({
+      inverter: data.inverter,
+      inverter_price: applyMargin(data.inverter_price || 0, margins.product),
+      battery_config: data.battery_config,
+      battery_price: applyMargin(data.battery_price || 0, margins.product),
+      panel_config: data.panel_config,
+      panel_price: applyMargin(data.panel_price || 0, margins.product),
+      array_size_w: panW,
+      battery_total_wh: batWh,
+      total_price: totalPrice,
+      daily_yield: dailyYield,
+      deficit: Math.max(0, effectiveDeficitWh),
+      status,
+      advice,
+      log: prodLog,
+      is_preconfigured: true,
+      product_id: prod.id,
+      inverter_w: invW,
+      battery_wh: batWh,
+      panel_w: panW,
+      kit_type: kitType,
+      component_specs: buildKitComponentSpecs(prod, data),
+      product_name: prod.name,
+      product_description: prod.description,
+    });
 
-    try {
-      await sdk.deleteMasterDevice(id, adminKey);
-      setMasterDevices(prev => prev.filter(d => d.id !== id));
-    } catch (e) {
-      console.error(e);
-      alert("Failed to delete master device.");
-    }
-  };
-
-  const startEditingMasterDevice = (device: MasterDevice) => {
-    setEditingMasterDevice(itemData(device) as MasterDevice);
-    setShowAddMasterDevice(true);
-  };
-
-  const startEditing = (type: HardwareType, item: any) => {
-    setEditingHardware({ type, id: item.id, item: itemData(item, type) });
-    setShowAddHardware(type);
-  };
-
-  const saveMasterDevice = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const adminKey = sessionStorage.getItem("ss_admin_key") || "";
-
-    const fd = new FormData(e.currentTarget);
-    const device = {
-      id: editingMasterDevice?.id || crypto.randomUUID(),
-      name: fd.get("name") as string,
-      category: fd.get("category") as DeviceCategory,
-      default_watts: Number(fd.get("default_watts")),
-      tags: (fd.get("tags") as string)?.split(",").map(t => t.trim()).filter(Boolean) || [],
-    };
-
-    try {
-      await sdk.saveMasterDevice(device, adminKey || undefined);
-      setMasterDevices(prev => {
-        const idx = prev.findIndex(d => d.id === device.id);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = device as MasterDevice;
-          return updated;
-        }
-        return [device as MasterDevice, ...prev];
-      });
-      setShowAddMasterDevice(false);
-      setEditingMasterDevice(null);
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save master device.");
-    }
-  };
+    allLogs.push(prodLog);
+  }
   
-  const duplicateHardware = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
-    const newItem = {
-      ...item,
-      id: crypto.randomUUID(),
-      name: `${item.name} (Copy)`
-    };
-    if (type === "inverter") setInverters([...inverters, newItem]);
-    if (type === "panel") setPanels([...panels, newItem]);
-    if (type === "battery") setBatteries([...batteries, newItem]);
-    if (type === "powerstation") setPowerstations([...powerstations, newItem]);
-  };
+  // --- 1.5 Powerstations ---
+  // --- 1.5 Powerstations ---
+  for (const ps of safeHardware.powerstations) {
+    const psLog: string[] = [];
+    psLog.push(`Checking Powerstation: ${ps.name} (${ps.capacity_wh}Wh, ${ps.max_output_w}W)`);
 
-  const generateUsageProfile = (targetDevices?: Device[]) => {
-    const activeDevices = targetDevices || devices;
-    if (activeDevices.length === 0) return;
-    const doc = new jsPDF();
-    const date = new Date().toLocaleDateString();
-    const profileId = `UP-${Math.floor(100000 + Math.random() * 900000)}`;
+    if (ps.max_output_w < max_surge) {
+      psLog.push(`❌ Rejected: Powerstation output (${ps.max_output_w}W) is less than peak surge (${max_surge}W).`);
+      allLogs.push(psLog);
+      continue;
+    }
+    psLog.push(`✅ Powerstation output (${ps.max_output_w}W) matches surge requirements.`);
 
-    // Recalculate analysis if targetDevices is provided to ensure accuracy
-    const activeAnalysis = targetDevices ? calculateUserNeeds(targetDevices) : results?.analysis;
+    const usableWh = ps.capacity_wh * (ps.battery_type === "lithium" ? 0.9 : 0.8);
+    const maxChargeW = ps.max_charge_amps && ps.system_vdc
+      ? ps.max_charge_amps * ps.system_vdc
+      : ps.max_pv_input_w;
 
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129); // emerald-600
-    doc.text("LOAD USAGE PROFILE", 105, 20, { align: "center" });
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Profile ID: ${profileId}`, 20, 35);
-    doc.text(`Date: ${date}`, 20, 40);
-    doc.text(`Location: ${REGIONS.find(r => r.value === region)?.label}`, 20, 45);
+    const ccType = ps.cc_type || "mppt";
+    const dailyYield = ps.max_pv_input_w * psh * 0.8;
 
-    // Load Analysis Summary
-    if (activeAnalysis) {
-      doc.setFontSize(14);
-      doc.setTextColor(0);
-      doc.text("LOAD ANALYSIS SUMMARY", 20, 60);
-      
-      doc.setFontSize(10);
-      const summary = [
-        ["Peak Surge Load", `${activeAnalysis.max_surge.toFixed(0)}W`],
-        ["Total Daily Consumption", `${activeAnalysis.total_daily_wh.toFixed(0)}Wh`],
-        ["Nighttime Consumption (6PM-7AM)", `${activeAnalysis.nighttime_wh.toFixed(0)}Wh`],
-        ["Average Hourly Load", `${(activeAnalysis.total_daily_wh / 24).toFixed(0)}W`]
-      ];
+    const sim = simulateHourlySoC(
+      analysis.hourly_consumption,
+      dailyYield,
+      usableWh,
+      maxChargeW,
+      ccType,
+      location
+    );
 
-      autoTable(doc, {
-        startY: 65,
-        head: [["Metric", "Value"]],
-        body: summary,
-        theme: "striped",
-        headStyles: { fillColor: [16, 185, 129] }
-      });
+    const simDeficit = sim.finalDeficitWh;
+    const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+    const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
+
+    let status: "Optimal" | "Conditional" | "High Risk";
+    let advice: string;
+
+    if (sim.passed && effectiveDeficitWh === 0) {
+      status = "Optimal";
+      advice = "This powerstation covers your load.";
+    } else if (deficitPercentage <= tolerance) {
+      status = "Conditional";
+      advice = `⚠️ Blackout Risk: Short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+    } else {
+      status = "High Risk";
+      advice = `🚨 High Blackout Risk: Short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      allLogs.push(psLog);
+      continue;
     }
 
-    // Itemized Device List
-    const finalY = (doc as any).lastAutoTable?.finalY || 100;
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("ITEMIZED DEVICE LIST", 20, finalY + 15);
+    psLog.push(`Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+    psLog.push(`Status: ${status}.`);
 
-    const deviceData = activeDevices.map((d, idx) => {
-      const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
-      const dailyWh = d.watts * d.qty * hours;
-      return [
-        (idx + 1).toString(),
-        d.name,
-        d.qty.toString(),
-        `${d.watts}W`,
-        `${d.watts * d.qty}W`,
-        hours.toString(),
-        `${dailyWh.toFixed(0)}Wh`,
-        d.ranges.map(r => `${r.start}:00-${r.end}:00`).join(", ")
-      ];
+    if (!isAcceptableStatus(status)) {
+      allLogs.push(psLog);
+      continue;
+    }
+
+    const psPrice = applyMargin(ps.price, margins.powerstation);
+    const panelEquivalentCount = Math.max(1, Math.ceil(ps.max_pv_input_w / 350));
+    const panelPrice = applyMargin(panelEquivalentCount * 95000, margins.panel);
+
+    validSystems.push({
+      inverter: `${ps.name} (Built-in Inverter)`,
+      inverter_price: psPrice,
+      battery_config: `${ps.name} (Built-in Battery)`,
+      battery_price: 0,
+      panel_config: `${ps.max_pv_input_w}W PV Input`,
+      panel_price: panelPrice,
+      array_size_w: ps.max_pv_input_w,
+      battery_total_wh: ps.capacity_wh,
+      total_price: psPrice + panelPrice,
+      daily_yield: dailyYield,
+      deficit: Math.max(0, effectiveDeficitWh),
+      status,
+      advice,
+      log: psLog,
+      is_preconfigured: true
     });
 
-    autoTable(doc, {
-      startY: finalY + 20,
-      head: [["#", "Device", "Qty", "Watts", "Total W", "Hrs", "Daily Wh", "Schedule"]],
-      body: deviceData,
-      theme: "grid",
-      headStyles: { fillColor: [16, 185, 129] },
-      styles: { fontSize: 8 }
-    });
+    allLogs.push(psLog);
+  }
+  
+  // --- 2. Custom inverter + battery + panel combinations ---
+  for (const inv of safeHardware.inverters) {
+    const minUnitsForSurge = Math.ceil(max_surge / inv.max_ac_w);
 
-    // Hourly Load Distribution
-    if (activeAnalysis) {
-      const currentY = (doc as any).lastAutoTable.finalY + 15;
-      doc.setFontSize(14);
-      doc.setTextColor(0);
-      doc.text("HOURLY LOAD DISTRIBUTION", 20, currentY);
+    if (minUnitsForSurge > inv.max_parallel_units) {
+      const invLog: string[] = [];
+      invLog.push(`Checking inverter: ${inv.name} (Max AC: ${inv.max_ac_w}W)`);
+      invLog.push(
+        `❌ Rejected: Even with max parallel units (${inv.max_parallel_units}), total AC output (${inv.max_ac_w * inv.max_parallel_units}W) is less than peak surge (${max_surge}W).`
+      );
+      allLogs.push(invLog);
+      continue;
+    }
 
-      const hourlyData: string[][] = [];
-      // Split 24 hours into two columns of 12 for better space usage
-      for (let i = 0; i < 12; i++) {
-        const h1 = i;
-        const h2 = i + 12;
-        hourlyData.push([
-          `${h1}:00`, `${activeAnalysis.hourly_consumption[h1].toFixed(0)}W`,
-          `${h2}:00`, `${activeAnalysis.hourly_consumption[h2].toFixed(0)}W`
-        ]);
+    const unitsToTry = [minUnitsForSurge];
+    if (minUnitsForSurge + 1 <= inv.max_parallel_units) {
+      unitsToTry.push(minUnitsForSurge + 1);
+    }
+
+    for (const numUnits of unitsToTry) {
+      const invLog: string[] = [];
+      const totalMaxAcW = inv.max_ac_w * numUnits;
+      const totalMaxChargeAmps = inv.max_charge_amps * numUnits;
+      const totalMaxPvW = inv.cc_max_pv_w * numUnits;
+      const totalMaxCcAmps = inv.cc_max_amps * numUnits;
+      const inverterDisplayName = numUnits > 1 ? `${numUnits}x ${inv.name}` : inv.name;
+
+      invLog.push(`Checking setup: ${inverterDisplayName} (Total Max AC: ${totalMaxAcW}W)`);
+      invLog.push(`✅ Inverter setup matches surge requirements.`);
+
+      for (const bat of safeHardware.batteries) {
+        const batLog = [...invLog];
+        batLog.push(`Checking battery: ${bat.name} (${bat.voltage}V, ${bat.capacity_ah}Ah)`);
+
+        if (batteryPreference !== "any" && bat.type !== batteryPreference) {
+          batLog.push(`❌ Rejected: Battery type (${bat.type}) does not match preference (${batteryPreference}).`);
+          allLogs.push(batLog);
+          continue;
+        }
+
+        if (!isBatteryVoltageCompatible(inv.system_vdc, bat.voltage)) {
+          batLog.push(
+            `❌ Rejected: Battery voltage (${bat.voltage}V) is not compatible with inverter DC voltage (${inv.system_vdc}V).`
+          );
+          allLogs.push(batLog);
+          continue;
+        }
+
+        const nominalBatteryV = getNominalBatteryVoltage(bat.voltage);
+        const batteriesInSeries = inv.system_vdc / nominalBatteryV;
+        batLog.push(`System requires ${batteriesInSeries} battery(ies) in series to match ${inv.system_vdc}V DC.`);
+
+        const dodLimit = bat.type === "lead-acid" ? 0.5 : 0.8;
+        const usableWhPerBattery = bat.voltage * bat.capacity_ah * dodLimit;
+        const totalUsablePerString = usableWhPerBattery * batteriesInSeries;
+        batLog.push(`Usable energy per series string: ${totalUsablePerString}Wh (DoD: ${dodLimit * 100}%).`);
+
+        let parallelStrings = 1;
+        if (nighttime_wh > 0) {
+          parallelStrings = Math.ceil(nighttime_wh / totalUsablePerString);
+          batLog.push(`Required nighttime energy (${nighttime_wh}Wh) requires ${parallelStrings} parallel string(s).`);
+        } else {
+          batLog.push(`No nighttime load detected. Using 1 parallel string.`);
+        }
+
+        if (parallelStrings > bat.max_parallel_strings) {
+          batLog.push(
+            `❌ Rejected: Required parallel strings (${parallelStrings}) exceeds battery's physical limit (${bat.max_parallel_strings}).`
+          );
+          allLogs.push(batLog);
+          continue;
+        }
+
+        const totalBatteries = parallelStrings * batteriesInSeries;
+        batLog.push(`Total batteries in bank: ${totalBatteries} (${batteriesInSeries}S x ${parallelStrings}P).`);
+
+        const totalAhBank = bat.capacity_ah * parallelStrings;
+        const minChargeAmpsNeeded = totalAhBank * bat.min_c_rate;
+        batLog.push(`Battery bank requires min ${minChargeAmpsNeeded.toFixed(1)}A charging current (C-Rate: ${bat.min_c_rate}).`);
+
+        if (totalMaxChargeAmps < minChargeAmpsNeeded) {
+          batLog.push(
+            `❌ Rejected: Inverter setup max charge current (${totalMaxChargeAmps}A) is less than required (${minChargeAmpsNeeded.toFixed(1)}A).`
+          );
+          allLogs.push(batLog);
+          continue;
+        }
+
+        batLog.push(`✅ Battery bank is compatible with inverter charging capacity.`);
+        const totalBatteryPrice = applyMargin(bat.price * totalBatteries, margins.battery);
+
+        for (const panel of safeHardware.panels) {
+          const panelLog = [...batLog];
+          panelLog.push(`Checking panel: ${panel.name} (${panel.watts}W, Voc: ${panel.voc}V, Isc: ${panel.isc}A)`);
+
+          const maxSeries = Math.floor(inv.cc_max_voc / panel.voc);
+          const maxParallel = Math.floor(totalMaxCcAmps / panel.isc);
+          const maxAllowedPanels = maxSeries * maxParallel;
+          panelLog.push(`Charge controller limits: Max ${maxSeries} in series, Max ${maxParallel} in parallel (Total: ${maxAllowedPanels} panels).`);
+
+          if (maxAllowedPanels === 0) {
+            panelLog.push(`❌ Rejected: Panel electrical specs exceed charge controller limits.`);
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const ccType = (inv.cc_type || "pwm").toLowerCase();
+          let usableWattsPerPanel = 0;
+
+          if (ccType === "mppt") {
+            usableWattsPerPanel = panel.watts * 0.95;
+            panelLog.push(`Charge Controller: MPPT (Efficiency: 95%). Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W.`);
+          } else {
+            const chargingVoltage = (inv.system_vdc / 12) * 13.5;
+            usableWattsPerPanel = chargingVoltage * panel.isc;
+            const ccEfficiency = usableWattsPerPanel / panel.watts;
+            panelLog.push(
+              `Charge Controller: PWM. Panel voltage dragged to ${chargingVoltage}V. Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W (Effective Efficiency: ${(ccEfficiency * 100).toFixed(1)}%).`
+            );
+          }
+
+          const requiredArrayWatts = total_daily_wh / (psh * 0.8);
+          let minPanelsNeeded = Math.ceil(requiredArrayWatts / usableWattsPerPanel);
+          if (minPanelsNeeded < 1) minPanelsNeeded = 1;
+
+          panelLog.push(`Minimum panels needed to meet load (${total_daily_wh}Wh): ${minPanelsNeeded}.`);
+
+          if (minPanelsNeeded > maxAllowedPanels) {
+            panelLog.push(`❌ Rejected: Required panels (${minPanelsNeeded}) exceeds inverter's physical limit (${maxAllowedPanels}).`);
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const totalPanels = minPanelsNeeded;
+          const arrayWattsRaw = totalPanels * panel.watts;
+          const arrayWattsActual = totalPanels * usableWattsPerPanel;
+          const usableArrayWatts = Math.min(arrayWattsActual, totalMaxPvW);
+
+          if (arrayWattsRaw > totalMaxPvW) {
+            panelLog.push(`Note: Array size (${arrayWattsRaw}W) exceeds charge controller PV input (${totalMaxPvW}W). Clipping will occur.`);
+          }
+
+          const dailyYield = usableArrayWatts * psh;
+          panelLog.push(`Adjusted Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+
+          const totalUsableBatteryWh = totalUsablePerString * parallelStrings;
+          const maxChargeW = totalMaxChargeAmps * inv.system_vdc;
+
+          const sim = simulateHourlySoC(
+            analysis.hourly_consumption,
+            dailyYield,
+            totalUsableBatteryWh,
+            maxChargeW,
+            ccType as "pwm" | "mppt",
+            location
+          );
+
+          const simDeficit = sim.finalDeficitWh;
+          const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+          const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
+          // OLDER VERSION
+          // const simDeficit = sim.finalDeficitWh;
+          // const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
+
+          let status: "Optimal" | "Conditional" | "High Risk";
+          let advice: string;
+
+          if (sim.passed && effectiveDeficitWh === 0) {
+            status = "Optimal";
+            advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
+            panelLog.push(`✅ System passed 24-hour hourly stress test.`);
+          } else if (deficitPercentage <= tolerance) {
+            status = "Conditional";
+            const controllerWarning = ccType.toUpperCase();
+            advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
+            panelLog.push(`⚠️ System failed hourly simulation (${deficitPercentage.toFixed(0)}% deficit), but within tolerance.`);
+          } else {
+            status = "High Risk";
+            const controllerWarning = ccType.toUpperCase();
+            advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
+            panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
+          }
+          
+          if (status === "High Risk") {
+            allLogs.push(panelLog);
+            continue;
+          }
+
+          const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
+          const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
+          const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;
+
+          validSystems.push({
+            inverter: inverterDisplayName,
+            inverter_price: totalInverterPrice,
+            battery_config: `${totalBatteries}x ${bat.name} (${batteriesInSeries}S${parallelStrings}P)`,
+            battery_price: totalBatteryPrice,
+            panel_config: `${totalPanels}x ${panel.name}`,
+            panel_price: totalPanelPrice,
+            array_size_w: arrayWattsActual,
+            battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
+            total_price: totalSystemPrice,
+            daily_yield: dailyYield,
+            deficit: Math.max(0, effectiveDeficitWh),
+            status,
+            advice,
+            log: panelLog,
+            inverter_data: inv,
+            panel_data: panel,
+            battery_data: bat,
+          });
+
+          allLogs.push(panelLog);
+        }
       }
-
-      autoTable(doc, {
-        startY: currentY + 5,
-        head: [["Hour", "Load", "Hour", "Load"]],
-        body: hourlyData,
-        theme: "striped",
-        headStyles: { fillColor: [16, 185, 129] },
-        styles: { fontSize: 9 }
-      });
     }
-
-    // Footer
-    const footerY = (doc as any).lastAutoTable.finalY + 20;
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text("This usage profile is based on the data provided by the user.", 105, footerY, { align: "center" });
-    doc.text("Actual usage may vary based on device efficiency and environmental factors.", 105, footerY + 5, { align: "center" });
-
-    doc.save(`SolarSizer_UsageProfile_${profileId}.pdf`);
-  };
-
-  const generateQuote = (sys: SystemCombination) => {
-    const doc = new jsPDF();
-    const date = new Date().toLocaleDateString();
-    
-    // Customization Settings
-    const { quoteTitle, quotePrefix, footerLine1, footerLine2 } = pdfSettings;
-    const quoteId = `${quotePrefix}-${Math.floor(100000 + Math.random() * 900000)}`;
-    
-    // Safety check for sys
-    if (!sys) return;
-
-    const safePrice = (value: unknown) => safeNumber(value, 0);
-
-    // Use adjusted advice if available
-    let finalAdvice = sys.advice || "No advice available.";
-    if (adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk")) {
-      if (adjustedLoad.deficit === 0) {
-        finalAdvice = "Perfect Match (Lifestyle Adjusted): Your modified usage schedule now fits this system's capacity perfectly.";
-      } else {
-        finalAdvice = `Conditional (Lifestyle Adjusted): With your current adjustments, you still have a small deficit of ${adjustedLoad.deficit.toFixed(0)}Wh. Further minor cuts or grid support needed.`;
-      }
-    }
-
-    // Header
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129); // emerald-600
-    doc.text(quoteTitle, 105, 20, { align: "center" });
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Quote ID: ${quoteId}`, 20, 35);
-    doc.text(`Date: ${date}`, 20, 40);
-    doc.text(`Location: ${REGIONS.find(r => r.value === region)?.label}`, 20, 45);
-
-    // Helper to extract units
-    const getUnits = (str: string) => {
-      const match = str.match(/^(\d+)x/);
-      return match ? match[1] : "1";
-    };
-
-    // Cost Breakdown (Shifted to first position)
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("ITEMIZED COST BREAKDOWN", 20, 60);
-
-    const costs = [
-      ["1", "Inverter Unit", getUnits(sys.inverter), `N${safePrice(sys.inverter_price).toLocaleString()}`],
-      ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${safePrice(sys.battery_price).toLocaleString()}`],
-      ["3", "Solar PV Array", getUnits(sys.panel_config), `N${safePrice(sys.panel_price).toLocaleString()}`],
-      ["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]
-    ];
-
-    autoTable(doc, {
-      startY: 65,
-      head: [["#", "Component", "Units", "Price"]],
-      body: costs,
-      theme: "grid",
-      headStyles: { fillColor: [16, 185, 129] },
-      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${(safePrice(sys.total_price) * 1.075).toLocaleString()}`]],
-      footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
-    });
-
-    // System Specifications (Shifted under Cost Breakdown)
-    const specsY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("SYSTEM SPECIFICATIONS", 20, specsY);
-    
-    doc.setFontSize(10);
-    const specs = [
-      ["Status", sys.status || "N/A"],
-      ["Advice", finalAdvice],
-      ["Inverter", sys.inverter || "N/A"],
-      ["Battery Bank", sys.battery_config || "N/A"],
-      ["Solar Array", `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
-      ["Est. Daily Yield", `${(sys.daily_yield || 0).toFixed(0)}Wh`]
-    ];
-
-    autoTable(doc, {
-      startY: specsY + 5,
-      head: [["Specification", "Details"]],
-      body: specs,
-      theme: "striped",
-      headStyles: { fillColor: [16, 185, 129] }
-    });
-
-    // Installation Guide (Shifted under System Specifications)
-    const guideY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("WIRING & INSTALLATION GUIDE", 20, guideY);
-
-    doc.setFontSize(10);
-    doc.setTextColor(60);
-    const guide = [
-      ["DC Bus", "Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration."],
-      ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`],
-      ["Protection", "Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array."]
-    ];
-
-    autoTable(doc, {
-      startY: guideY + 5,
-      body: guide,
-      theme: "plain",
-      styles: { cellPadding: 2, fontSize: 9 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
-    });
-
-    // Footer
-    const footerY = (doc as any).lastAutoTable.finalY + 20;
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(pdfSettings.footerLine1, 105, footerY, { align: "center" });
-    doc.text(pdfSettings.footerLine2, 105, footerY + 5, { align: "center" });
-
-    doc.save(`SolarSizer_Quote_${quoteId}.pdf`);
-
-    // Also export usage profile
-    generateUsageProfile(adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk") ? adjustedLoad.devices : devices);
-  };
-
-  return (
-    <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans selection:bg-emerald-100">
-      {/* Comparison Modal - Moved higher in DOM and ensured fixed positioning */}
-      <AnimatePresence>
-        {showComparison && results && (
-          <ComparisonModal 
-            systems={selectedForComparison} 
-            analysis={results.analysis}
-            hasGenerator={hasGenerator}
-            setHasGenerator={setHasGenerator}
-            exportComparisonToPDF={exportComparisonToPDF}
-            onSave={saveComparison}
-            onClose={() => setShowComparison(false)} 
-          />
-        )}
-        {selectedSavedComparison && (
-          <ComparisonModal 
-            systems={selectedSavedComparison.systems!} 
-            analysis={selectedSavedComparison.analysis!}
-            hasGenerator={selectedSavedComparison.has_generator || false}
-            setHasGenerator={() => {}} 
-            exportComparisonToPDF={exportComparisonToPDF}
-            onClose={() => setSelectedSavedComparison(null)} 
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Header */}
-      {!isCompact && (
-        <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
-                <Sun className="text-white w-5 h-5" />
-              </div>
-              <h1 className="text-xl font-bold tracking-tight">SolarSizer <span className="text-emerald-600">Pro</span></h1>
-            </div>
-            
-            <nav className="hidden md:flex items-center bg-stone-100 p-1 rounded-xl">
-              <button 
-                onClick={() => setActiveTab("calculator")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "calculator" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Calculator className="w-4 h-4" /> Calculator
-              </button>
-              <button 
-                onClick={() => setActiveTab("products")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "products" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Layers className="w-4 h-4" /> Products
-              </button>
-              <button 
-                onClick={() => setActiveTab("internet")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "internet" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Wifi className="w-4 h-4" /> Internet
-              </button>
-              <button 
-                onClick={() => setActiveTab("profiles")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "profiles" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <FolderOpen className="w-4 h-4" /> Profiles
-              </button>
-              <button 
-                onClick={() => setActiveTab("results")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "results" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Save className="w-4 h-4" /> Results
-              </button>
-              <button 
-                onClick={() => setActiveTab("database")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "database" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Database className="w-4 h-4" /> Hardware DB
-              </button>
-                {isDeveloper && (
-                  <button 
-                    onClick={() => setActiveTab("logs")}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "logs" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-                  >
-                    <Terminal className="w-4 h-4" /> Logs
-                  </button>
-                )}
-            </nav>
-
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setShowSaveProfile(true)}
-                className="hidden md:flex bg-emerald-600 text-white px-4 py-2 rounded-full hover:bg-emerald-700 transition-colors items-center gap-2 text-sm font-medium"
-              >
-                <Save className="w-4 h-4" /> Save Profile
-              </button>
-              <div className="hidden md:block h-6 w-px bg-stone-200" />
-            </div>
-          </div>
-        </header>
-      )}
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {activeTab === "calculator" && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Left Column: Configuration */}
-            <div className="lg:col-span-5 space-y-8">
-            
-            {/* Region & Battery Preference */}
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 space-y-6">
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <MapPin className="w-5 h-5 text-emerald-600" />
-                  <h2 className="font-semibold text-lg">Project Location</h2>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  {REGIONS.map((r) => (
-                    <button
-                      key={r.value}
-                      onClick={() => setRegion(r.value)}
-                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                        region === r.value 
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-900" 
-                          : "border-stone-200 hover:border-stone-300 bg-stone-50"
-                      }`}
-                    >
-                      <span className="font-medium">{r.label}</span>
-                      {region === r.value && <CheckCircle2 className="w-5 h-5" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-stone-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <BatteryIcon className="w-5 h-5 text-emerald-600" />
-                  <h2 className="font-semibold text-lg">Battery Preference</h2>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["any", "lithium", "lead-acid"] as BatteryPreference[]).map((pref) => (
-                    <button
-                      key={pref}
-                      onClick={() => setBatteryPreference(pref)}
-                      className={`px-4 py-2 rounded-xl border text-xs font-bold uppercase transition-all ${
-                        batteryPreference === pref 
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-900" 
-                          : "border-stone-200 hover:border-stone-300 bg-stone-50 text-stone-500"
-                      }`}
-                    >
-                      {pref.replace("-", " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-stone-100">
-                <div className="flex items-center justify-between gap-2 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Scale className="w-5 h-5 text-emerald-600" />
-                    <h2 className="font-semibold text-lg">Tolerance Level</h2>
-                  </div>
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{tolerance}%</span>
-                </div>
-                <p className="text-xs text-stone-500 mb-4 leading-relaxed">
-                  Adjust how much energy deficit (shortage) you're willing to accept before a system is marked as "High Risk".
-                </p>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="50" 
-                  step="5"
-                  value={tolerance}
-                  onChange={(e) => setTolerance(parseInt(e.target.value))}
-                  className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                />
-                <div className="flex justify-between mt-2 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                  <span>Strict (0%)</span>
-                  <span>Balanced (20%)</span>
-                  <span>Relaxed (50%)</span>
-                </div>
-              </div>
-            </section>
-
-            {/* Device Input */}
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-              <div className="flex items-center gap-2 mb-6">
-                <Zap className="w-5 h-5 text-emerald-600" />
-                <h2 className="font-semibold text-lg">Load Profile</h2>
-              </div>
-
-              <div className="space-y-4 mb-8">
-                {masterDevices.length > 0 && (
-                  <div className="mb-4">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Quick Add from Database</label>
-                    <div className="flex flex-wrap gap-2">
-                      {masterDevices.map(md => (
-                        <button
-                          key={md.id}
-                          onClick={() => setNewDevice({
-                            ...newDevice,
-                            name: md.name,
-                            category: md.category,
-                            watts: md.default_watts
-                          })}
-                          className="px-3 py-1.5 bg-stone-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-xs font-bold transition-all border border-stone-200"
-                        >
-                          + {md.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Device Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Living Room AC"
-                      value={newDevice.name}
-                      onChange={e => setNewDevice({...newDevice, name: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                    <p className="text-[10px] text-stone-400 mt-1 italic">
-                      Tip: If devices of the same type have different schedules (e.g. 2 ACs), add them as separate line items.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Category</label>
-                    <select 
-                      value={newDevice.category}
-                      onChange={e => setNewDevice({...newDevice, category: e.target.value as DeviceCategory})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Quantity</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      value={newDevice.qty}
-                      onChange={e => setNewDevice({...newDevice, qty: e.target.value === "" ? "" : parseInt(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Watts (per unit)</label>
-                    <input 
-                      type="number" 
-                      placeholder="60"
-                      value={newDevice.watts}
-                      onChange={e => setNewDevice({...newDevice, watts: e.target.value === "" ? "" : parseInt(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-4">
-                    <div className="flex items-end gap-4">
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Start Hour</label>
-                        <select 
-                          value={newRange.start}
-                          onChange={e => setNewRange({...newRange, start: parseInt(e.target.value)})}
-                          className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                        >
-                          {HOUR_OPTIONS.slice(0, 24).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">End Hour</label>
-                        <select 
-                          value={newRange.end}
-                          onChange={e => setNewRange({...newRange, end: parseInt(e.target.value)})}
-                          className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                        >
-                          {HOUR_OPTIONS.slice(1).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <button 
-                        onClick={addRange}
-                        className="p-2.5 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-colors"
-                        title="Add Time Range"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    {/* Temporary Ranges List */}
-                    {newDevice.ranges && newDevice.ranges.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {newDevice.ranges.map((r, i) => (
-                          <div key={`${r.start}-${r.end}-${i}`} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-100">
-                            <span>{getHourLabel(r.start)} - {getHourLabel(r.end)}</span>
-                            <button onClick={() => removeRange(i)} className="hover:text-emerald-900">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <button 
-                  onClick={addDevice}
-                  className={`w-full py-3 ${editingDeviceId ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'} text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg`}
-                >
-                  {editingDeviceId ? <Save className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  {editingDeviceId ? "Update Device" : "Add to Profile"}
-                </button>
-                {editingDeviceId && (
-                  <button 
-                    onClick={() => {
-                      setEditingDeviceId(null);
-                      setNewDevice({ name: "", category: "electronics", qty: 1, watts: 0, ranges: [] });
-                    }}
-                    className="w-full py-2 text-stone-500 text-sm font-medium hover:text-stone-800 transition-colors"
-                  >
-                    Cancel Edit
-                  </button>
-                )}
-              </div>
-
-              {/* Device List */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400">Current Load Items</h3>
-                <AnimatePresence mode="popLayout">
-                  {devices.length === 0 ? (
-                    <div className="text-center py-8 text-stone-400 border-2 border-dashed border-stone-100 rounded-2xl">
-                      No devices added yet
-                    </div>
-                  ) : (
-                    devices.map((d) => (
-                      <motion.div
-                        key={d.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="flex items-center justify-between p-3 bg-stone-50 border border-stone-200 rounded-xl group"
-                      >
-                        <div>
-                          <p className="font-semibold text-sm">{d.name}</p>
-                          <div className="flex flex-wrap gap-x-2 text-xs text-stone-500">
-                            <span>{d.qty}x {d.watts}W</span>
-                            <span className="text-stone-300">•</span>
-                            <div className="flex gap-1">
-                              {d.ranges.map((r, i) => (
-                                <span key={`${d.id}-${r.start}-${r.end}-${i}`}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => startEditingDevice(d)}
-                            className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => removeDevice(d.id)}
-                            className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
-                </AnimatePresence>
-              </div>
-            </section>
-          </div>
-
-          {/* Right Column: Results */}
-          <div className="lg:col-span-7 space-y-8">
-            {!results ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-stone-200 border-dashed">
-                <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4">
-                  <Calculator className="w-8 h-8 text-stone-400" />
-                </div>
-                <h3 className="text-xl font-bold mb-2">Ready to Calculate</h3>
-                <p className="text-stone-500 max-w-xs">
-                  Add your devices and select your region to see optimal solar configurations.
-                </p>
-              </div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-8"
-              >
-                {/* Analysis Summary */}
-                <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Peak Surge</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.max_surge}W</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Inverter sizing</span>
-                    </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Night Usage</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.nighttime_wh}Wh</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Battery sizing</span>
-                    </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Daily Total</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.total_daily_wh}Wh</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Panel sizing</span>
-                    </div>
-                  </div>
-                </section>
-
-                {/* System Options */}
-                <section className="space-y-4">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <h2 className="font-bold text-xl flex items-center gap-2">
-                        <BatteryIcon className="w-6 h-6 text-emerald-600" />
-                        Recommended Systems
-                      </h2>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex bg-stone-100 p-1 rounded-xl w-fit">
-                          <button 
-                            onClick={() => setResultFilter("all")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "all" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
-                          >
-                            Full Results
-                          </button>
-                          <button 
-                            onClick={() => setResultFilter("kits")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "kits" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
-                          >
-                            Kits
-                          </button>
-                          <button 
-                            onClick={() => setResultFilter("powerstations")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "powerstations" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
-                          >
-                            Powerstations
-                          </button>
-                        </div>
-                        <p className="text-[10px] text-stone-500 ml-1">
-                          Students and young professionals: for easy simple solutions that don't require complex installations, toggle on powerstations or kits.
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-stone-500">{results.systems.length} configurations found</span>
-                      <div className="flex gap-2">
-                        <button 
-                          onClick={() => exportResultsToPDF(results)}
-                          className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-100"
-                        >
-                          <Download className="w-3.5 h-3.5" /> Export Report
-                        </button>
-                        <button 
-                          onClick={saveAnalysis}
-                          className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
-                        >
-                          <Save className="w-3.5 h-3.5" /> Save Analysis
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {results.systems.length === 0 ? (
-                    <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex gap-4">
-                      <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
-                      <div>
-                        <h4 className="font-bold text-amber-900">No Matching Systems</h4>
-                        <p className="text-sm text-amber-700 mt-1">
-                          Your load requirements exceed the safety limits of our current hardware database. 
-                          Try reducing your peak load or nighttime usage.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {(() => {
-                        const filteredSystems = results.systems.filter(s => {
-                          if (resultFilter === "kits") return s.is_preconfigured && s.product_id;
-                          if (resultFilter === "powerstations") return s.is_preconfigured && !s.product_id;
-                          return true;
-                        });
-
-                        const sortedSystems = [...filteredSystems].sort((a, b) => {
-                          const statusOrder: Record<string, number> = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
-                          if (statusOrder[a.status] !== statusOrder[b.status]) {
-                            return statusOrder[a.status] - statusOrder[b.status];
-                          }
-                          return a.total_price - b.total_price;
-                        });
-
-                        // Categorize for "cheapest of each category first"
-                        const categories = ["Optimal", "Conditional", "High Risk"];
-                        const cheapestOfEach = categories.map(cat => 
-                          sortedSystems.find(s => s.status === cat)
-                        ).filter(Boolean) as SystemCombination[];
-
-                        const remaining = sortedSystems.filter(s => 
-                          !cheapestOfEach.some(c => c === s)
-                        );
-
-                        const finalDisplay = [...cheapestOfEach, ...remaining];
-                        
-                        // Pagination
-                        const totalPages = Math.ceil(finalDisplay.length / itemsPerPage);
-                        const startIndex = (currentPage - 1) * itemsPerPage;
-                        const paginatedItems = finalDisplay.slice(startIndex, startIndex + itemsPerPage);
-
-                        return (
-                          <>
-                            {paginatedItems.map((sys, idx) => (
-                              <motion.div
-                                key={getSystemKey(sys, startIndex + idx)}
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                                className={`bg-white p-6 rounded-2xl shadow-sm border transition-all group relative overflow-hidden ${
-                                  isSelectedForComparison(sys) ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-stone-200 hover:border-emerald-500'
-                                }`}
-                              >
-                                {startIndex + idx < cheapestOfEach.length && (
-                                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl">
-                                    {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
-                                  </div>
-                                )}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                  <div className="space-y-4 flex-1">
-                                    <div className="flex items-center gap-3">
-                                      <div className="p-2 bg-stone-100 rounded-lg">
-                                        <Zap className="w-5 h-5 text-stone-600" />
-                                      </div>
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <h3 className="font-bold text-lg">{sys.inverter}</h3>
-                                          {sys.status === "Optimal" ? (
-                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <CheckCircle2 className="w-3 h-3" /> Perfect Match
-                                            </span>
-                                          ) : sys.status === "High Risk" ? (
-                                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <AlertCircle className="w-3 h-3" /> High Risk
-                                            </span>
-                                          ) : (
-                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <AlertCircle className="w-3 h-3" /> Budget Option
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      <div className="flex items-start gap-2">
-                                        <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
-                                        <div>
-                                          <p className="text-sm font-semibold">{sys.battery_config}</p>
-                                          <p className="text-xs text-stone-500">Storage Configuration</p>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-start gap-2">
-                                        <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
-                                        <div>
-                                          <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                          <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Advice Section */}
-                                    <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
-                                      sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
-                                      sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
-                                      'bg-amber-50 text-amber-800 border border-amber-100'
-                                    }`}>
-                                      {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
-                                      <p>{sys.advice}</p>
-                                    </div>
-                                  </div>
-
-                                  <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
-                                    <p className="text-3xl font-black text-stone-900">
-                                      <span className="text-sm font-bold mr-1">NGN</span>
-                                      {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <div className="mt-4 flex flex-col gap-2">
-                                      <button 
-                                        onClick={() => openSystemDetails(sys)}
-                                        className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                                      >
-                                        View Details <ChevronRight className="w-4 h-4" />
-                                      </button>
-                                      <div className="flex gap-2">
-                                        <button 
-                                          onClick={() => setSelectedSystemLog(sys.log)}
-                                          className="p-2.5 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-all flex items-center justify-center"
-                                          title="View Calculation Logs"
-                                        >
-                                          <ListIcon className="w-5 h-5" />
-                                        </button>
-                                        <button 
-                                          onClick={() => toggleComparison(sys)}
-                                          className={`flex-1 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                                            isSelectedForComparison(sys)
-                                            ? 'bg-emerald-600 text-white shadow-md'
-                                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                                          }`}
-                                        >
-                                          <Scale className="w-4 h-4" /> 
-                                          {isSelectedForComparison(sys) ? "Selected" : "Compare"}
-                                        </button>
-                                        <button 
-                                          onClick={() => saveResult(sys)}
-                                          className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all flex items-center justify-center"
-                                          title="Save this configuration"
-                                        >
-                                          <Save className="w-5 h-5" />
-                                        </button>
-                                        {isDeveloper && (
-                                          <button 
-                                            onClick={() => saveAsProduct(sys)}
-                                            className="p-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center"
-                                            title="Promote to Product"
-                                          >
-                                            <Layers className="w-5 h-5" />
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            ))}
-
-                            {/* Pagination Controls */}
-                            {totalPages > 1 && (
-                              <div className="flex items-center justify-center gap-4 pt-8">
-                                <button
-                                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                  disabled={currentPage === 1}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
-                                >
-                                  <ChevronLeft className="w-5 h-5" />
-                                </button>
-                                <div className="flex items-center gap-2">
-                                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                                    <button
-                                      key={page}
-                                      onClick={() => setCurrentPage(page)}
-                                      className={`w-10 h-10 rounded-xl font-bold text-sm transition-all ${
-                                        currentPage === page 
-                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
-                                        : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-                                      }`}
-                                    >
-                                      {page}
-                                    </button>
-                                  ))}
-                                </div>
-                                <button
-                                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                  disabled={currentPage === totalPages}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
-                                >
-                                  <ChevronRight className="w-5 h-5" />
-                                </button>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {/* Comparison Bar */}
-                  <AnimatePresence>
-                    {selectedForComparison.length > 0 && (
-                      <motion.div 
-                        initial={{ y: 100, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        exit={{ y: 100, opacity: 0 }}
-                        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4"
-                      >
-                        <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-stone-800">
-                          <div className="flex items-center gap-4">
-                            <div className="flex -space-x-2">
-                              {selectedForComparison.map((s, i) => (
-                                <div key={getSystemKey(s, i)} className="w-8 h-8 rounded-full bg-emerald-600 border-2 border-stone-900 flex items-center justify-center text-[10px] font-bold">
-                                  {i + 1}
-                                </div>
-                              ))}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold">{selectedForComparison.length} Systems Selected</p>
-                              <p className="text-[10px] text-stone-400 uppercase tracking-wider">Compare to Generator Baseline</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => setSelectedForComparison([])}
-                              className="px-4 py-2 text-xs font-bold text-stone-400 hover:text-white transition-colors"
-                            >
-                              Clear
-                            </button>
-                            <button 
-                              onClick={() => setShowComparison(true)}
-                              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
-                            >
-                              <Scale className="w-4 h-4" /> Compare Now
-                            </button>
-                          </div>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </section>
-              </motion.div>
-            )}
-          </div>
-        </div>
-      )}
-
-        {activeTab === "products" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-stone-900">Product Catalog</h2>
-                <p className="text-stone-500 text-sm">Pre-configured solar system combinations and standalone products.</p>
-              </div>
-              <div className="flex gap-2">
-                {isDeveloper && (
-                  <>
-                    <div className="flex items-center gap-1">
-                      <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
-                        <Upload className="w-3 h-3" /> Import
-                        <input type="file" accept=".json" onChange={importProducts} className="hidden" />
-                      </label>
-                      <Tooltip content={`[
-  {
-    "id": "kit-1",
-    "name": "Starter Kit",
-    "type": "combination",
-    "combination_data": { "inverter": "5kVA", "battery_wh": 5000, "panel_w": 2000 },
-    "price": 500000
   }
-]`}>
-                        <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
-                          <span className="text-[10px] font-bold">!</span>
-                        </div>
-                      </Tooltip>
-                    </div>
-                    <button 
-                      onClick={exportProductsJSON}
-                      className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all flex items-center gap-2"
-                    >
-                      <Download className="w-3 h-3" /> Export
-                    </button>
-                  </>
-                )}
-                {[
-                  { id: 'all', label: 'All', desc: 'Everything in our catalog.' },
-                  { id: 'flagship', label: 'Flagship', desc: 'Premium, high-performance system combinations.' },
-                  { id: 'kit', label: 'Kits', desc: 'Pre-configured systems, including flagship and standard combos.' },
-                  { id: 'solar', label: 'Solar', desc: 'All system combinations excluding flagship ones.' },
-                  { id: 'internet', label: 'Internet', desc: 'Products specifically related to internet connectivity.' },
-                  { id: 'panel', label: 'Panels', desc: 'Standalone solar panels.' },
-                  { id: 'battery', label: 'Batteries', desc: 'Standalone batteries.' }
-                ].map(tag => (
-                  <Tooltip key={tag.id} content={tag.desc}>
-                    <button
-                      onClick={() => setSelectedProductTag(tag.id)}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                        selectedProductTag === tag.id 
-                        ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
-                        : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
-                      }`}
-                    >
-                      {tag.label}
-                    </button>
-                  </Tooltip>
-                ))}
-              </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products
-                .filter(p => {
-                  if (selectedProductTag === 'all') return true;
-                  if (selectedProductTag === 'solar') return p.tags.includes('solar') && !p.tags.includes('flagship');
-                  return p.tags.includes(selectedProductTag);
-                })
-                .map(product => (
-                <motion.div
-                  key={product.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
-                >
-                  <div className="p-6 flex-1">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {product.tags.map(tag => (
-                          <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      {isDeveloper && (
-                        <button 
-                          onClick={() => deleteProduct(product.id)}
-                          className="p-1.5 text-stone-300 hover:text-red-600 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-2">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-6 line-clamp-2">{product.description}</p>
-                    
-                    {product.combination_data && (
-                      <div className="space-y-3 p-4 bg-stone-50 rounded-2xl border border-stone-100 mb-6">
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Cpu className="w-4 h-4" /> {product.combination_data.inverter}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <BatteryIcon className="w-4 h-4" /> {product.combination_data.battery_config}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Sun className="w-4 h-4" /> {product.combination_data.panel_config}
-                        </div>
-                    
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 pt-2 border-t border-stone-100">
-                          <div>Type: {product.combination_data.kit_type || "solar"}</div>
-                          <div>Specs: {product.combination_data.component_specs?.length || 0}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] font-bold text-stone-400 uppercase">Starting From</p>
-                      <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
-                    </div>
-                    <button 
-                      onClick={() => {
-                        if (product.combination_data) {
-                          setSelectedSystemDetails({
-                            ...product.combination_data,
-                            product_id: product.id,
-                            product_name: product.name,
-                            product_description: product.description,
-                          });
-                        } else {
-                          // Create a dummy system combination for standalone products so they can have a specs view
-                          setSelectedSystemDetails({
-                            inverter: product.name,
-                            inverter_price: product.price,
-                            battery_config: "N/A",
-                            battery_price: 0,
-                            panel_config: "N/A",
-                            panel_price: 0,
-                            array_size_w: 0,
-                            battery_total_wh: 0,
-                            total_price: product.price,
-                            daily_yield: 0,
-                            deficit: 0,
-                            status: "Optimal",
-                            advice: product.description,
-                            log: [product.description],
-                            is_preconfigured: true,
-                            product_id: product.id
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all"
-                    >
-                      View Specs
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "internet" && (
-          <div className="space-y-8">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div className="max-w-4xl">
-                <h2 className="text-4xl font-black text-stone-900 mb-4 tracking-tight">Your Internet Stack. Built for Nigeria.</h2>
-                <p className="text-stone-500 text-lg leading-relaxed">
-                  The same SIM. The right hardware. Three to five times the speed — and a connection that doesn't die when NEPA does.
-                </p>
-              </div>
-              {isDeveloper && (
-                <div className="flex gap-2">
-                  <div className="flex items-center gap-1">
-                    <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                      <Upload className="w-4 h-4" /> Import Data
-                      <input type="file" accept=".json" onChange={importInternetData} className="hidden" />
-                    </label>
-                    <Tooltip content={`{
-  "master": [ { "id": "tv", "name": "TV", "category": "electronics", "default_watts": 100 } ],
-  "products": [ { "id": "p1", "name": "Product 1", "price": 100000 } ]
-}`}>
-                      <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
-                        <span className="text-[10px] font-bold">!</span>
-                      </div>
-                    </Tooltip>
-                  </div>
-                  <button 
-                    onClick={exportInternetDataJSON}
-                    className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                  >
-                    <Download className="w-4 h-4" /> Export Data
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl text-amber-900 text-sm">
-              <p className="font-black mb-2 uppercase tracking-wider text-[10px]">Pricing Disclaimer</p>
-              <p className="leading-relaxed">Prices below are naira-range estimates sourced from Lagos import-market data as of early 2026. Verify on the day before purchasing.</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* List Internet Master Devices */}
-              {masterDevices
-                .filter(md => md.category === 'internet' || md.tags.includes('internet'))
-                .map(md => (
-                  <motion.div
-                    key={md.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
-                  >
-                    <div className="p-8 flex-1">
-                      <div className="flex justify-between items-start mb-6">
-                        <span className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-black uppercase rounded-full border border-stone-200">
-                          Hardware
-                        </span>
-                      </div>
-                      <h3 className="text-xl font-black text-stone-900 mb-3">{md.name}</h3>
-                      <p className="text-sm text-stone-500 mb-4">Standard {md.name} for high-speed connectivity.</p>
-                      <div className="flex items-center gap-2 text-xs font-bold text-stone-400">
-                        <Zap className="w-4 h-4" /> {md.default_watts}W Consumption
-                      </div>
-                    </div>
-                    <div className="p-6 border-t border-stone-100">
-                      <button
-                        onClick={() => openSystemDetails(buildInternetDeviceDetails(md))}
-                        className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
-                      >
-                        View Specs
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
-
-              {/* List Internet Products */}
-              {products
-                .filter(p => p.tags.includes('internet'))
-                .map(product => (
-                <motion.div
-                  key={product.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
-                >
-                  <div className="p-8 flex-1">
-                    <div className="flex justify-between items-start mb-6">
-                      <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
-                        {product.tags.find(t => t.startsWith('tier-'))?.replace('tier-', 'Tier ') || 'Internet'}
-                      </span>
-                      <p className="text-2xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
-                    </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-3">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-8 leading-relaxed">{product.description}</p>
-                    
-                    <div className="p-5 bg-stone-50 rounded-2xl text-[11px] text-stone-600 leading-relaxed border border-stone-100 italic">
-                      <span className="font-black text-stone-400 uppercase block mb-1 not-italic tracking-wider">SolarOne Power Note</span>
-                      "Run this on pure sine wave power from your SolarOne unit to protect sensitive radio components from voltage spikes."
-                    </div>
-                  </div>
-                  <div className="p-6 border-t border-stone-100">
-                    <button
-                      onClick={() => openSystemDetails(buildProductDetails(product))}
-                      className="w-full bg-stone-900 text-white py-3 rounded-2xl text-xs font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
-                    >
-                      View Specs
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "database" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Hardware Database</h2>
-                <p className="text-stone-500">Manage the components used in calculations.</p>
-              </div>
-              <div className="flex gap-2 items-center">
-                <div className="flex items-center gap-1">
-                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                    <Upload className="w-4 h-4" /> Import JSON
-                    <input type="file" accept=".json" onChange={importHardwareDatabase} className="hidden" />
-                  </label>
-                  <Tooltip content={`{
-  "inverters": [{"name": "...", "max_ac_w": 5000, ...}],
-  "panels": [{"name": "...", "watts": 400, ...}],
-  "batteries": [{"name": "...", "voltage": 48, ...}]
-}`}>
-                    <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
-                      <span className="text-[10px] font-bold">!</span>
-                    </div>
-                  </Tooltip>
-                </div>
-                <button 
-                  onClick={exportHardwareDatabaseJSON}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                >
-                  <Download className="w-4 h-4" /> Export JSON
-                </button>
-                <button 
-                  onClick={exportHardwareDatabaseToPDF}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                >
-                  <Download className="w-4 h-4" /> Export PDF
-                </button>
-                <button onClick={() => setShowAddHardware("inverter")} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
-                  <Plus className="w-4 h-4" /> Add Inverter
-                </button>
-                <button onClick={() => setShowAddHardware("panel")} className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-amber-600 transition-all">
-                  <Plus className="w-4 h-4" /> Add Panel
-                </button>
-                <button onClick={() => setShowAddHardware("battery")} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
-                  <Plus className="w-4 h-4" /> Add Battery
-                </button>
-                <button onClick={() => setShowAddHardware("powerstation")} className="bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all">
-                  <Plus className="w-4 h-4" /> Add Powerstation
-                </button>
-              </div>
-            </div>
-
-            {isDeveloper && (
-              <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 mb-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-emerald-100 rounded-lg">
-                    <Percent className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg">Profit Margins (%)</h3>
-                    <p className="text-xs text-emerald-600/70">Set percentage margins to be added to hardware and product prices.</p>
-                  </div>
-                  <button 
-                    onClick={saveGlobalSettings}
-                    className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
-                  >
-                    <Save className="w-4 h-4" /> Save to Server
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {(['inverter', 'panel', 'battery', 'powerstation', 'product'] as const).map((key) => (
-                    <div key={key}>
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5 capitalize">{key}</label>
-                      <div className="relative">
-                        <input 
-                          type="number" 
-                          value={margins[key] === 0 ? "" : margins[key]} 
-                          onChange={(e) => setMargins({ ...margins, [key]: parseFloat(e.target.value) || 0 })}
-                          placeholder="0"
-                          className="w-full px-3 py-2 bg-white border border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-bold"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-emerald-400">%</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                
-                {/* PDF Customization Panel */}
-                <div className="mt-8 pt-8 border-t border-emerald-100">
-                  <h3 className="font-bold text-sm text-emerald-800 mb-4 flex items-center gap-2">
-                    <Settings className="w-4 h-4" /> PDF Quote Customization
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Quote Header Title</label>
-                        <input 
-                          type="text" 
-                          value={pdfSettings.quoteTitle}
-                          onChange={(e) => setPdfSettings({ ...pdfSettings, quoteTitle: e.target.value })}
-                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
-                          placeholder="e.g. SOLARSIZER PRO QUOTE"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Quote ID Prefix</label>
-                        <input 
-                          type="text" 
-                          value={pdfSettings.quotePrefix}
-                          onChange={(e) => setPdfSettings({ ...pdfSettings, quotePrefix: e.target.value })}
-                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
-                          placeholder="e.g. QT"
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Footer Message Line 1</label>
-                        <input 
-                          type="text" 
-                          value={pdfSettings.footerLine1}
-                          onChange={(e) => setPdfSettings({ ...pdfSettings, footerLine1: e.target.value })}
-                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Footer Message Line 2</label>
-                        <input 
-                          type="text" 
-                          value={pdfSettings.footerLine2}
-                          onChange={(e) => setPdfSettings({ ...pdfSettings, footerLine2: e.target.value })}
-                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-4 text-[10px] text-emerald-600/60 italic">* Changes are saved to the server and synced across devices.</p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-              {/* Master Devices */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                    <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
-                  </h3>
-                  <div className="flex items-center gap-1">
-                    <label className="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
-                      <Upload className="w-4 h-4" />
-                      <input type="file" accept=".json" onChange={importMasterDevices} className="hidden" />
-                    </label>
-                    <Tooltip content={`[
-  {
-    "id": "fridge",
-    "name": "Refrigerator",
-    "category": "compressor",
-    "default_watts": 150
-  }
-]`}>
-                      <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
-                        <span className="text-[10px] font-bold">!</span>
-                      </div>
-                    </Tooltip>
-                  </div>
-                </div>
-                <div className="space-y-3">
-                  {masterDevices.map((md) => (
-                    <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold text-sm">{md.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
-                          <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
-                        </div>
-                        <div className="flex gap-1 flex-wrap">
-                          {md.tags.map(tag => (
-                            <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="text-xs text-stone-500">
-                        {md.default_watts}W • {md.category}
-                      </div>
-                    </div>
-                  ))}
-                  {isDeveloper && (
-                    <button 
-                      onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
-                      className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
-                    >
-                      + Add Master Device
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Inverters */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Cpu className="w-5 h-5 text-emerald-600" /> Inverters
-                </h3>
-                <div className="space-y-3">
-                  {inverters.map((inv) => (
-                    <div key={inv.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{inv.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("inverter", inv)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("inverter", inv)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("inverter", inv.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>Max AC: {inv.max_ac_w}W</span>
-                        <span>DC Volts: {inv.system_vdc}V</span>
-                        <span>PV Max: {inv.cc_max_pv_w}W</span>
-                        <span>Max Voc: {inv.cc_max_voc}V</span>
-                        <span>Max Amps: {inv.cc_max_amps}A</span>
-                        <span>Charge: {inv.max_charge_amps}A</span>
-                        <span>Parallel: {inv.max_parallel_units} Units</span>
-                        <span className="uppercase">CC: {inv.cc_type || "pwm"}</span>
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{inv.price.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Panels */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Sun className="w-5 h-5 text-amber-500" /> Solar Panels
-                </h3>
-                <div className="space-y-3">
-                  {panels.map((p) => (
-                    <div key={p.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{p.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("panel", p)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("panel", p)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("panel", p.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>Watts: {p.watts}W</span>
-                        <span>Voc: {p.voc}V</span>
-                        <span>Isc: {p.isc}A</span>
-                        <span>Price: ₦{p.price.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Batteries */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <BatteryIcon className="w-5 h-5 text-blue-600" /> Batteries
-                </h3>
-                <div className="space-y-3">
-                  {batteries.map((b) => (
-                    <div key={b.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{b.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("battery", b)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("battery", b)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("battery", b.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{b.voltage}V {b.capacity_ah}Ah</span>
-                        <span className="capitalize">Type: {b.type}</span>
-                        <span>Max Parallel: {b.max_parallel_strings}</span>
-                        <span>Min C-Rate: {b.min_c_rate}</span>
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{b.price.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Powerstations */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Zap className="w-5 h-5 text-stone-900" /> Powerstations
-                </h3>
-                <div className="space-y-3">
-                  {powerstations.map((ps) => (
-                    <div key={ps.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{ps.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{ps.capacity_wh}Wh</span>
-                        <span>Output: {ps.max_output_w}W</span>
-                        <span>PV Max: {ps.max_pv_input_w}W</span>
-                        {ps.system_vdc && <span>Sys VDC: {ps.system_vdc}V</span>}
-                        {ps.cc_type && <span>CC: {ps.cc_type.toUpperCase()}</span>}
-                        {ps.cc_max_voc && <span>Max Voc: {ps.cc_max_voc}V</span>}
-                        {ps.cc_max_amps && <span>Max CC: {ps.cc_max_amps}A</span>}
-                        {ps.max_charge_amps && <span>Charge: {ps.max_charge_amps}A</span>}
-                        {ps.max_parallel_units && <span>Parallel: {ps.max_parallel_units} Units</span>}
-                        {ps.battery_voltage && <span>Bat: {ps.battery_voltage}V</span>}
-                        {ps.capacity_ah && <span>Cap: {ps.capacity_ah}Ah</span>}
-                        {ps.battery_type && <span className="capitalize">{ps.battery_type}</span>}
-                        {ps.min_c_rate && <span>Min C: {ps.min_c_rate}</span>}
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{ps.price.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "logs" && isDeveloper && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Internal Developer Logs</h2>
-                <p className="text-stone-500">Historical calculation attempts and internal logic traces.</p>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => {
-                    if (confirm("Are you sure you want to clear all internal logs? This cannot be undone.")) {
-                      setInternalLogs([]);
-                      localStorage.removeItem("ss_internal_logs");
-                    }
-                  }}
-                  className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100"
-                >
-                  <Trash2 className="w-4 h-4" /> Clear All Logs
-                </button>
-                <button 
-                  onClick={exportFullLogs}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                >
-                  <Download className="w-4 h-4" /> Export Full Logs
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {internalLogs.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                  <Activity className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                  <p className="text-stone-400">No calculation attempts recorded yet.</p>
-                </div>
-              ) : (
-                internalLogs.map((log, i) => (
-                  <div key={`${log.timestamp || "log"}-${i}`} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-stone-100 rounded-lg">
-                          <Terminal className="w-4 h-4 text-stone-600" />
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold">{new Date(log.timestamp).toLocaleString()}</p>
-                          <p className="text-xs text-stone-500">{log.location} • {log.devices.length} devices</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="flex gap-4 text-xs font-bold uppercase tracking-wider">
-                          <div className="text-stone-400">Checked: <span className="text-stone-900">{log.totalCombinationsChecked}</span></div>
-                          <div className="text-emerald-500">Valid: <span className="text-emerald-600">{log.validSystemsCount}</span></div>
-                        </div>
-                        <button 
-                          onClick={() => exportSingleLog(log)}
-                          className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="Export this log"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-3 gap-4 text-xs">
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Surge</p>
-                        <p className="font-bold">{log.analysis.max_surge}W</p>
-                      </div>
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Night Wh</p>
-                        <p className="font-bold">{log.analysis.nighttime_wh}Wh</p>
-                      </div>
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Daily Wh</p>
-                        <p className="font-bold">{log.analysis.total_daily_wh}Wh</p>
-                      </div>
-                    </div>
-
-                    <details className="group">
-                      <summary className="text-xs font-bold text-emerald-600 cursor-pointer hover:underline">
-                        View Full Logic Trace ({log.allLogs.length} paths)
-                      </summary>
-                      <div className="mt-4 space-y-4 max-h-60 overflow-y-auto p-4 bg-stone-900 rounded-xl">
-                        {log.allLogs.map((path, pi) => (
-                          <div key={getLogKey("path", path[0] || "empty", pi)} className="border-l-2 border-stone-700 pl-4 space-y-1">
-                            {path.map((line, li) => (
-                              <p key={getLogKey("line", line, li)} className="text-[10px] font-mono text-stone-400">{line}</p>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-        {activeTab === "profiles" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Saved Profiles</h2>
-                <p className="text-stone-500">Quickly reuse your settings and load profiles.</p>
-              </div>
-              <div className="flex gap-2 items-center">
-                <div className="flex items-center gap-1">
-                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                    <Upload className="w-4 h-4" /> Import Profiles
-                    <input type="file" accept=".json" onChange={importProfiles} className="hidden" />
-                  </label>
-                  <Tooltip content={`[
-  {
-    "name": "My Home",
-    "region": "SW",
-    "devices": [{"name": "TV", "watts": 100, ...}]
-  }
-]`}>
-                    <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
-                      <span className="text-[10px] font-bold">!</span>
-                    </div>
-                  </Tooltip>
-                </div>
-                <button 
-                  onClick={exportProfilesJSON}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                >
-                  <Download className="w-4 h-4" /> Export JSON
-                </button>
-                <button 
-                  onClick={() => {
-                    const doc = new jsPDF();
-                    doc.setFontSize(20);
-                    doc.text("Saved Profiles Inventory", 20, 20);
-                    
-                    profiles.forEach((p, i) => {
-                      if (i > 0) doc.addPage();
-                      doc.setFontSize(16);
-                      doc.text(`Profile: ${p.name}`, 20, 40);
-                      doc.setFontSize(10);
-                      doc.text(`Region: ${REGIONS.find(r => r.value === p.region)?.label}`, 20, 50);
-                      doc.text(`Battery Preference: ${p.batteryPreference}`, 20, 55);
-                      
-                      autoTable(doc, {
-                        startY: 65,
-                        head: [["Device", "Watts", "Qty", "Hours", "Daily Wh"]],
-                        body: p.devices.map(d => {
-                          const hours = d.ranges.reduce((acc, r) => acc + (r.end - r.start), 0);
-                          return [d.name, d.watts, d.qty, hours, d.watts * d.qty * hours];
-                        }),
-                        theme: "striped"
-                      });
-                    });
-                    doc.save("SolarSizer_Profiles.pdf");
-                  }}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
-                >
-                  <Download className="w-4 h-4" /> Export PDF
-                </button>
-                <button 
-                  onClick={() => setShowSaveProfile(true)}
-                  className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all"
-                >
-                  <Save className="w-4 h-4" /> Save Current
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {profiles.length === 0 ? (
-                <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                  <UserCircle className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                  <p className="text-stone-400">No profiles saved yet.</p>
-                </div>
-              ) : (
-                profiles.map((p) => (
-                  <div key={p.id} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm hover:border-emerald-500 transition-all group">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-emerald-50 rounded-lg">
-                          <UserCircle className="w-5 h-5 text-emerald-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-lg">{p.name}</h3>
-                          <p className="text-xs text-stone-400">{new Date(p.timestamp).toLocaleDateString()}</p>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => deleteProfile(p.id)}
-                        className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="space-y-3 mb-6">
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <MapPin className="w-3.5 h-3.5" />
-                        <span>{REGIONS.find(r => r.value === p.region)?.label}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <BatteryIcon className="w-3.5 h-3.5" />
-                        <span className="capitalize">{p.batteryPreference.replace("-", " ")} Preference</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <Zap className="w-3.5 h-3.5" />
-                        <span>{p.devices.length} Devices in Load Profile</span>
-                      </div>
-                    </div>
-
-                    <button 
-                      onClick={() => loadProfile(p)}
-                      className="w-full py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                    >
-                      <FolderOpen className="w-4 h-4" /> Load Profile
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        )}
-        {activeTab === "results" && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold">Saved Results</h2>
-                <p className="text-stone-500">Access your previously saved system configurations.</p>
-              </div>
-              {selectedSavedAnalysis && (
-                <button 
-                  onClick={() => setSelectedSavedAnalysis(null)}
-                  className="flex items-center gap-2 text-stone-500 hover:text-stone-900 font-medium transition-colors"
-                >
-                  <ArrowLeft className="w-4 h-4" /> Back to List
-                </button>
-              )}
-            </div>
-
-            {!selectedSavedAnalysis ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {savedResults.length === 0 ? (
-                  <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                    <Save className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                    <p className="text-stone-400">No saved results yet.</p>
-                  </div>
-                ) : (
-                  savedResults.map((r) => {
-                    const isAnalysis = !!r.systems && !r.is_comparison;
-                    const isComparison = !!r.is_comparison;
-                    return (
-                      <div key={r.id} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm hover:border-emerald-500 transition-all group">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-emerald-50 rounded-lg">
-                              {isComparison ? <Scale className="w-5 h-5 text-emerald-600" /> : isAnalysis ? <LayoutGrid className="w-5 h-5 text-emerald-600" /> : <Zap className="w-5 h-5 text-emerald-600" />}
-                            </div>
-                            <div>
-                              <h3 className="font-bold text-lg">{r.profile_name}</h3>
-                              <p className="text-xs text-stone-400">{new Date(r.created_at).toLocaleDateString()}</p>
-                            </div>
-                          </div>
-                          <button 
-                            onClick={() => deleteResult(r.id)}
-                            className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {isComparison ? (
-                          <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600 font-medium">
-                              <Scale className="w-3.5 h-3.5" />
-                              <span>Comparison of {r.systems?.length || 0} Systems</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Zap className="w-3.5 h-3.5" />
-                              <span>{r.analysis?.max_surge.toFixed(0)}W Peak Surge</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Info className="w-3.5 h-3.5" />
-                              <span>{r.has_generator ? "Owned Generator" : "New Generator"}</span>
-                            </div>
-                          </div>
-                        ) : isAnalysis ? (
-                          <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600 font-medium">
-                              <Layers className="w-3.5 h-3.5" />
-                              <span>{r.systems?.length || 0} System Options</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Zap className="w-3.5 h-3.5" />
-                              <span>{Math.max(...Object.values(r.analysis?.hourly_consumption || {})).toFixed(0)}W Peak Load</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <BatteryIcon className="w-3.5 h-3.5" />
-                              <span>{r.analysis?.total_daily_wh.toFixed(0)}Wh Daily Energy</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Cpu className="w-3.5 h-3.5" />
-                              <span>{r.system_data?.inverter}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <BatteryIcon className="w-3.5 h-3.5" />
-                              <span>{r.system_data?.battery_config}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Sun className="w-3.5 h-3.5" />
-                              <span>{r.system_data?.panel_config}</span>
-                            </div>
-                            <div className="pt-2 border-t border-stone-100 flex justify-between items-center">
-                              <span className="text-xs font-bold text-stone-400">Total Price</span>
-                              <span className="text-sm font-black text-stone-900">₦{r.system_data?.total_price.toLocaleString()}</span>
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => {
-                              if (isComparison) setSelectedSavedComparison(r);
-                              else if (isAnalysis) setSelectedSavedAnalysis(r);
-                              else setSelectedSystemDetails(r.system_data!);
-                            }}
-                            className="flex-[2] py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                          >
-                            {isComparison ? "Open Comparison" : isAnalysis ? "Open Analysis" : "View Details"}
-                          </button>
-                          <button 
-                            onClick={() => {
-                              if (isComparison) {
-                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator, 6, null, r.analysis);
-                              } else if (isAnalysis) {
-                                exportResultsToPDF({ analysis: r.analysis!, systems: r.systems! }, r.devices);
-                              } else {
-                                generateQuote(r.system_data!);
-                              }
-                            }}
-                            className="flex-1 py-2.5 bg-stone-100 text-stone-600 rounded-xl text-sm font-bold hover:bg-stone-200 transition-all flex items-center justify-center"
-                            title="Download PDF"
-                          >
-                            <Download className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-bold text-emerald-900 mb-2">Analysis Summary: {selectedSavedAnalysis.profile_name}</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Peak Load</p>
-                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis ? Math.max(...Object.values(selectedSavedAnalysis.analysis.hourly_consumption)).toFixed(0) : 0}W</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Daily Energy</p>
-                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.total_daily_wh.toFixed(0) || 0}Wh</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Surge Load</p>
-                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis?.max_surge.toFixed(0) || 0}W</p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Options</p>
-                          <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.systems?.length || 0}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <button 
-                      onClick={() => exportResultsToPDF({ analysis: selectedSavedAnalysis.analysis!, systems: selectedSavedAnalysis.systems! }, selectedSavedAnalysis.devices)}
-                      className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20"
-                    >
-                      <Download className="w-5 h-5" /> Export PDF Report
-                    </button>
-                  </div>
-
-                <div className="space-y-4">
-                  {selectedSavedAnalysis.systems?.map((sys, idx) => (
-                    <motion.div
-                      key={getSystemKey(sys, idx)}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 hover:border-emerald-500 transition-all group relative overflow-hidden"
-                    >
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <div className="space-y-4 flex-1">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-stone-100 rounded-lg">
-                              <Zap className="w-5 h-5 text-stone-600" />
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-bold text-lg">{sys.inverter}</h3>
-                                {sys.status === "Optimal" ? (
-                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" /> Perfect Match
-                                  </span>
-                                ) : sys.status === "High Risk" ? (
-                                  <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" /> High Risk
-                                  </span>
-                                ) : (
-                                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" /> Budget Option
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="flex items-start gap-2">
-                              <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
-                              <div>
-                                <p className="text-sm font-semibold">{sys.battery_config}</p>
-                                <p className="text-xs text-stone-500">Storage Configuration</p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-2">
-                              <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
-                              <div>
-                                <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
-                            sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
-                            sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
-                            'bg-amber-50 text-amber-800 border border-amber-100'
-                          }`}>
-                            {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
-                            <p>{sys.advice}</p>
-                          </div>
-                        </div>
-
-                        <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
-                          <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
-                          <p className="text-3xl font-black text-stone-900">
-                            <span className="text-sm font-bold mr-1">NGN</span>
-                            {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </p>
-                          <div className="mt-4 flex flex-col gap-2">
-                            <button 
-                              onClick={() => setSelectedSystemLog(sys.log)}
-                              className="w-full md:w-auto px-6 py-2.5 bg-stone-100 text-stone-900 rounded-xl font-semibold hover:bg-stone-200 transition-all flex items-center justify-center gap-2"
-                            >
-                              <ListIcon className="w-4 h-4" /> View Log
-                            </button>
-                            <div className="flex gap-2">
-                              <button 
-                                onClick={() => openSystemDetails(sys)}
-                                className="flex-1 px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                              >
-                                View Details <ChevronRight className="w-4 h-4" />
-                              </button>
-                                <button 
-                                  onClick={() => saveResult(sys)}
-                                  className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl font-semibold hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
-                                  title="Save this configuration"
-                                >
-                                  <Save className="w-5 h-5" />
-                                </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
-
-      {/* Save Profile Modal */}
-      <AnimatePresence>
-        {showSaveProfile && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between">
-                <h2 className="font-bold text-xl">Save Load Profile</h2>
-                <button onClick={() => setShowSaveProfile(false)} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-sm text-stone-500">
-                  Save your current region, battery preferences, and device list as a reusable profile.
-                </p>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Profile Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. My Home Setup"
-                    value={profileName}
-                    onChange={e => setProfileName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    autoFocus
-                  />
-                </div>
-                <div className="pt-4 flex gap-3">
-                  <button 
-                    onClick={() => setShowSaveProfile(false)}
-                    className="flex-1 py-3 bg-stone-100 text-stone-900 rounded-xl font-bold hover:bg-stone-200 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={saveProfile}
-                    disabled={!profileName.trim()}
-                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Save Profile
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-stone-200 mt-12 py-12">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div className="col-span-1 md:col-span-2">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
-                  <Sun className="text-white w-4 h-4" />
-                </div>
-                <h2 className="font-bold tracking-tight">SolarSizer Pro</h2>
-              </div>
-              <p className="text-stone-500 text-sm max-w-sm">
-                Advanced solar sizing algorithms based on real-world meteorological data and hardware specifications. 
-                Always consult with a certified engineer before installation.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold text-sm uppercase tracking-wider mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><a href="#" className="hover:text-emerald-600">Installation Guide</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Battery Safety</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Panel Efficiency</a></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold text-sm uppercase tracking-wider mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><a href="#" className="hover:text-emerald-600">Contact Experts</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Hardware Partners</a></li>
-                <li><a href="#" className="hover:text-emerald-600">API Documentation</a></li>
-              </ul>
-            </div>
-          </div>
-          <div className="border-t border-stone-100 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-stone-400">
-            <p>© 2026 SolarSizer Pro. All rights reserved.</p>
-            <div className="flex gap-6">
-              <a href="#" className="hover:text-stone-600">Privacy Policy</a>
-              <a href="#" className="hover:text-stone-600">Terms of Service</a>
-              <a href="#" className="hover:text-stone-600">Cookie Settings</a>
-            </div>
-          </div>
-        </div>
-      </footer>
-
-      {/* System Details Modal */}
-      <AnimatePresence>
-        {selectedSystemDetails && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm p-4 flex items-center justify-center"
-            onClick={() => setSelectedSystemDetails(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.96, y: 16 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.96, y: 16 }}
-              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-stone-200 p-6 md:p-8"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="space-y-6">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-2xl font-bold text-stone-900">
-                      {selectedSystemDetails.product_name || "System Details"}
-                    </h3>
-                    {selectedSystemDetails.product_description && (
-                      <p className="text-sm text-stone-500 mt-1">
-                        {selectedSystemDetails.product_description}
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedSystemDetails(null)}
-                    className="p-2 rounded-full hover:bg-stone-100 text-stone-500"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50">
-                  <p className="text-sm font-semibold text-stone-700">Status</p>
-                  <p className="text-base text-stone-900 mt-1">{selectedSystemDetails.status}</p>
-                  <p className="text-sm text-stone-600 mt-2">{selectedSystemDetails.advice}</p>
-                </div>
-
-                {showInteractiveBridge &&
-                (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
-                  <InteractiveBridge
-                    selectedSystem={selectedSystemDetails}
-                    onClose={() => setShowInteractiveBridge(false)}
-                  />
-                ) : (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <Cpu className="w-4 h-4" />
-                          Inverter
-                        </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.inverter}</p>
-                        <p className="text-xs text-stone-500 mt-1">
-                          {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <BatteryIcon className="w-4 h-4" />
-                          Battery
-                        </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.battery_config}</p>
-                        <p className="text-xs text-stone-500 mt-1">
-                          {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
-                        </p>
-                      </div>
-
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <Sun className="w-4 h-4" />
-                          Panel
-                        </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.panel_config}</p>
-                        <p className="text-xs text-stone-500 mt-1">
-                          {selectedSystemDetails.panel_w ? `${selectedSystemDetails.panel_w}W` : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    {selectedSystemDetails.component_specs &&
-                      selectedSystemDetails.component_specs.length > 0 && (
-                        <div className="space-y-4">
-                          <h4 className="font-bold text-lg flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-stone-400" />
-                            Hardware Specs
-                          </h4>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {selectedSystemDetails.component_specs.map((item, index) => (
-                              <div
-                                key={index}
-                                className="p-4 rounded-2xl border border-stone-200 bg-white"
-                              >
-                                <div className="flex items-center justify-between gap-3 mb-3">
-                                  <p className="font-bold text-stone-900 capitalize">
-                                    {item.role.replace(/_/g, " ")}
-                                  </p>
-                                  <span className="text-xs font-bold text-stone-500">
-                                    Qty: {item.quantity}
-                                  </span>
-                                </div>
-
-                                <p className="text-sm text-stone-700 mb-3">{item.name}</p>
-
-                                <div className="space-y-1 text-xs text-stone-500">
-                                  {Object.entries(item.specs).map(([key, value]) => (
-                                    <div key={key} className="flex items-center justify-between gap-4">
-                                      <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                      <span className="font-semibold text-stone-700">
-                                        {String(value)}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-lg flex items-center gap-2">
-                        <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
-                      </h4>
-                      <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100 space-y-4 text-sm text-stone-600 leading-relaxed">
-                        <p>• <strong>DC Bus:</strong> Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration.</p>
-                        <p>• <strong>PV String:</strong> Connect panels in the specified series-parallel configuration to stay within the {selectedSystemDetails.inverter}'s MPPT window.</p>
-                        <p>• <strong>Protection:</strong> Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array.</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
-                          Total System Investment
-                        </p>
-                        <p className="text-3xl font-black text-emerald-900">
-                          ₦{(selectedSystemDetails.total_price || 0).toLocaleString()}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => generateQuote(selectedSystemDetails)}
-                        className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
-                      >
-                        Generate Quote <ExternalLink className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Add Hardware Modal */}
-      <AnimatePresence>
-        {showAddMasterDevice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-lg max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
-                <h2 className="font-bold text-xl">{editingMasterDevice ? "Edit" : "Add"} Master Device</h2>
-                <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-              <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8" onSubmit={saveMasterDevice}>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Name</label>
-                  <input name="name" defaultValue={itemData(editingMasterDevice)?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
-                    <select name="category" defaultValue={itemData(editingMasterDevice)?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
-                      <option value="electronics">Electronics</option>
-                      <option value="motor">Motor</option>
-                      <option value="compressor">Compressor</option>
-                      <option value="heating">Heating</option>
-                      <option value="internet">Internet</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
-                    <input name="default_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
-                  <input name="tags" defaultValue={itemData(editingMasterDevice)?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />
-                </div>
-                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
-                  {editingMasterDevice ? "Update Device" : "Save Device"}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {showAddHardware && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
-                <h2 className="font-bold text-xl capitalize">{editingHardware ? "Edit" : "Add New"} {showAddHardware}</h2>
-                <button onClick={() => { setShowAddHardware(null); setEditingHardware(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-              <form 
-                className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const commonData = {
-                    name: fd.get("name") as string,
-                    price: Number(fd.get("price")),
-                    description: fd.get("description") as string,
-                    tags: (fd.get("tags") as string)?.split(",").map(t => t.trim()).filter(t => t !== "") || [],
-                  };
-
-                  if (showAddHardware === "inverter") {
-                    const data: Inverter = {
-                      id: editingHardware?.id || crypto.randomUUID(),
-                      ...commonData,
-                      max_ac_w: Number(fd.get("max_ac_w")),
-                      cc_max_pv_w: Number(fd.get("cc_max_pv_w")),
-                      cc_max_voc: Number(fd.get("cc_max_voc")),
-                      cc_max_amps: Number(fd.get("cc_max_amps")),
-                      system_vdc: Number(fd.get("system_vdc")),
-                      max_charge_amps: Number(fd.get("max_charge_amps")),
-                      cc_type: fd.get("cc_type") as "pwm" | "mppt",
-                      max_parallel_units: Number(fd.get("max_parallel_units") || 1),
-                    };
-                    if (editingHardware) {
-                      setInverters(inverters.map(i => i.id === editingHardware.id ? data : i));
-                    } else {
-                      setInverters([...inverters, data]);
-                    }
-                  } else if (showAddHardware === "panel") {
-                    const data: Panel = {
-                      id: editingHardware?.id || crypto.randomUUID(),
-                      ...commonData,
-                      watts: Number(fd.get("watts")),
-                      voc: Number(fd.get("voc")),
-                      isc: Number(fd.get("isc")),
-                    };
-                    if (editingHardware) {
-                      setPanels(panels.map(p => p.id === editingHardware.id ? data : p));
-                    } else {
-                      setPanels([...panels, data]);
-                    }
-                  } else if (showAddHardware === "battery") {
-                    const data: Battery = {
-                      id: editingHardware?.id || crypto.randomUUID(),
-                      ...commonData,
-                      voltage: Number(fd.get("voltage")),
-                      capacity_ah: Number(fd.get("capacity_ah")),
-                      type: fd.get("type") as any,
-                      max_parallel_strings: Number(fd.get("max_parallel_strings") || 10),
-                      min_c_rate: Number(fd.get("min_c_rate") || 0.1),
-                    };
-                    if (editingHardware) {
-                      setBatteries(batteries.map(b => b.id === editingHardware.id ? data : b));
-                    } else {
-                      setBatteries([...batteries, data]);
-                    }
-                  } else if (showAddHardware === "powerstation") {
-                    const data: Powerstation = {
-                      id: editingHardware?.id || crypto.randomUUID(),
-                      ...commonData,
-                      capacity_wh: Number(fd.get("capacity_wh")),
-                      max_output_w: Number(fd.get("max_output_w")),
-                      max_pv_input_w: Number(fd.get("max_pv_input_w")),
-                      battery_type: fd.get("battery_type") as any,
-                      inverter_type: fd.get("inverter_type") as any,
-                      max_charge_amps: Number(fd.get("max_charge_amps")),
-                      system_vdc: Number(fd.get("system_vdc")),
-                      cc_type: fd.get("cc_type") as any,
-                      cc_max_voc: Number(fd.get("cc_max_voc")),
-                      cc_max_amps: Number(fd.get("cc_max_amps")),
-                      max_parallel_units: Number(fd.get("max_parallel_units")),
-                      battery_voltage: Number(fd.get("battery_voltage")),
-                      capacity_ah: Number(fd.get("capacity_ah")),
-                      min_c_rate: Number(fd.get("min_c_rate")),
-                    };
-                    if (editingHardware) {
-                      setPowerstations(powerstations.map(ps => ps.id === editingHardware.id ? data : ps));
-                    } else {
-                      setPowerstations([...powerstations, data]);
-                    }
-
-                    if (isDeveloper) {
-                      const adminKey = sessionStorage.getItem("ss_admin_key");
-                      if (adminKey) {
-                        sdk.saveHardware({ id: data.id, type: "powerstation", data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
-                      }
-                    }
-                  }
-
-                  // Global sync for other types if developer
-                  if (isDeveloper && showAddHardware !== "powerstation") {
-                    const adminKey = sessionStorage.getItem("ss_admin_key");
-                    if (adminKey) {
-                      const id = editingHardware?.id || crypto.randomUUID();
-                      let data: any;
-                      if (showAddHardware === "inverter") {
-                        data = { id, ...commonData, max_ac_w: Number(fd.get("max_ac_w")), cc_max_pv_w: Number(fd.get("cc_max_pv_w")), cc_max_voc: Number(fd.get("cc_max_voc")), cc_max_amps: Number(fd.get("cc_max_amps")), system_vdc: Number(fd.get("system_vdc")), max_charge_amps: Number(fd.get("max_charge_amps")), cc_type: fd.get("cc_type"), max_parallel_units: Number(fd.get("max_parallel_units") || 1) };
-                      } else if (showAddHardware === "panel") {
-                        data = { id, ...commonData, watts: Number(fd.get("watts")), voc: Number(fd.get("voc")), isc: Number(fd.get("isc")) };
-                      } else if (showAddHardware === "battery") {
-                        data = { id, ...commonData, voltage: Number(fd.get("voltage")), capacity_ah: Number(fd.get("capacity_ah")), type: fd.get("type"), max_parallel_strings: Number(fd.get("max_parallel_strings") || 10), min_c_rate: Number(fd.get("min_c_rate") || 0.1) };
-                      }
-                      sdk.saveHardware({ id, type: showAddHardware, data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
-                    }
-                  }
-                  setShowAddHardware(null);
-                  setEditingHardware(null);
-                }}
-              >
-                {(() => {
-                  const currentItem = editingHardware
-                    ? itemData(
-                      editingHardware.item ?? (
-                        editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
-                          : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
-                          : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
-                          : powerstations.find(ps => ps.id === editingHardware.id)
-                      ),
-                      editingHardware.type
-                    )
-                    : null;
-                  
-                  return (
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Model Name</label>
-                        <input name="name" defaultValue={currentItem?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Description (for catalog)</label>
-                        <input name="description" defaultValue={(currentItem as any)?.description} placeholder="Brief marketing description..." className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
-                        <input name="tags" defaultValue={(currentItem as any)?.tags?.join(", ")} placeholder="e.g. residential, featured, budget" className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        {showAddHardware === "inverter" && (
-                          <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max AC (W)</label><input name="max_ac_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_ac_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">DC Volts (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Inverter)?.system_vdc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">PV Max (W)</label><input name="cc_max_pv_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_pv_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_charge_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_parallel_units || 1} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Inverter)?.cc_type || "pwm"} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
-                          </>
-                        )}
-                        {showAddHardware === "panel" && (
-                          <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts (W)</label><input name="watts" type="number" step="any" defaultValue={(currentItem as Panel)?.watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voc (V)</label><input name="voc" type="number" step="any" defaultValue={(currentItem as Panel)?.voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Isc (A)</label><input name="isc" type="number" step="any" defaultValue={(currentItem as Panel)?.isc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                          </>
-                        )}
-                        {showAddHardware === "battery" && (
-                          <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voltage (V)</label><input name="voltage" type="number" step="any" defaultValue={(currentItem as Battery)?.voltage} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Battery)?.capacity_ah} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Type</label><select name="type" defaultValue={(currentItem as Battery)?.type} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" step="any" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                          </>
-                        )}
-                        {showAddHardware === "powerstation" && (
-                          <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Type</label><select name="battery_type" defaultValue={(currentItem as Powerstation)?.battery_type || "lithium"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                          </>
-                        )}
-                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
-                  {editingHardware ? "Update Component" : "Save Component"}
-                </button>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {selectedSystemLog && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-2xl max-h-[80vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-100 rounded-lg">
-                    <Calculator className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <h2 className="font-bold text-xl text-stone-900">Calculation Log</h2>
-                </div>
-                <button 
-                  onClick={() => setSelectedSystemLog(null)}
-                  className="p-2 hover:bg-stone-200 rounded-full transition-colors"
-                >
-                  <X className="w-6 h-6 text-stone-500" />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-y-auto p-6 space-y-3">
-                {selectedSystemLog.map((line, i) => (
-                  <div 
-                    key={getLogKey("system-log", line, i)} 
-                    className={`p-3 rounded-xl text-sm font-mono flex gap-3 ${
-                      line.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
-                      line.includes('❌') ? 'bg-red-50 text-red-800 border border-red-100' :
-                      line.includes('Note:') ? 'bg-amber-50 text-amber-800 border border-amber-100' :
-                      'bg-stone-50 text-stone-600 border border-stone-100'
-                    }`}
-                  >
-                    <span className="text-stone-300 select-none">{String(i + 1).padStart(2, '0')}</span>
-                    <span>{line}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-6 border-t border-stone-100 bg-stone-50 text-center">
-                <p className="text-xs text-stone-400">
-                  This log shows the step-by-step validation process for this specific hardware combination.
-                </p>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+  validSystems.sort((a, b) => a.total_price - b.total_price);
+  return { analysis, systems: validSystems, allLogs };
 }
+
