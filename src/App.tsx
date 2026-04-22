@@ -268,6 +268,45 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
     };
   };
 
+  const buildInternetDeviceDetails = (md: MasterDevice): SystemCombination => ({
+    inverter: md.name,
+    inverter_price: 0,
+    battery_config: "N/A",
+    battery_price: 0,
+    panel_config: "N/A",
+    panel_price: 0,
+    array_size_w: md.default_watts,
+    battery_total_wh: 0,
+    total_price: 0,
+    daily_yield: 0,
+    deficit: 0,
+    status: "Optimal",
+    advice: `${md.name} typically draws about ${md.default_watts}W.`,
+    log: [
+      `Internet device: ${md.name}`,
+      `Category: ${md.category}`,
+      `Typical consumption: ${md.default_watts}W`,
+      md.tags.length ? `Tags: ${md.tags.join(", ")}` : "Tags: none",
+    ],
+    is_preconfigured: true,
+    product_id: md.id,
+    product_name: md.name,
+    product_description: `Internet hardware device • ${md.default_watts}W typical load`,
+    kit_type: "internet",
+    component_specs: [
+      {
+        role: "network",
+        name: md.name,
+        quantity: 1,
+        specs: {
+          watts: md.default_watts,
+          category: md.category,
+          tags: md.tags.join(", "),
+        },
+      },
+    ],
+  });
+
 const safeNumber = (value: unknown, fallback = 0) => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -3076,8 +3115,11 @@ export default function App() {
                       </div>
                     </div>
                     <div className="p-6 border-t border-stone-100">
-                      <button className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all">
-                        View Details
+                      <button
+                        onClick={() => openSystemDetails(buildInternetDeviceDetails(md))}
+                        className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
+                      >
+                        View Specs
                       </button>
                     </div>
                   </motion.div>
