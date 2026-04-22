@@ -233,7 +233,7 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
       };
     }
 
-    const isInternet = product.tags.includes("internet");
+    const isInternet = product.tags?.includes("internet") ?? false;
 
     return {
       inverter: product.name,
@@ -2194,12 +2194,14 @@ export default function App() {
               >
                 <Database className="w-4 h-4" /> Hardware DB
               </button>
-                  <button
-                    onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
-                    className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                {isDeveloper && (
+                  <button 
+                    onClick={() => setActiveTab("logs")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "logs" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
                   >
-                    + Add Master Device
+                    <Terminal className="w-4 h-4" /> Logs
                   </button>
+                )}
             </nav>
 
             <div className="flex items-center gap-4">
@@ -3907,7 +3909,7 @@ export default function App() {
                             </button>
                             <div className="flex gap-2">
                               <button 
-                                onClick={() => openSystemDetails(buildProductDetails(product))}
+                                onClick={() => openSystemDetails(sys)}
                                 className="flex-1 px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                               >
                                 View Details <ChevronRight className="w-4 h-4" />
