@@ -1,0 +1,39 @@
+CREATE TABLE IF NOT EXISTS devices_master (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL,
+  default_watts REAL NOT NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hardware (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  data TEXT NOT NULL DEFAULT '{}',
+  tags TEXT NOT NULL DEFAULT '[]',
+  description TEXT DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  type TEXT NOT NULL,
+  combination_data TEXT DEFAULT NULL,
+  tags TEXT NOT NULL DEFAULT '[]',
+  price REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT DEFAULT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_hardware_user_id ON hardware(user_id);
+CREATE INDEX IF NOT EXISTS idx_hardware_type ON hardware(type);
+CREATE INDEX IF NOT EXISTS idx_products_type ON products(type);

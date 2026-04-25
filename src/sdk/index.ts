@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Device, Region, Hardware, BatteryPreference, SystemCombination } from '../types';
+import { BatteryPreference, Device, Hardware, Region, SystemCombination } from '../types';
 
 export class SolarSizerSDK {
   private baseUrl: string;
@@ -25,27 +25,28 @@ export class SolarSizerSDK {
 
   async saveHardware(item: any, adminKey: string) {
     const res = await axios.post(`${this.baseUrl}/hardware`, item, {
-      headers: { "x-admin-key": adminKey }
+      headers: { 'x-admin-key': adminKey },
     });
     return res.data;
   }
 
   async deleteHardware(id: string, adminKey: string) {
     const res = await axios.delete(`${this.baseUrl}/hardware/${id}`, {
-      headers: { "x-admin-key": adminKey }
+      headers: { 'x-admin-key': adminKey },
     });
     return res.data;
   }
 
-  async saveMasterDevice(device: any, adminKey?: string) {
-    const headers = adminKey ? { "x-admin-key": adminKey } : undefined;
-    const res = await axios.post(`${this.baseUrl}/devices`, device, headers ? { headers } : undefined);
+  async saveMasterDevice(device: any, adminKey: string) {
+    const res = await axios.post(`${this.baseUrl}/devices`, device, {
+      headers: { 'x-admin-key': adminKey },
+    });
     return res.data;
   }
 
   async deleteMasterDevice(id: string, adminKey: string) {
     const res = await axios.delete(`${this.baseUrl}/devices/${id}`, {
-      headers: { "x-admin-key": adminKey }
+      headers: { 'x-admin-key': adminKey },
     });
     return res.data;
   }
@@ -63,9 +64,7 @@ export class SolarSizerSDK {
 
   async saveProduct(product: any, adminKey: string) {
     const res = await axios.post(`${this.baseUrl}/products`, product, {
-      headers: {
-        "x-admin-key": adminKey,
-      },
+      headers: { 'x-admin-key': adminKey },
     });
     return res.data;
   }
@@ -76,9 +75,13 @@ export class SolarSizerSDK {
   }
 
   async saveSettings(key: string, value: any, adminKey: string) {
-    const res = await axios.post(`${this.baseUrl}/settings/${key}`, { value }, {
-      headers: { "x-admin-key": adminKey }
-    });
+    const res = await axios.post(
+      `${this.baseUrl}/settings/${key}`,
+      { value },
+      {
+        headers: { 'x-admin-key': adminKey },
+      },
+    );
     return res.data;
   }
 }

@@ -1,7 +1,12 @@
-// Merged types.ts (best of v1 + v2)
-export type Region = "SE_SS" | "SW" | "North";
+export type Region = 'SE_SS' | 'SW' | 'North';
 
-export type DeviceCategory = "compressor" | "motor" | "heating" | "electronics" | "internet" | "powerstation";
+export type DeviceCategory =
+  | 'compressor'
+  | 'motor'
+  | 'heating'
+  | 'electronics'
+  | 'internet'
+  | 'powerstation';
 
 export interface TimeRange {
   start: number;
@@ -17,7 +22,7 @@ export interface Device {
   ranges: TimeRange[];
 }
 
-export type BatteryPreference = "lithium" | "lead-acid" | "any";
+export type BatteryPreference = 'lithium' | 'lead-acid' | 'any';
 
 export interface Inverter {
   id: string;
@@ -28,7 +33,7 @@ export interface Inverter {
   cc_max_amps: number;
   system_vdc: number;
   max_charge_amps: number;
-  cc_type: "pwm" | "mppt";
+  cc_type: 'pwm' | 'mppt';
   max_parallel_units: number;
   price: number;
   description?: string;
@@ -51,7 +56,7 @@ export interface Battery {
   name: string;
   voltage: number;
   capacity_ah: number;
-  type: "lead-acid" | "lithium";
+  type: 'lead-acid' | 'lithium';
   max_parallel_strings: number;
   min_c_rate: number;
   price: number;
@@ -67,11 +72,11 @@ export interface Powerstation {
   max_pv_input_w: number;
   price: number;
   tags: string[];
-  battery_type?: "lithium" | "lead-acid";
-  inverter_type?: "pure-sine" | "modified-sine";
+  battery_type?: 'lithium' | 'lead-acid';
+  inverter_type?: 'pure-sine' | 'modified-sine';
   max_charge_amps?: number;
   system_vdc?: number;
-  cc_type?: "pwm" | "mppt";
+  cc_type?: 'pwm' | 'mppt';
   cc_max_voc?: number;
   cc_max_amps?: number;
   max_parallel_units?: number;
@@ -95,6 +100,13 @@ export interface LoadAnalysis {
   hourly_consumption: Record<number, number>;
 }
 
+export interface KitComponentSpec {
+  role: 'inverter' | 'battery' | 'panel' | 'powerstation' | 'internet' | 'controller' | 'network';
+  name: string;
+  quantity: number;
+  specs: Record<string, string | number | boolean | null>;
+}
+
 export interface SystemCombination {
   inverter: string;
   inverter_price: number;
@@ -107,7 +119,7 @@ export interface SystemCombination {
   total_price: number;
   daily_yield: number;
   deficit: number;
-  status: "Optimal" | "Conditional" | "High Risk";
+  status: 'Optimal' | 'Conditional' | 'High Risk';
   advice: string;
   log: string[];
   inverter_data?: Inverter;
@@ -118,7 +130,8 @@ export interface SystemCombination {
   inverter_w?: number;
   battery_wh?: number;
   panel_w?: number;
-  kit_type?: "solar" | "internet" | "powerstation";
+  kit_type?: 'solar' | 'internet' | 'powerstation';
+  cc_type?: 'pwm' | 'mppt';
   component_specs?: KitComponentSpec[];
   product_name?: string;
   product_description?: string;
@@ -148,7 +161,7 @@ export interface User {
   email: string;
   name: string;
   picture?: string;
-  provider: "google";
+  provider: 'google';
 }
 
 export interface SavedResult {
@@ -156,12 +169,9 @@ export interface SavedResult {
   profile_name: string;
   created_at: string;
   devices?: Device[];
-  // For full analysis saves
   analysis?: LoadAnalysis;
   systems?: SystemCombination[];
-  // For individual system saves
   system_data?: SystemCombination;
-  // For comparison saves
   is_comparison?: boolean;
   has_generator?: boolean;
 }
@@ -170,11 +180,11 @@ export interface Product {
   id: string;
   name: string;
   description: string;
-  type: "standalone" | "combination";
-  combination_data?: SystemCombination;
+  type: 'standalone' | 'combination';
+  combination_data?: SystemCombination | null;
   tags: string[];
   price: number;
-  kit_type?: "solar" | "internet" | "powerstation";
+  kit_type?: 'solar' | 'internet' | 'powerstation';
   component_specs?: KitComponentSpec[];
 }
 
@@ -201,54 +211,4 @@ export interface PDFSettings {
   footerLine2: string;
 }
 
-export type AppTab = "calculator" | "products" | "internet" | "database" | "logs" | "profiles" | "results";
-
-export type KitType = "solar" | "internet" | "powerstation";
-
-export interface KitComponentSpec {
-  role: "inverter" | "battery" | "panel" | "powerstation" | "internet" | "controller" | "network";
-  name: string;
-  quantity: number;
-  specs: Record<string, string | number | boolean | null>;
-}
-
-export interface SystemCombination {
-  inverter: string;
-  inverter_price: number;
-  battery_config: string;
-  battery_price: number;
-  panel_config: string;
-  panel_price: number;
-  array_size_w: number;
-  battery_total_wh: number;
-  total_price: number;
-  daily_yield: number;
-  deficit: number;
-  status: "Optimal" | "Conditional" | "High Risk";
-  advice: string;
-  log: string[];
-  inverter_data?: Inverter;
-  panel_data?: Panel;
-  battery_data?: Battery;
-  is_preconfigured?: boolean;
-  product_id?: string;
-  inverter_w?: number;
-  battery_wh?: number;
-  panel_w?: number;
-  kit_type?: "solar" | "internet" | "powerstation";
-  component_specs?: KitComponentSpec[];
-  product_name?: string;
-  product_description?: string;
-}
-
-export interface Product {
-  id: string;
-  name: string;
-  description: string;
-  type: "standalone" | "combination";
-  combination_data?: SystemCombination;
-  tags: string[];
-  price: number;
-  kit_type?: "solar" | "internet" | "powerstation";
-  component_specs?: KitComponentSpec[];
-}
+export type AppTab = 'calculator' | 'products' | 'internet' | 'database' | 'logs' | 'profiles' | 'results';

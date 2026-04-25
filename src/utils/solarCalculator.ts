@@ -1,5 +1,5 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES } from "../constants";
-import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins } from "../types";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins, KitComponentSpec } from "../types";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -238,7 +238,7 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
   if (kitType === "solar") {
     return [
       {
-        role: "inverter",
+        role: "inverter" as const,
         name: data.inverter,
         quantity: 1,
         specs: {
@@ -247,7 +247,7 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
         },
       },
       {
-        role: "battery",
+        role: "battery" as const,
         name: data.battery_config,
         quantity: (data.battery_wh ?? 0) > 0 ? 1 : 0,
         specs: {
@@ -256,7 +256,7 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
         },
       },
       {
-        role: "panel",
+        role: "panel" as const,
         name: data.panel_config,
         quantity: (data.panel_w ?? 0) > 0 ? 1 : 0,
         specs: {
@@ -270,7 +270,7 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
   if (kitType === "powerstation") {
     return [
       {
-        role: "powerstation",
+        role: "powerstation" as const,
         name: prod.name,
         quantity: 1,
         specs: {
@@ -285,7 +285,7 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
 
   return [
     {
-      role: "network",
+      role: "network" as const,
       name: prod.name,
       quantity: 1,
       specs: {

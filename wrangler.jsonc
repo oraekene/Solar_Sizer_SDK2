@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "solar-sizer-sdk2",
+  "main": "./worker/index.ts",
+  "compatibility_date": "2026-04-25",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "solar-sizer-sdk2",
+      "database_id": "5abe0992-246a-43a9-aaf1-06c89c3d5872",
+      "migrations_dir": "./migrations"
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

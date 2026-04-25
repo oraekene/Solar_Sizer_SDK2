@@ -5,7 +5,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 async function main() {
-  const APP_URL = process.env.APP_URL || 'http://localhost:3000';
+  const APP_URL = process.env.APP_URL || 'http://127.0.0.1:8787';
   // In CLI mode, we need the full URL
   (sdk as any).baseUrl = `${APP_URL}/api`;
 

@@ -217,11 +217,6 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
   };
 };
 
-  const openSystemDetails = (system: SystemCombination) => {
-    setShowInteractiveBridge(false);
-    setSelectedSystemDetails(system);
-  };
-
   const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
       return {
@@ -649,7 +644,7 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       })
-        .then((res) => res.json())
+        .then((res) => res.json() as Promise<{ valid?: boolean }>)
         .then((data) => {
           if (data.valid) {
             sessionStorage.setItem("ss_admin_unlocked", "true");
@@ -3149,7 +3144,10 @@ export default function App() {
                   </div>
                   <div className="p-6 border-t border-stone-100">
                     <button
-                      onClick={() => openSystemDetails(buildProductDetails(product))}
+                      onClick={() => {
+                        setShowInteractiveBridge(false);
+                        setSelectedSystemDetails(buildProductDetails(product));
+                      }}
                       className="w-full bg-stone-900 text-white py-3 rounded-2xl text-xs font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
                     >
                       View Specs
@@ -4114,7 +4112,8 @@ export default function App() {
                 {showInteractiveBridge &&
                 (selectedSystemDetails.status === "Conditional" || selectedSystemDetails.status === "High Risk") ? (
                   <InteractiveBridge
-                    selectedSystem={selectedSystemDetails}
+                    devices={devices}
+                    initialDeficit={selectedSystemDetails.deficit}
                     onClose={() => setShowInteractiveBridge(false)}
                   />
                 ) : (
