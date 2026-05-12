@@ -1,46 +1,42 @@
-// Merged App.tsx (best of v1 + v2)
 import { useState, useMemo, useEffect, ChangeEvent } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence } from "framer-motion";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { 
-  Sun, 
-  Battery as BatteryIcon, 
-  Zap, 
-  MapPin, 
-  Plus, 
-  Trash2, 
-  Calculator, 
-  ChevronRight,
-  ChevronLeft,
+  Sun,
+  Battery as BatteryIcon,
+  Lightning,
+  MapPin,
+  Plus,
+  Trash,
+  Calculator,
+  CaretRight,
+  CaretLeft,
   Info,
-  AlertCircle,
-  CheckCircle2,
-  ListIcon,
+  WarningCircle,
+  CheckCircle,
+  List,
   X,
   Database,
   Terminal,
   ArrowLeft,
-  LayoutGrid,
-  Settings,
-  ShieldCheck,
-  ExternalLink,
+  SquaresFour,
+  Gear,
+  ArrowSquareOut,
   Cpu,
-  Layers,
-  Activity,
-  Wifi,
+  Stack,
+  ChartLine,
+  WifiHigh,
   Percent,
   UserCircle,
-  Save,
+  FloppyDisk,
   FolderOpen,
   Copy,
   Download,
   Upload,
-  Scale,
-  Columns,
-  FileJson,
-  FileText
-} from "lucide-react";
+  Scales,
+  Clock
+} from "@phosphor-icons/react";
 import { 
   Device, 
   Region, 
@@ -362,19 +358,19 @@ function ComparisonModal({
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-6xl max-h-[90vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-6xl max-h-[90vh] rounded-[2.5rem] overflow-hidden flex flex-col" style={{background: '#141414', border: '1px solid var(--color-border)'}}
       >
-        <div className="p-8 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+        <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.04]">
           <div>
-            <h2 className="text-3xl font-black text-stone-900 flex items-center gap-3">
-              <Scale className="w-8 h-8 text-emerald-600" /> System Comparison
+            <h2 className="text-3xl font-black text-[#FAFAF9] flex items-center gap-3">
+              <Scales className="w-8 h-8 text-emerald-600" /> System Comparison
             </h2>
-            <p className="text-stone-500 font-medium">Comparing {systems.length} Solar Setups vs. {selectedGen.name}</p>
+            <p className="text-[#A8A29E] font-medium">Comparing {systems.length} Solar Setups vs. {selectedGen.name}</p>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-stone-200 shadow-sm">
-                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">I already own this generator</span>
+              <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-white/10 shadow-sm">
+                <span className="text-[10px] font-bold text-[#A8A29E] uppercase tracking-wider">I already own this generator</span>
                 <button 
                   onClick={() => setHasGenerator(!hasGenerator)}
                   className={`w-12 h-6 rounded-full transition-all relative ${hasGenerator ? 'bg-emerald-600' : 'bg-stone-200'}`}
@@ -383,24 +379,24 @@ function ComparisonModal({
                 </button>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase">Hrs/Day</span>
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-white/10 shadow-sm">
+                  <span className="text-[10px] font-bold text-[#57534E] uppercase">Hrs/Day</span>
                   <input 
                     type="number" 
                     min="1" 
                     max="24" 
                     value={genHours} 
                     onChange={(e) => setGenHours(Number(e.target.value))}
-                    className="w-12 text-xs font-bold text-stone-700 outline-none"
+                    className="w-12 text-xs font-bold text-[#D6D3D1] outline-none"
                   />
                 </div>
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
-                  <span className="text-[10px] font-bold text-stone-400 uppercase">₦/L</span>
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-white/10 shadow-sm">
+                  <span className="text-[10px] font-bold text-[#57534E] uppercase">₦/L</span>
                   <input 
                     type="number" 
                     value={fuelPrice} 
                     onChange={(e) => setFuelPriceOverride(Number(e.target.value))}
-                    className="w-20 text-xs font-bold text-stone-700 outline-none"
+                    className="w-20 text-xs font-bold text-[#D6D3D1] outline-none"
                   />
                 </div>
               </div>
@@ -408,20 +404,20 @@ function ComparisonModal({
             <div className="flex items-center gap-2">
               <button 
                 onClick={exportToPDF}
-                className="flex items-center gap-2 px-4 py-2.5 bg-stone-100 text-stone-600 rounded-2xl font-bold hover:bg-stone-200 transition-all border border-stone-200"
+                className="flex items-center gap-2 px-4 py-2.5 bg-white/[0.06] text-[#A8A29E] rounded-2xl font-bold hover:bg-stone-200 transition-all border border-white/10"
               >
-                <Download className="w-5 h-5" /> PDF
+                <Download weight="light" size={20} /> PDF
               </button>
               {onSave && (
                 <button 
                   onClick={onSave}
                   className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20"
                 >
-                  <Save className="w-5 h-5" /> Save
+                  <FloppyDisk weight="light" size={20} /> Save
                 </button>
               )}
-              <button onClick={onClose} className="p-3 bg-white hover:bg-stone-100 rounded-2xl transition-all shadow-sm border border-stone-200">
-                <X className="w-6 h-6" />
+              <button onClick={onClose} className="p-3 bg-white hover:bg-white/[0.06] rounded-2xl transition-all shadow-sm border border-white/10">
+                <X weight="light" size={24} />
               </button>
             </div>
           </div>
@@ -432,14 +428,14 @@ function ComparisonModal({
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  <th className="text-left p-4 bg-stone-50 rounded-tl-2xl border-b border-stone-200 text-xs font-bold uppercase tracking-widest text-stone-400">Feature</th>
+                  <th className="text-left p-4 bg-white/[0.04] rounded-tl-2xl border-b border-white/10 text-xs font-bold uppercase tracking-widest text-[#57534E]">Feature</th>
                   {systems.map((s, i) => (
-                    <th key={getSystemKey(s, i)} className="text-center p-4 bg-stone-50 border-b border-stone-200 text-sm font-black text-stone-900">
+                    <th key={getSystemKey(s, i)} className="text-center p-4 bg-white/[0.04] border-b border-white/10 text-sm font-black text-[#FAFAF9]">
                       Option {i + 1}
                       <div className="text-[10px] font-bold text-emerald-600 uppercase mt-1">{s.inverter.split(' ')[0]}</div>
                     </th>
                   ))}
-                  <th className="text-center p-4 bg-red-50 border-b border-red-100 text-sm font-black text-red-900 rounded-tr-2xl">
+                  <th className="text-center p-4 bg-red-900/40 border-b border-red-100 text-sm font-black text-red-900 rounded-tr-2xl">
                     Generator
                     <div className="text-[10px] font-bold text-red-600 uppercase mt-1">{selectedGen.capacity_va >= 1000 ? (selectedGen.capacity_va/1000).toFixed(1) + 'kVA' : selectedGen.capacity_va + 'VA'}</div>
                   </th>
@@ -447,9 +443,9 @@ function ComparisonModal({
               </thead>
               <tbody>
                 <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Initial Cost</td>
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Initial Cost</td>
                   {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-[#FAFAF9]">₦{s.total_price.toLocaleString()}</td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">
                     {initialCost === 0 ? (
@@ -459,22 +455,22 @@ function ComparisonModal({
                     )}
                   </td>
                 </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Monthly Running Cost</td>
+                <tr className="border-b border-stone-50 bg-white/[0.04]/30">
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Monthly Running Cost</td>
                   {systems.map((s, i) => (
                     <td key={getSystemKey(s, i)} className="p-4 text-center font-medium text-emerald-600">₦0 <span className="text-[10px] opacity-60">(Free Sun)</span></td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{monthlyTotal.toLocaleString()}</td>
                 </tr>
                 <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">5-Year Total Cost</td>
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">5-Year Total Cost</td>
                   {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-[#FAFAF9]">₦{s.total_price.toLocaleString()}</td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{fiveYearTotal.toLocaleString()}</td>
                 </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Amortized Monthly Cost</td>
+                <tr className="border-b border-stone-50 bg-white/[0.04]/30">
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Amortized Monthly Cost</td>
                   {systems.map((s, i) => {
                     const amortized25yr = s.total_price / 300; // 25 years
                     const amortized10yr = s.total_price / 120; // 10 years (conservative)
@@ -482,8 +478,8 @@ function ComparisonModal({
                       <td key={getSystemKey(s, i)} className="p-4 text-center">
                         <div className="font-black text-emerald-600 text-sm">₦{amortized25yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                         <div className="text-[10px] text-emerald-500 font-bold uppercase">25yr Standard</div>
-                        <div className="mt-1 font-bold text-stone-900 text-xs">₦{amortized10yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                        <div className="text-[9px] text-stone-400 font-bold uppercase">10yr Conservative</div>
+                        <div className="mt-1 font-bold text-[#FAFAF9] text-xs">₦{amortized10yr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                        <div className="text-[9px] text-[#57534E] font-bold uppercase">10yr Conservative</div>
                       </td>
                     );
                   })}
@@ -492,22 +488,22 @@ function ComparisonModal({
                     <div className="text-[10px] text-red-400 font-bold uppercase">{selectedGen.lifespan_mo / 12}yr Lifespan</div>
                   </td>
                 </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Fuel Type</td>
+                <tr className="border-b border-stone-50 bg-white/[0.04]/30">
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Fuel Type</td>
                   {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-[#57534E]">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-bold text-red-600">{selectedGen.fuel_type}</td>
                 </tr>
                 <tr className="border-b border-stone-50">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Fuel Consumption</td>
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Fuel Consumption</td>
                   {systems.map((s, i) => (
-                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
+                    <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-[#57534E]">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-medium">{selectedGen.fuel_consumption_l_hr} L/hr</td>
                 </tr>
-                <tr className="border-b border-stone-50 bg-stone-50/30">
-                  <td className="p-4 font-bold text-stone-600 text-sm">Reliability</td>
+                <tr className="border-b border-stone-50 bg-white/[0.04]/30">
+                  <td className="p-4 font-bold text-[#A8A29E] text-sm">Reliability</td>
                   {systems.map((s, i) => (
                     <td key={getSystemKey(s, i)} className="p-4 text-center text-xs font-medium text-emerald-600">Silent, Automatic</td>
                   ))}
@@ -518,31 +514,31 @@ function ComparisonModal({
 
             <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
               {systems.map((s, i) => (
-                <div key={getSystemKey(s, i)} className="bg-stone-50 p-6 rounded-3xl border border-stone-100">
-                  <h4 className="text-xs font-black text-stone-400 uppercase tracking-widest mb-4">When Best to Use (Option {i+1})</h4>
+                <div key={getSystemKey(s, i)} className="bg-white/[0.04] p-6 rounded-3xl border border-white/5">
+                  <h4 className="text-xs font-black text-[#57534E] uppercase tracking-widest mb-4">When Best to Use (Option {i+1})</h4>
                   <ul className="space-y-3">
                     {getSystemRecommendations(s, systems).map((rec, j) => (
-                      <li key={getLogKey("rec", rec, j)} className="flex gap-2 text-sm text-stone-700 font-medium">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                      <li key={getLogKey("rec", rec, j)} className="flex gap-2 text-sm text-[#D6D3D1] font-medium">
+                        <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
                         {rec}
                       </li>
                     ))}
                   </ul>
                 </div>
               ))}
-              <div className="bg-red-50 p-6 rounded-3xl border border-red-100">
+              <div className="bg-red-900/40 p-6 rounded-3xl border border-red-100">
                 <h4 className="text-xs font-black text-red-400 uppercase tracking-widest mb-4">Generator Profile: {selectedGen.name}</h4>
                 <ul className="space-y-3">
                   <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <WarningCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     Capacity: {selectedGen.capacity_va}VA (Supports {peakWatts}W peak)
                   </li>
                   <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <WarningCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     Running Costs: ₦{monthlyFuel.toLocaleString()} fuel + ₦{maintenance.toLocaleString()} maintenance per month.
                   </li>
                   <li className="flex gap-2 text-sm text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                    <WarningCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                     Environmental: High CO2 emissions and noise pollution.
                   </li>
                 </ul>
@@ -551,8 +547,8 @@ function ComparisonModal({
           </div>
         </div>
         
-        <div className="p-8 bg-stone-50 border-t border-stone-100 text-center">
-          <p className="text-sm text-stone-500 font-medium">
+        <div className="p-8 bg-white/[0.04] border-t border-white/5 text-center">
+          <p className="text-sm text-[#A8A29E] font-medium">
             Note: Generator costs are based on {selectedGen.fuel_type} at ₦{fuelPrice}/L and {genHours} hours daily usage. 
             Solar systems pay for themselves in approximately <span className="text-emerald-600 font-bold">{(systems[0].total_price / monthlyTotal).toFixed(1)} months</span>.
           </p>
@@ -613,6 +609,7 @@ export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProductTag, setSelectedProductTag] = useState<string>("flagship");
   const [isCompact, setIsCompact] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   // URL Parameter Handling
   useEffect(() => {
@@ -722,7 +719,7 @@ export default function App() {
     return saved ? JSON.parse(saved) : { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 };
   });
 
-  // PDF Quote Settings State
+  // PDF Quote Gear State
   const [pdfSettings, setPdfSettings] = useState<PDFSettings>(() => {
     const saved = localStorage.getItem("ss_pdf_settings");
     return saved ? JSON.parse(saved) : {
@@ -2033,7 +2030,7 @@ export default function App() {
     const doc = new jsPDF();
     const date = new Date().toLocaleDateString();
     
-    // Customization Settings
+    // Customization Gear
     const { quoteTitle, quotePrefix, footerLine1, footerLine2 } = pdfSettings;
     const quoteId = `${quotePrefix}-${Math.floor(100000 + Math.random() * 900000)}`;
     
@@ -2151,7 +2148,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans selection:bg-emerald-100">
+    <div className="min-h-screen bg-[#0C0C0C] text-[#FAFAF9] font-sans selection:bg-emerald-900/400/30 bg-radial-amber">
+      {/* Noise Overlay */}
+      <div className="noise-overlay" />
       {/* Comparison Modal - Moved higher in DOM and ensured fixed positioning */}
       <AnimatePresence>
         {showComparison && results && (
@@ -2177,345 +2176,433 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* Header */}
+      {/* Fluid Island Navigation */}
       {!isCompact && (
-        <header className="bg-white border-b border-stone-200 sticky top-0 z-10">
-          <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center">
-                <Sun className="text-white w-5 h-5" />
+        <>
+          {/* Floating Glass Pill */}
+          <nav className="glass-nav fixed top-6 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 flex items-center gap-1 max-w-[90vw]">
+            <div className="flex items-center gap-2 mr-2 pl-1">
+              <div className="w-7 h-7 rounded-full bg-accent flex items-center justify-center" style={{background: 'var(--color-accent)'}}>
+                <Sun className="text-white" weight="bold" size={16} />
               </div>
-              <h1 className="text-xl font-bold tracking-tight">SolarSizer <span className="text-emerald-600">Pro</span></h1>
+              <span className="text-sm font-bold tracking-tight hidden sm:inline text-[#FAFAF9]">SolarSizer<span className="text-[#10B981]"> Pro</span></span>
             </div>
-            
-            <nav className="hidden md:flex items-center bg-stone-100 p-1 rounded-xl">
-              <button 
-                onClick={() => setActiveTab("calculator")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "calculator" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Calculator className="w-4 h-4" /> Calculator
-              </button>
-              <button 
-                onClick={() => setActiveTab("products")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "products" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Layers className="w-4 h-4" /> Products
-              </button>
-              <button 
-                onClick={() => setActiveTab("internet")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "internet" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Wifi className="w-4 h-4" /> Internet
-              </button>
-              <button 
-                onClick={() => setActiveTab("profiles")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "profiles" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <FolderOpen className="w-4 h-4" /> Profiles
-              </button>
-              <button 
-                onClick={() => setActiveTab("results")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "results" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Save className="w-4 h-4" /> Results
-              </button>
-              <button 
-                onClick={() => setActiveTab("database")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "database" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Database className="w-4 h-4" /> Hardware DB
-              </button>
-                {isDeveloper && (
-                  <button 
-                    onClick={() => setActiveTab("logs")}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "logs" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-                  >
-                    <Terminal className="w-4 h-4" /> Logs
-                  </button>
-                )}
-            </nav>
 
-            <div className="flex items-center gap-4">
-              <button 
-                onClick={() => setShowSaveProfile(true)}
-                className="hidden md:flex bg-emerald-600 text-white px-4 py-2 rounded-full hover:bg-emerald-700 transition-colors items-center gap-2 text-sm font-medium"
-              >
-                <Save className="w-4 h-4" /> Save Profile
-              </button>
-              <div className="hidden md:block h-6 w-px bg-stone-200" />
+            {/* Desktop Nav Links */}
+            <div className="hidden md:flex items-center gap-0.5">
+              {[
+                { id: "calculator" as AppTab, icon: Calculator, label: "Calculator" },
+                { id: "products" as AppTab, icon: Stack, label: "Products" },
+                { id: "internet" as AppTab, icon: WifiHigh, label: "Internet" },
+                { id: "profiles" as AppTab, icon: FolderOpen, label: "Profiles" },
+                { id: "results" as AppTab, icon: FloppyDisk, label: "Results" },
+                { id: "database" as AppTab, icon: Database, label: "Hardware DB" },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                    activeTab === tab.id
+                      ? "text-[#FAFAF9]"
+                      : "text-[#57534E] hover:text-[#A8A29E]"
+                  }`}
+                >
+                  {activeTab === tab.id && (
+                    <motion.div
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-full"
+                      style={{background: 'var(--color-accent-soft)'}}
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <tab.icon weight="light" size={14} />
+                    <span>{tab.label}</span>
+                  </span>
+                </button>
+              ))}
+              {isDeveloper && (
+                <button
+                  onClick={() => setActiveTab("logs")}
+                  className={`relative px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                    activeTab === "logs"
+                      ? "text-[#FAFAF9]"
+                      : "text-[#57534E] hover:text-[#A8A29E]"
+                  }`}
+                >
+                  {activeTab === "logs" && (
+                    <motion.div
+                      layoutId="nav-pill"
+                      className="absolute inset-0 rounded-full"
+                      style={{background: 'var(--color-accent-soft)'}}
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex items-center gap-1.5">
+                    <Terminal weight="light" size={14} />
+                    <span>Logs</span>
+                  </span>
+                </button>
+              )}
             </div>
-          </div>
-        </header>
+
+            {/* Right side: Save Profile + Hamburger */}
+            <div className="flex items-center gap-2 ml-2">
+              <button
+                onClick={() => setShowSaveProfile(true)}
+                className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] text-[#FAFAF9]"
+                style={{background: 'var(--color-accent)'}}
+              >
+                <FloppyDisk weight="light" size={14} />
+                <span>Save</span>
+              </button>
+              <div className="hidden md:block w-px h-5" style={{background: 'var(--color-border)'}} />
+              
+              {/* Hamburger */}
+              <button
+                onClick={() => setNavOpen(!navOpen)}
+                className="md:hidden relative w-8 h-8 flex flex-col items-center justify-center gap-[3px]"
+                aria-label="Toggle navigation"
+              >
+                <motion.span
+                  animate={navOpen ? { rotate: 45, y: 4 } : { rotate: 0, y: 0 }}
+                  className="w-5 h-[1.5px] rounded-full bg-[#FAFAF9] block"
+                  transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+                />
+                <motion.span
+                  animate={navOpen ? { opacity: 0, x: -8 } : { opacity: 1, x: 0 }}
+                  className="w-5 h-[1.5px] rounded-full bg-[#FAFAF9] block"
+                  transition={{ duration: 0.3, ease: [0.32, 0.72, 0, 1] }}
+                />
+                <motion.span
+                  animate={navOpen ? { rotate: -45, y: -4 } : { rotate: 0, y: 0 }}
+                  className="w-5 h-[1.5px] rounded-full bg-[#FAFAF9] block"
+                  transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+                />
+              </button>
+            </div>
+          </nav>
+
+          {/* Mobile Full-Screen Overlay */}
+          <AnimatePresence>
+            {navOpen && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="glass-overlay fixed inset-0 z-30 flex flex-col items-center justify-center md:hidden"
+              >
+                <nav className="flex flex-col items-center gap-6">
+                  {[
+                    { id: "calculator" as AppTab, icon: Calculator, label: "Calculator" },
+                    { id: "products" as AppTab, icon: Stack, label: "Products" },
+                    { id: "internet" as AppTab, icon: WifiHigh, label: "Internet" },
+                    { id: "profiles" as AppTab, icon: FolderOpen, label: "Profiles" },
+                    { id: "results" as AppTab, icon: FloppyDisk, label: "Results" },
+                    { id: "database" as AppTab, icon: Database, label: "Hardware DB" },
+                  ].map((tab, i) => (
+                    <motion.button
+                      key={tab.id}
+                      initial={{ opacity: 0, y: 48, filter: "blur(4px)" }}
+                      animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, y: 48, filter: "blur(4px)" }}
+                      transition={{ duration: 0.6, delay: 0.05 * i, ease: [0.32, 0.72, 0, 1] }}
+                      onClick={() => { setActiveTab(tab.id); setNavOpen(false); }}
+                      className="flex items-center gap-4 px-8 py-3 rounded-full text-lg font-medium transition-all duration-500"
+                      style={{
+                        color: activeTab === tab.id ? '#10B981' : '#A8A29E',
+                        background: activeTab === tab.id ? 'rgba(16,185,129,0.08)' : 'transparent',
+                        border: activeTab === tab.id ? '1px solid rgba(16,185,129,0.15)' : '1px solid transparent'
+                      }}
+                    >
+                      <tab.icon weight="light" size={22} />
+                      {tab.label}
+                    </motion.button>
+                  ))}
+                </nav>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
+      <main className="max-w-7xl mx-auto px-4 py-24">
         {activeTab === "calculator" && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
             {/* Left Column: Configuration */}
             <div className="lg:col-span-5 space-y-8">
             
             {/* Region & Battery Preference */}
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 space-y-6">
-              <div>
-                <div className="flex items-center gap-2 mb-4">
-                  <MapPin className="w-5 h-5 text-emerald-600" />
-                  <h2 className="font-semibold text-lg">Project Location</h2>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  {REGIONS.map((r) => (
-                    <button
-                      key={r.value}
-                      onClick={() => setRegion(r.value)}
-                      className={`flex items-center justify-between p-4 rounded-xl border transition-all ${
-                        region === r.value 
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-900" 
-                          : "border-stone-200 hover:border-stone-300 bg-stone-50"
-                      }`}
-                    >
-                      <span className="font-medium">{r.label}</span>
-                      {region === r.value && <CheckCircle2 className="w-5 h-5" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-stone-100">
-                <div className="flex items-center gap-2 mb-4">
-                  <BatteryIcon className="w-5 h-5 text-emerald-600" />
-                  <h2 className="font-semibold text-lg">Battery Preference</h2>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["any", "lithium", "lead-acid"] as BatteryPreference[]).map((pref) => (
-                    <button
-                      key={pref}
-                      onClick={() => setBatteryPreference(pref)}
-                      className={`px-4 py-2 rounded-xl border text-xs font-bold uppercase transition-all ${
-                        batteryPreference === pref 
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-900" 
-                          : "border-stone-200 hover:border-stone-300 bg-stone-50 text-stone-500"
-                      }`}
-                    >
-                      {pref.replace("-", " ")}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-6 border-t border-stone-100">
-                <div className="flex items-center justify-between gap-2 mb-4">
-                  <div className="flex items-center gap-2">
-                    <Scale className="w-5 h-5 text-emerald-600" />
-                    <h2 className="font-semibold text-lg">Tolerance Level</h2>
+            <section className="double-bezel">
+              <div className="double-bezel-inner p-8 space-y-8">
+                <div>
+                  <span className="eyebrow mb-4 block w-fit"><MapPin weight="light" size={12} /> Location</span>
+                  <div className="grid grid-cols-1 gap-2">
+                    {REGIONS.map((r) => (
+                      <button
+                        key={r.value}
+                        onClick={() => setRegion(r.value)}
+                        className={`flex items-center justify-between p-4 rounded-2xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                          region === r.value 
+                            ? "bg-accent-soft text-[#FAFAF9]" 
+                            : "bg-white/[0.03] hover:bg-white/[0.06]"
+                        }`}
+                        style={region === r.value ? {background: 'var(--color-accent-soft)', border: '1px solid rgba(16,185,129,0.2)'} : {border: '1px solid var(--color-border)'}}
+                      >
+                        <span className="font-medium text-sm">{r.label}</span>
+                        {region === r.value && <CheckCircle weight="fill" className="text-[#10B981]" size={18} />}
+                      </button>
+                    ))}
                   </div>
-                  <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{tolerance}%</span>
                 </div>
-                <p className="text-xs text-stone-500 mb-4 leading-relaxed">
-                  Adjust how much energy deficit (shortage) you're willing to accept before a system is marked as "High Risk".
-                </p>
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="50" 
-                  step="5"
-                  value={tolerance}
-                  onChange={(e) => setTolerance(parseInt(e.target.value))}
-                  className="w-full h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                />
-                <div className="flex justify-between mt-2 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                  <span>Strict (0%)</span>
-                  <span>Balanced (20%)</span>
-                  <span>Relaxed (50%)</span>
+
+                <div className="pt-8" style={{borderTop: '1px solid var(--color-border)'}}>
+                  <span className="eyebrow mb-4 block w-fit"><BatteryIcon weight="light" size={12} /> Battery</span>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["any", "lithium", "lead-acid"] as BatteryPreference[]).map((pref) => (
+                      <button
+                        key={pref}
+                        onClick={() => setBatteryPreference(pref)}
+                        className={`px-4 py-3 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                          batteryPreference === pref 
+                            ? "text-[#10B981]" 
+                            : "text-[#57534E] hover:text-[#A8A29E]"
+                        }`}
+                        style={{
+                          background: batteryPreference === pref ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)',
+                          border: batteryPreference === pref ? '1px solid rgba(16,185,129,0.2)' : '1px solid var(--color-border)'
+                        }}
+                      >
+                        {pref.replace("-", " ")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-8" style={{borderTop: '1px solid var(--color-border)'}}>
+                  <div className="flex items-center justify-between gap-2 mb-4">
+                    <span className="eyebrow block w-fit"><Scales weight="light" size={12} /> Tolerance</span>
+                    <span className="text-sm font-bold text-[#10B981] bg-white/[0.04] px-2.5 py-1 rounded-full border" style={{border: '1px solid var(--color-border)'}}>{tolerance}%</span>
+                  </div>
+                  <p className="text-xs text-[#A8A29E] mb-6 leading-relaxed">
+                    Adjust how much energy deficit you're willing to accept before a system is marked as "High Risk".
+                  </p>
+                  <input 
+                    type="range" 
+                    min="0" 
+                    max="50" 
+                    step="5"
+                    value={tolerance}
+                    onChange={(e) => setTolerance(parseInt(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="flex justify-between mt-3 text-[10px] font-bold text-[#57534E] uppercase tracking-wider">
+                    <span>Strict (0%)</span>
+                    <span>Balanced (20%)</span>
+                    <span>Relaxed (50%)</span>
+                  </div>
                 </div>
               </div>
             </section>
 
             {/* Device Input */}
-            <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-              <div className="flex items-center gap-2 mb-6">
-                <Zap className="w-5 h-5 text-emerald-600" />
-                <h2 className="font-semibold text-lg">Load Profile</h2>
-              </div>
+            <section className="double-bezel">
+              <div className="double-bezel-inner p-8">
+                <span className="eyebrow mb-6 block w-fit"><Lightning weight="light" size={12} /> Load Profile</span>
 
-              <div className="space-y-4 mb-8">
-                {masterDevices.length > 0 && (
-                  <div className="mb-4">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Quick Add from Database</label>
-                    <div className="flex flex-wrap gap-2">
-                      {masterDevices.map(md => (
-                        <button
-                          key={md.id}
-                          onClick={() => setNewDevice({
-                            ...newDevice,
-                            name: md.name,
-                            category: md.category,
-                            watts: md.default_watts
-                          })}
-                          className="px-3 py-1.5 bg-stone-100 hover:bg-emerald-50 hover:text-emerald-700 rounded-lg text-xs font-bold transition-all border border-stone-200"
-                        >
-                          + {md.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Device Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Living Room AC"
-                      value={newDevice.name}
-                      onChange={e => setNewDevice({...newDevice, name: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                    <p className="text-[10px] text-stone-400 mt-1 italic">
-                      Tip: If devices of the same type have different schedules (e.g. 2 ACs), add them as separate line items.
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Category</label>
-                    <select 
-                      value={newDevice.category}
-                      onChange={e => setNewDevice({...newDevice, category: e.target.value as DeviceCategory})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    >
-                      {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Quantity</label>
-                    <input 
-                      type="number" 
-                      min="1"
-                      value={newDevice.qty}
-                      onChange={e => setNewDevice({...newDevice, qty: e.target.value === "" ? "" : parseInt(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Watts (per unit)</label>
-                    <input 
-                      type="number" 
-                      placeholder="60"
-                      value={newDevice.watts}
-                      onChange={e => setNewDevice({...newDevice, watts: e.target.value === "" ? "" : parseInt(e.target.value)})}
-                      className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    />
-                  </div>
-                  <div className="col-span-2 space-y-4">
-                    <div className="flex items-end gap-4">
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Start Hour</label>
-                        <select 
-                          value={newRange.start}
-                          onChange={e => setNewRange({...newRange, start: parseInt(e.target.value)})}
-                          className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                        >
-                          {HOUR_OPTIONS.slice(0, 24).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex-1">
-                        <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">End Hour</label>
-                        <select 
-                          value={newRange.end}
-                          onChange={e => setNewRange({...newRange, end: parseInt(e.target.value)})}
-                          className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                        >
-                          {HOUR_OPTIONS.slice(1).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <button 
-                        onClick={addRange}
-                        className="p-2.5 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-colors"
-                        title="Add Time Range"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    </div>
-
-                    {/* Temporary Ranges List */}
-                    {newDevice.ranges && newDevice.ranges.length > 0 && (
+                <div className="space-y-4 mb-8">
+                  {masterDevices.length > 0 && (
+                    <div className="mb-4">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-2">Quick Add from Database</label>
                       <div className="flex flex-wrap gap-2">
-                        {newDevice.ranges.map((r, i) => (
-                          <div key={`${r.start}-${r.end}-${i}`} className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-100">
-                            <span>{getHourLabel(r.start)} - {getHourLabel(r.end)}</span>
-                            <button onClick={() => removeRange(i)} className="hover:text-emerald-900">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </div>
+                        {masterDevices.map(md => (
+                          <button
+                            key={md.id}
+                            onClick={() => setNewDevice({
+                              ...newDevice,
+                              name: md.name,
+                              category: md.category,
+                              watts: md.default_watts
+                            })}
+                            className="px-3 py-1.5 rounded-full text-[11px] font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] text-[#A8A29E] hover:text-[#FAFAF9]"
+                            style={{background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)'}}
+                          >
+                            + {md.name}
+                          </button>
                         ))}
                       </div>
-                    )}
-                  </div>
-                </div>
-                <button 
-                  onClick={addDevice}
-                  className={`w-full py-3 ${editingDeviceId ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'} text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2 shadow-lg`}
-                >
-                  {editingDeviceId ? <Save className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  {editingDeviceId ? "Update Device" : "Add to Profile"}
-                </button>
-                {editingDeviceId && (
-                  <button 
-                    onClick={() => {
-                      setEditingDeviceId(null);
-                      setNewDevice({ name: "", category: "electronics", qty: 1, watts: 0, ranges: [] });
-                    }}
-                    className="w-full py-2 text-stone-500 text-sm font-medium hover:text-stone-800 transition-colors"
-                  >
-                    Cancel Edit
-                  </button>
-                )}
-              </div>
-
-              {/* Device List */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-stone-400">Current Load Items</h3>
-                <AnimatePresence mode="popLayout">
-                  {devices.length === 0 ? (
-                    <div className="text-center py-8 text-stone-400 border-2 border-dashed border-stone-100 rounded-2xl">
-                      No devices added yet
                     </div>
-                  ) : (
-                    devices.map((d) => (
-                      <motion.div
-                        key={d.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="flex items-center justify-between p-3 bg-stone-50 border border-stone-200 rounded-xl group"
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">Device Name</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Living Room AC"
+                        value={newDevice.name}
+                        onChange={e => setNewDevice({...newDevice, name: e.target.value})}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] placeholder-[#57534E] transition-all duration-500 outline-none"
+                        style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                      />
+                      <p className="text-[10px] text-[#57534E] mt-1.5 italic">
+                        Tip: If devices of the same type have different schedules, add them as separate line items.
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">Category</label>
+                      <select 
+                        value={newDevice.category}
+                        onChange={e => setNewDevice({...newDevice, category: e.target.value as DeviceCategory})}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] transition-all duration-500 outline-none"
+                        style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
                       >
-                        <div>
-                          <p className="font-semibold text-sm">{d.name}</p>
-                          <div className="flex flex-wrap gap-x-2 text-xs text-stone-500">
-                            <span>{d.qty}x {d.watts}W</span>
-                            <span className="text-stone-300">•</span>
-                            <div className="flex gap-1">
-                              {d.ranges.map((r, i) => (
-                                <span key={`${d.id}-${r.start}-${r.end}-${i}`}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
-                              ))}
+                        {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">Quantity</label>
+                      <input 
+                        type="number" 
+                        min="1"
+                        value={newDevice.qty}
+                        onChange={e => setNewDevice({...newDevice, qty: e.target.value === "" ? "" : parseInt(e.target.value)})}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] transition-all duration-500 outline-none"
+                        style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">Watts (per unit)</label>
+                      <input 
+                        type="number" 
+                        placeholder="60"
+                        value={newDevice.watts}
+                        onChange={e => setNewDevice({...newDevice, watts: e.target.value === "" ? "" : parseInt(e.target.value)})}
+                        className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] placeholder-[#57534E] transition-all duration-500 outline-none"
+                        style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-4">
+                      <div className="flex items-end gap-4">
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">Start Hour</label>
+                          <select 
+                            value={newRange.start}
+                            onChange={e => setNewRange({...newRange, start: parseInt(e.target.value)})}
+                            className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] transition-all duration-500 outline-none"
+                            style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                          >
+                            {HOUR_OPTIONS.slice(0, 24).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1.5">End Hour</label>
+                          <select 
+                            value={newRange.end}
+                            onChange={e => setNewRange({...newRange, end: parseInt(e.target.value)})}
+                            className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] transition-all duration-500 outline-none"
+                            style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                          >
+                            {HOUR_OPTIONS.slice(1).map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                          </select>
+                        </div>
+                        <button 
+                          onClick={addRange}
+                          className="p-3 rounded-xl transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] text-[#A8A29E] hover:text-[#FAFAF9]"
+                          style={{background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)'}}
+                          title="Add Time Range"
+                        >
+                          <Plus weight="light" size={20} />
+                        </button>
+                      </div>
+
+                      {newDevice.ranges && newDevice.ranges.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {newDevice.ranges.map((r, i) => (
+                            <div key={`${r.start}-${r.end}-${i}`} className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium" style={{background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.15)', color: '#34D399'}}>
+                              <span>{getHourLabel(r.start)} — {getHourLabel(r.end)}</span>
+                              <button onClick={() => removeRange(i)} className="hover:text-[#FAFAF9] transition-colors">
+                                <Trash weight="light" size={12} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <button 
+                    onClick={addDevice}
+                    className="btn-primary w-full group"
+                    style={editingDeviceId ? {background: '#D97706'} : {}}
+                  >
+                    {editingDeviceId ? <FloppyDisk weight="light" size={18} /> : <Plus weight="light" size={18} />}
+                    <span>{editingDeviceId ? "Update Device" : "Add to Profile"}</span>
+                  </button>
+                  {editingDeviceId && (
+                    <button 
+                      onClick={() => {
+                        setEditingDeviceId(null);
+                        setNewDevice({ name: "", category: "electronics", qty: 1, watts: 0, ranges: [] });
+                      }}
+                      className="w-full py-2 text-[#57534E] text-sm font-medium hover:text-[#A8A29E] transition-colors"
+                    >
+                      Cancel Edit
+                    </button>
+                  )}
+                </div>
+
+                {/* Device List */}
+                <div className="space-y-3 mt-8">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#57534E]">Current Load Items</h3>
+                  <AnimatePresence mode="popLayout">
+                    {devices.length === 0 ? (
+                      <div className="text-center py-12 text-[#57534E] rounded-2xl" style={{border: '1px dashed var(--color-border)'}}>
+                        No devices added yet
+                      </div>
+                    ) : (
+                      devices.map((d) => (
+                        <motion.div
+                          key={d.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                          className="flex items-center justify-between p-4 rounded-2xl group"
+                          style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                        >
+                          <div>
+                            <p className="font-semibold text-sm text-[#FAFAF9]">{d.name}</p>
+                            <div className="flex flex-wrap gap-x-2 text-xs text-[#A8A29E]">
+                              <span>{d.qty}x {d.watts}W</span>
+                              <span className="text-[#57534E]">•</span>
+                              <div className="flex gap-1">
+                                {d.ranges.map((r, i) => (
+                                  <span key={`${d.id}-${r.start}-${r.end}-${i}`}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => startEditingDevice(d)}
-                            className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          >
-                            <Settings className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={() => removeDevice(d.id)}
-                            className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </motion.div>
-                    ))
-                  )}
-                </AnimatePresence>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => startEditingDevice(d)}
+                              className="p-2 rounded-lg transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] text-[#57534E] hover:text-[#10B981]"
+                              style={{background: 'transparent'}}
+                            >
+                              <Gear weight="light" size={16} />
+                            </button>
+                            <button 
+                              onClick={() => removeDevice(d.id)}
+                              className="p-2 rounded-lg transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] text-[#57534E] hover:text-[#DC2626]"
+                              style={{background: 'transparent'}}
+                            >
+                              <Trash weight="light" size={16} />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </section>
           </div>
@@ -2523,108 +2610,115 @@ export default function App() {
           {/* Right Column: Results */}
           <div className="lg:col-span-7 space-y-8">
             {!results ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-stone-200 border-dashed">
-                <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4">
-                  <Calculator className="w-8 h-8 text-stone-400" />
+              <div className="h-full flex flex-col items-center justify-center text-center p-16 double-bezel">
+                <div className="double-bezel-inner p-12">
+                  <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)'}}>
+                    <Calculator weight="light" className="text-[#57534E]" size={32} />
+                  </div>
+                  <h3 className="text-2xl font-bold text-[#FAFAF9] mb-3 font-display">Ready to Calculate</h3>
+                  <p className="text-[#A8A29E] max-w-xs mx-auto">
+                    Add your devices and select your region to see optimal solar configurations.
+                  </p>
                 </div>
-                <h3 className="text-xl font-bold mb-2">Ready to Calculate</h3>
-                <p className="text-stone-500 max-w-xs">
-                  Add your devices and select your region to see optimal solar configurations.
-                </p>
               </div>
             ) : (
               <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 48, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.8, ease: [0.32, 0.72, 0, 1] }}
                 className="space-y-8"
               >
                 {/* Analysis Summary */}
-                <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Peak Surge</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.max_surge}W</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Inverter sizing</span>
+                <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[
+                    { label: "Peak Surge", value: `${results.analysis.max_surge}W`, desc: "Critical for Inverter sizing" },
+                    { label: "Night Usage", value: `${results.analysis.nighttime_wh}Wh`, desc: "Critical for Battery sizing" },
+                    { label: "Daily Total", value: `${results.analysis.total_daily_wh}Wh`, desc: "Critical for Panel sizing" },
+                  ].map((item, i) => (
+                    <div key={item.label} className="double-bezel">
+                      <div className="double-bezel-inner p-6">
+                        <p className="eyebrow inline-flex mb-3">{item.label}</p>
+                        <p className="text-3xl font-bold text-[#FAFAF9]">{item.value}</p>
+                        <div className="mt-3 flex items-center gap-1.5 text-xs text-[#57534E]">
+                          <Info weight="light" size={14} />
+                          <span>{item.desc}</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Night Usage</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.nighttime_wh}Wh</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Battery sizing</span>
-                    </div>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
-                    <p className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2">Daily Total</p>
-                    <p className="text-2xl font-bold text-stone-900">{results.analysis.total_daily_wh}Wh</p>
-                    <div className="mt-2 flex items-center gap-1 text-xs text-stone-400">
-                      <Info className="w-3 h-3" />
-                      <span>Critical for Panel sizing</span>
-                    </div>
-                  </div>
+                  ))}
                 </section>
 
                 {/* System Options */}
-                <section className="space-y-4">
+                <section className="space-y-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="space-y-1">
-                      <h2 className="font-bold text-xl flex items-center gap-2">
-                        <BatteryIcon className="w-6 h-6 text-emerald-600" />
-                        Recommended Systems
-                      </h2>
+                      <span className="eyebrow inline-flex"><BatteryIcon weight="light" size={12} /> System Options</span>
                       <div className="flex flex-col gap-1">
-                        <div className="flex bg-stone-100 p-1 rounded-xl w-fit">
+                        <div className="flex rounded-full p-1" style={{background: 'rgba(255,255,255,0.05)', border: '1px solid var(--color-border)'}}>
                           <button 
                             onClick={() => setResultFilter("all")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "all" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                              resultFilter === "all" 
+                                ? 'text-[#FAFAF9] shadow-sm' 
+                                : 'text-[#57534E] hover:text-[#A8A29E]'
+                            }`}
+                            style={resultFilter === "all" ? {background: 'rgba(16,185,129,0.15)'} : {}}
                           >
                             Full Results
                           </button>
                           <button 
                             onClick={() => setResultFilter("kits")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "kits" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                              resultFilter === "kits" 
+                                ? 'text-[#FAFAF9] shadow-sm' 
+                                : 'text-[#57534E] hover:text-[#A8A29E]'
+                            }`}
+                            style={resultFilter === "kits" ? {background: 'rgba(16,185,129,0.15)'} : {}}
                           >
                             Kits
                           </button>
                           <button 
                             onClick={() => setResultFilter("powerstations")}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${resultFilter === "powerstations" ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500 hover:text-stone-700'}`}
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] ${
+                              resultFilter === "powerstations" 
+                                ? 'text-[#FAFAF9] shadow-sm' 
+                                : 'text-[#57534E] hover:text-[#A8A29E]'
+                            }`}
+                            style={resultFilter === "powerstations" ? {background: 'rgba(16,185,129,0.15)'} : {}}
                           >
                             Powerstations
                           </button>
                         </div>
-                        <p className="text-[10px] text-stone-500 ml-1">
+                        <p className="text-[10px] text-[#57534E] ml-1">
                           Students and young professionals: for easy simple solutions that don't require complex installations, toggle on powerstations or kits.
                         </p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-stone-500">{results.systems.length} configurations found</span>
+                      <span className="text-sm text-[#A8A29E]">{results.systems.length} configurations found</span>
                       <div className="flex gap-2">
                         <button 
                           onClick={() => exportResultsToPDF(results)}
-                          className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-100 transition-all border border-emerald-100"
+                          className="btn-secondary text-xs px-4 py-2"
                         >
-                          <Download className="w-3.5 h-3.5" /> Export Report
+                          <Download weight="light" size={14} /> Export Report
                         </button>
                         <button 
                           onClick={saveAnalysis}
-                          className="bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
+                          className="btn-primary text-xs px-4 py-2"
                         >
-                          <Save className="w-3.5 h-3.5" /> Save Analysis
+                          <FloppyDisk weight="light" size={14} /> Save Analysis
                         </button>
                       </div>
                     </div>
                   </div>
 
                   {results.systems.length === 0 ? (
-                    <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl flex gap-4">
-                      <AlertCircle className="w-6 h-6 text-amber-600 shrink-0" />
+                    <div className="p-6 rounded-2xl flex gap-4" style={{background: 'rgba(217, 119, 6, 0.08)', border: '1px solid rgba(217, 119, 6, 0.15)'}}>
+                      <WarningCircle weight="light" className="text-[#FBBF24] shrink-0" size={24} />
                       <div>
-                        <h4 className="font-bold text-amber-900">No Matching Systems</h4>
-                        <p className="text-sm text-amber-700 mt-1">
+                        <h4 className="font-bold text-[#FBBF24]">No Matching Systems</h4>
+                        <p className="text-sm text-[#D97706] mt-1">
                           Your load requirements exceed the safety limits of our current hardware database. 
                           Try reducing your peak load or nighttime usage.
                         </p>
@@ -2669,121 +2763,121 @@ export default function App() {
                             {paginatedItems.map((sys, idx) => (
                               <motion.div
                                 key={getSystemKey(sys, startIndex + idx)}
-                                initial={{ opacity: 0, x: 20 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                transition={{ delay: idx * 0.05 }}
-                                className={`bg-white p-6 rounded-2xl shadow-sm border transition-all group relative overflow-hidden ${
-                                  isSelectedForComparison(sys) ? 'border-emerald-500 ring-2 ring-emerald-500/10' : 'border-stone-200 hover:border-emerald-500'
-                                }`}
+                                initial={{ opacity: 0, y: 24, filter: "blur(4px)" }}
+                                whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                                viewport={{ once: true, margin: "-50px" }}
+                                transition={{ delay: idx * 0.05, duration: 0.7, ease: [0.32, 0.72, 0, 1] }}
+                                className="double-bezel"
+                                style={isSelectedForComparison(sys) ? {borderColor: 'rgba(16,185,129,0.4)'} : {}}
                               >
-                                {startIndex + idx < cheapestOfEach.length && (
-                                  <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl">
-                                    {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
-                                  </div>
-                                )}
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                  <div className="space-y-4 flex-1">
-                                    <div className="flex items-center gap-3">
-                                      <div className="p-2 bg-stone-100 rounded-lg">
-                                        <Zap className="w-5 h-5 text-stone-600" />
+                                <div className="double-bezel-inner p-6 md:p-8">
+                                  {startIndex + idx < cheapestOfEach.length && (
+                                    <div className={`absolute top-0 right-0 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl ${
+                                      sys.status === "Optimal" ? 'status-optimal' : sys.status === "Conditional" ? 'status-conditional' : 'status-high-risk'
+                                    }`}>
+                                      {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
+                                    </div>
+                                  )}
+                                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    <div className="space-y-4 flex-1">
+                                      <div className="flex items-center gap-3">
+                                        <div className="p-2.5 rounded-xl" style={{background: 'rgba(255,255,255,0.05)'}}>
+                                          <Lightning weight="light" className="text-[#A8A29E]" size={20} />
+                                        </div>
+                                        <div>
+                                          <div className="flex items-center gap-2">
+                                            <h3 className="font-bold text-lg text-[#FAFAF9]">{sys.inverter}</h3>
+                                            <span className={`px-2.5 py-0.5 text-[10px] font-bold uppercase rounded-full flex items-center gap-1 ${
+                                              sys.status === "Optimal" ? 'status-optimal' : 
+                                              sys.status === "High Risk" ? 'status-high-risk' : 
+                                              'status-conditional'
+                                            }`}>
+                                              <CheckCircle weight="fill" size={10} />
+                                              {sys.status === "Optimal" ? "Perfect Match" : sys.status === "High Risk" ? "High Risk" : "Budget Option"}
+                                            </span>
+                                          </div>
+                                          <p className="text-xs text-[#A8A29E] uppercase tracking-wider font-semibold">Hybrid System Core</p>
+                                        </div>
                                       </div>
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <h3 className="font-bold text-lg">{sys.inverter}</h3>
-                                          {sys.status === "Optimal" ? (
-                                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <CheckCircle2 className="w-3 h-3" /> Perfect Match
-                                            </span>
-                                          ) : sys.status === "High Risk" ? (
-                                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <AlertCircle className="w-3 h-3" /> High Risk
-                                            </span>
-                                          ) : (
-                                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <AlertCircle className="w-3 h-3" /> Budget Option
-                                            </span>
+                                      
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="flex items-start gap-2">
+                                          <BatteryIcon weight="light" className="text-[#10B981] mt-0.5" size={16} />
+                                          <div>
+                                            <p className="text-sm font-semibold text-[#D6D3D1]">{sys.battery_config}</p>
+                                            <p className="text-xs text-[#A8A29E]">Storage Configuration</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                          <Sun weight="light" className="text-[#D97706] mt-0.5" size={16} />
+                                          <div>
+                                            <p className="text-sm font-semibold text-[#D6D3D1]">{sys.panel_config}</p>
+                                            <p className="text-xs text-[#A8A29E]">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Advice Section */}
+                                      <div className={`p-3 rounded-xl text-xs flex gap-2 items-start border ${
+                                        sys.status === 'Optimal' ? 'status-optimal' : 
+                                        sys.status === 'High Risk' ? 'status-high-risk' :
+                                        'status-conditional'
+                                      }`}>
+                                        {sys.status === 'Optimal' ? <CheckCircle weight="fill" className="shrink-0" size={14} /> : <Info weight="light" className="shrink-0" size={14} />}
+                                        <p>{sys.advice}</p>
+                                      </div>
+                                    </div>
+
+                                    <div className="md:text-right pt-4 md:pt-0" style={{borderTop: '1px solid var(--color-border)'}}>
+                                      <p className="text-[10px] font-bold uppercase tracking-wider text-[#57534E] mb-1">Estimated Cost</p>
+                                      <p className="text-3xl font-black text-[#FAFAF9]">
+                                        <span className="text-sm font-bold mr-1 text-[#A8A29E]">NGN</span>
+                                        {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </p>
+                                      <div className="mt-4 flex flex-col gap-2">
+                                        <button 
+                                          onClick={() => setSelectedSystemDetails(sys)}
+                                          className="btn-primary w-full group"
+                                        >
+                                          <span>View Details</span>
+                                          <span className="icon-wrapper magnetic-icon group-hover:bg-white/15">
+                                            <CaretRight weight="bold" size={12} />
+                                          </span>
+                                        </button>
+                                        <div className="flex gap-2">
+                                          <button 
+                                            onClick={() => setSelectedSystemLog(sys.log)}
+                                            className="btn-ghost p-2.5 rounded-xl"
+                                            title="View Calculation Logs"
+                                          >
+                                            <List weight="light" size={18} />
+                                          </button>
+                                          <button 
+                                            onClick={() => toggleComparison(sys)}
+                                            className="btn-ghost flex-1 rounded-xl text-[10px] font-bold uppercase tracking-wider"
+                                            style={isSelectedForComparison(sys) ? {color: '#10B981', background: 'rgba(16,185,129,0.1)'} : {}}
+                                          >
+                                            <Scales weight="light" size={14} /> 
+                                            {isSelectedForComparison(sys) ? "Selected" : "Compare"}
+                                          </button>
+                                          <button 
+                                            onClick={() => saveResult(sys)}
+                                            className="btn-ghost p-2.5 rounded-xl"
+                                            title="Save this configuration"
+                                          >
+                                            <FloppyDisk weight="light" size={16} />
+                                          </button>
+                                          {isDeveloper && (
+                                            <button 
+                                              onClick={() => saveAsProduct(sys)}
+                                              className="btn-ghost p-2.5 rounded-xl"
+                                              title="Promote to Product"
+                                              style={{color: '#D97706'}}
+                                            >
+                                              <Stack weight="light" size={16} />
+                                            </button>
                                           )}
                                         </div>
-                                        <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
-                                      </div>
-                                    </div>
-                                    
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                      <div className="flex items-start gap-2">
-                                        <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
-                                        <div>
-                                          <p className="text-sm font-semibold">{sys.battery_config}</p>
-                                          <p className="text-xs text-stone-500">Storage Configuration</p>
-                                        </div>
-                                      </div>
-                                      <div className="flex items-start gap-2">
-                                        <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
-                                        <div>
-                                          <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                          <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
-                                        </div>
-                                      </div>
-                                    </div>
-
-                                    {/* Advice Section */}
-                                    <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
-                                      sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
-                                      sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
-                                      'bg-amber-50 text-amber-800 border border-amber-100'
-                                    }`}>
-                                      {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
-                                      <p>{sys.advice}</p>
-                                    </div>
-                                  </div>
-
-                                  <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
-                                    <p className="text-3xl font-black text-stone-900">
-                                      <span className="text-sm font-bold mr-1">NGN</span>
-                                      {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                    </p>
-                                    <div className="mt-4 flex flex-col gap-2">
-                                      <button 
-                                        onClick={() => setSelectedSystemDetails(sys)}
-                                        className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
-                                      >
-                                        View Details <ChevronRight className="w-4 h-4" />
-                                      </button>
-                                      <div className="flex gap-2">
-                                        <button 
-                                          onClick={() => setSelectedSystemLog(sys.log)}
-                                          className="p-2.5 bg-stone-100 text-stone-600 rounded-xl hover:bg-stone-200 transition-all flex items-center justify-center"
-                                          title="View Calculation Logs"
-                                        >
-                                          <ListIcon className="w-5 h-5" />
-                                        </button>
-                                        <button 
-                                          onClick={() => toggleComparison(sys)}
-                                          className={`flex-1 px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                                            isSelectedForComparison(sys)
-                                            ? 'bg-emerald-600 text-white shadow-md'
-                                            : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                                          }`}
-                                        >
-                                          <Scale className="w-4 h-4" /> 
-                                          {isSelectedForComparison(sys) ? "Selected" : "Compare"}
-                                        </button>
-                                        <button 
-                                          onClick={() => saveResult(sys)}
-                                          className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl hover:bg-emerald-100 transition-all flex items-center justify-center"
-                                          title="Save this configuration"
-                                        >
-                                          <Save className="w-5 h-5" />
-                                        </button>
-                                        {isDeveloper && (
-                                          <button 
-                                            onClick={() => saveAsProduct(sys)}
-                                            className="p-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center"
-                                            title="Promote to Product"
-                                          >
-                                            <Layers className="w-5 h-5" />
-                                          </button>
-                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -2797,20 +2891,22 @@ export default function App() {
                                 <button
                                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                                   disabled={currentPage === 1}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
+                                  className="btn-ghost p-2 disabled:opacity-30"
                                 >
-                                  <ChevronLeft className="w-5 h-5" />
+                                  <CaretLeft weight="light" size={20} />
                                 </button>
                                 <div className="flex items-center gap-2">
                                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                                     <button
                                       key={page}
                                       onClick={() => setCurrentPage(page)}
-                                      className={`w-10 h-10 rounded-xl font-bold text-sm transition-all ${
-                                        currentPage === page 
-                                        ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
-                                        : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
-                                      }`}
+                                      className="w-10 h-10 rounded-full font-bold text-sm transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                                      style={{
+                                        background: currentPage === page ? '#10B981' : 'transparent',
+                                        color: currentPage === page ? '#FAFAF9' : '#57534E',
+                                        border: currentPage === page ? 'none' : '1px solid var(--color-border)',
+                                        boxShadow: currentPage === page ? '0 4px 16px rgba(16,185,129,0.3)' : 'none'
+                                      }}
                                     >
                                       {page}
                                     </button>
@@ -2819,9 +2915,9 @@ export default function App() {
                                 <button
                                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                                   disabled={currentPage === totalPages}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
+                                  className="btn-ghost p-2 disabled:opacity-30"
                                 >
-                                  <ChevronRight className="w-5 h-5" />
+                                  <CaretRight weight="light" size={20} />
                                 </button>
                               </div>
                             )}
@@ -2840,32 +2936,32 @@ export default function App() {
                         exit={{ y: 100, opacity: 0 }}
                         className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4"
                       >
-                        <div className="bg-stone-900 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between gap-4 border border-stone-800">
+                        <div className="rounded-2xl shadow-2xl flex items-center justify-between gap-4 p-4" style={{background: '#141414', border: '1px solid rgba(255,255,255,0.08)'}}>
                           <div className="flex items-center gap-4">
                             <div className="flex -space-x-2">
                               {selectedForComparison.map((s, i) => (
-                                <div key={getSystemKey(s, i)} className="w-8 h-8 rounded-full bg-emerald-600 border-2 border-stone-900 flex items-center justify-center text-[10px] font-bold">
+                                <div key={getSystemKey(s, i)} className="w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold border-2 border-[#141414]" style={{background: 'var(--color-accent)', color: 'white'}}>
                                   {i + 1}
                                 </div>
                               ))}
                             </div>
                             <div>
-                              <p className="text-sm font-bold">{selectedForComparison.length} Systems Selected</p>
-                              <p className="text-[10px] text-stone-400 uppercase tracking-wider">Compare to Generator Baseline</p>
+                              <p className="text-sm font-bold text-[#FAFAF9]">{selectedForComparison.length} Systems Selected</p>
+                              <p className="text-[10px] text-[#57534E] uppercase tracking-wider">Compare to Generator Baseline</p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
                             <button 
                               onClick={() => setSelectedForComparison([])}
-                              className="px-4 py-2 text-xs font-bold text-stone-400 hover:text-white transition-colors"
+                              className="btn-ghost text-xs"
                             >
                               Clear
                             </button>
                             <button 
                               onClick={() => setShowComparison(true)}
-                              className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/20"
+                              className="btn-primary text-xs"
                             >
-                              <Scale className="w-4 h-4" /> Compare Now
+                              <Scales weight="light" size={14} /> Compare Now
                             </button>
                           </div>
                         </div>
@@ -2883,15 +2979,15 @@ export default function App() {
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-stone-900">Product Catalog</h2>
-                <p className="text-stone-500 text-sm">Pre-configured solar system combinations and standalone products.</p>
+                <h2 className="text-2xl font-bold text-[#FAFAF9]">Product Catalog</h2>
+                <p className="text-[#A8A29E] text-sm">Pre-configured solar system combinations and standalone products.</p>
               </div>
               <div className="flex gap-2">
                 {isDeveloper && (
                   <>
                     <div className="flex items-center gap-1">
-                      <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
-                        <Upload className="w-3 h-3" /> Import
+                      <label className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white/[0.06] text-[#A8A29E] border border-white/10 hover:bg-stone-200 transition-all cursor-pointer flex items-center gap-2">
+                        <Upload weight="light" size={12} /> Import
                         <input type="file" accept=".json" onChange={importProducts} className="hidden" />
                       </label>
                       <Tooltip content={`[
@@ -2910,9 +3006,9 @@ export default function App() {
                     </div>
                     <button 
                       onClick={exportProductsJSON}
-                      className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-600 border border-stone-200 hover:bg-stone-200 transition-all flex items-center gap-2"
+                      className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-white/[0.06] text-[#A8A29E] border border-white/10 hover:bg-stone-200 transition-all flex items-center gap-2"
                     >
-                      <Download className="w-3 h-3" /> Export
+                      <Download weight="light" size={12} /> Export
                     </button>
                   </>
                 )}
@@ -2931,7 +3027,7 @@ export default function App() {
                       className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
                         selectedProductTag === tag.id 
                         ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
-                        : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
+                        : 'bg-white text-[#57534E] border border-white/10 hover:border-stone-400'
                       }`}
                     >
                       {tag.label}
@@ -2954,13 +3050,13 @@ export default function App() {
                   layout
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
+                  className="bg-white rounded-3xl border border-white/10 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
                 >
                   <div className="p-6 flex-1">
                     <div className="flex justify-between items-start mb-4">
                       <div className="flex gap-1 flex-wrap">
                         {product.tags.map(tag => (
-                          <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
+                          <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-white/[0.06] text-[#A8A29E] text-[9px] font-black uppercase rounded-md">
                             {tag}
                           </span>
                         ))}
@@ -2968,38 +3064,38 @@ export default function App() {
                       {isDeveloper && (
                         <button 
                           onClick={() => deleteProduct(product.id)}
-                          className="p-1.5 text-stone-300 hover:text-red-600 transition-colors"
+                          className="p-1.5 text-[#3A3A3A] hover:text-red-600 transition-colors"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          < Trash weight="light" size={16} />
                         </button>
                       )}
                     </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-2">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-6 line-clamp-2">{product.description}</p>
+                    <h3 className="text-xl font-black text-[#FAFAF9] mb-2">{product.name}</h3>
+                    <p className="text-sm text-[#A8A29E] mb-6 line-clamp-2">{product.description}</p>
                     
                     {product.combination_data && (
-                      <div className="space-y-3 p-4 bg-stone-50 rounded-2xl border border-stone-100 mb-6">
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Cpu className="w-4 h-4" /> {product.combination_data.inverter}
+                      <div className="space-y-3 p-4 bg-white/[0.04] rounded-2xl border border-white/5 mb-6">
+                        <div className="flex items-center gap-2 text-xs font-bold text-[#A8A29E]">
+                          <Cpu weight="light" size={16} /> {product.combination_data.inverter}
                         </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <BatteryIcon className="w-4 h-4" /> {product.combination_data.battery_config}
+                        <div className="flex items-center gap-2 text-xs font-bold text-[#A8A29E]">
+                          <BatteryIcon weight="light" size={16} /> {product.combination_data.battery_config}
                         </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Sun className="w-4 h-4" /> {product.combination_data.panel_config}
+                        <div className="flex items-center gap-2 text-xs font-bold text-[#A8A29E]">
+                          <Sun weight="light" size={16} /> {product.combination_data.panel_config}
                         </div>
                     
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 pt-2 border-t border-stone-100">
+                        <div className="grid grid-cols-2 gap-2 text-[10px] text-[#A8A29E] pt-2 border-t border-white/5">
                           <div>Type: {product.combination_data.kit_type || "solar"}</div>
                           <div>Specs: {product.combination_data.component_specs?.length || 0}</div>
                         </div>
                       </div>
                     )}
                   </div>
-                  <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
+                  <div className="p-6 bg-white/[0.04] border-t border-white/5 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-bold text-stone-400 uppercase">Starting From</p>
-                      <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
+                      <p className="text-[10px] font-bold text-[#57534E] uppercase">Starting From</p>
+                      <p className="text-xl font-black text-[#FAFAF9]">₦{product.price.toLocaleString()}</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -3047,16 +3143,16 @@ export default function App() {
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
               <div className="max-w-4xl">
-                <h2 className="text-4xl font-black text-stone-900 mb-4 tracking-tight">Your Internet Stack. Built for Nigeria.</h2>
-                <p className="text-stone-500 text-lg leading-relaxed">
+                <h2 className="text-4xl font-black text-[#FAFAF9] mb-4 tracking-tight">Your Internet Stack. Built for Nigeria.</h2>
+                <p className="text-[#A8A29E] text-lg leading-relaxed">
                   The same SIM. The right hardware. Three to five times the speed — and a connection that doesn't die when NEPA does.
                 </p>
               </div>
               {isDeveloper && (
                 <div className="flex gap-2">
                   <div className="flex items-center gap-1">
-                    <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                      <Upload className="w-4 h-4" /> Import Data
+                    <label className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10 cursor-pointer">
+                      <Upload weight="light" size={16} /> Import Data
                       <input type="file" accept=".json" onChange={importInternetData} className="hidden" />
                     </label>
                     <Tooltip content={`{
@@ -3070,15 +3166,15 @@ export default function App() {
                   </div>
                   <button 
                     onClick={exportInternetDataJSON}
-                    className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                    className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                   >
-                    <Download className="w-4 h-4" /> Export Data
+                    <Download weight="light" size={16} /> Export Data
                   </button>
                 </div>
               )}
             </div>
 
-            <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl text-amber-900 text-sm">
+            <div className="p-6 bg-amber-900/40 border border-amber-100 rounded-3xl text-amber-900 text-sm">
               <p className="font-black mb-2 uppercase tracking-wider text-[10px]">Pricing Disclaimer</p>
               <p className="leading-relaxed">Prices below are naira-range estimates sourced from Lagos import-market data as of early 2026. Verify on the day before purchasing.</p>
             </div>
@@ -3092,24 +3188,24 @@ export default function App() {
                     key={md.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
+                    className="bg-white rounded-3xl border border-white/10 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
                   >
                     <div className="p-8 flex-1">
                       <div className="flex justify-between items-start mb-6">
-                        <span className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-black uppercase rounded-full border border-stone-200">
+                        <span className="px-3 py-1 bg-white/[0.06] text-[#A8A29E] text-[10px] font-black uppercase rounded-full border border-white/10">
                           Hardware
                         </span>
                       </div>
-                      <h3 className="text-xl font-black text-stone-900 mb-3">{md.name}</h3>
-                      <p className="text-sm text-stone-500 mb-4">Standard {md.name} for high-speed connectivity.</p>
-                      <div className="flex items-center gap-2 text-xs font-bold text-stone-400">
-                        <Zap className="w-4 h-4" /> {md.default_watts}W Consumption
+                      <h3 className="text-xl font-black text-[#FAFAF9] mb-3">{md.name}</h3>
+                      <p className="text-sm text-[#A8A29E] mb-4">Standard {md.name} for high-speed connectivity.</p>
+                      <div className="flex items-center gap-2 text-xs font-bold text-[#57534E]">
+                        <Lightning weight="light" size={16} /> {md.default_watts}W Consumption
                       </div>
                     </div>
-                    <div className="p-6 border-t border-stone-100">
+                    <div className="p-6 border-t border-white/5">
                       <button
                         onClick={() => setSelectedSystemDetails(buildMasterDeviceDetails(md))}
-                        className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
+                        className="w-full bg-white/[0.06] text-[#A8A29E] py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
                       >
                         View Specs
                       </button>
@@ -3125,24 +3221,24 @@ export default function App() {
                   key={product.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
+                  className="bg-white rounded-3xl border border-white/10 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
                 >
                   <div className="p-8 flex-1">
                     <div className="flex justify-between items-start mb-6">
-                      <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
+                      <span className="px-3 py-1 bg-emerald-900/40 text-emerald-400 text-[10px] font-black uppercase rounded-full border border-emerald-900/40">
                         {product.tags.find(t => t.startsWith('tier-'))?.replace('tier-', 'Tier ') || 'Internet'}
                       </span>
-                      <p className="text-2xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
+                      <p className="text-2xl font-black text-[#FAFAF9]">₦{product.price.toLocaleString()}</p>
                     </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-3">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-8 leading-relaxed">{product.description}</p>
+                    <h3 className="text-xl font-black text-[#FAFAF9] mb-3">{product.name}</h3>
+                    <p className="text-sm text-[#A8A29E] mb-8 leading-relaxed">{product.description}</p>
                     
-                    <div className="p-5 bg-stone-50 rounded-2xl text-[11px] text-stone-600 leading-relaxed border border-stone-100 italic">
-                      <span className="font-black text-stone-400 uppercase block mb-1 not-italic tracking-wider">SolarOne Power Note</span>
+                    <div className="p-5 bg-white/[0.04] rounded-2xl text-[11px] text-[#A8A29E] leading-relaxed border border-white/5 italic">
+                      <span className="font-black text-[#57534E] uppercase block mb-1 not-italic tracking-wider">SolarOne Power Note</span>
                       "Run this on pure sine wave power from your SolarOne unit to protect sensitive radio components from voltage spikes."
                     </div>
                   </div>
-                  <div className="p-6 border-t border-stone-100">
+                  <div className="p-6 border-t border-white/5">
                     <button
                       onClick={() => {
                         setShowInteractiveBridge(false);
@@ -3164,12 +3260,12 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">Hardware Database</h2>
-                <p className="text-stone-500">Manage the components used in calculations.</p>
+                <p className="text-[#A8A29E]">Manage the components used in calculations.</p>
               </div>
               <div className="flex gap-2 items-center">
                 <div className="flex items-center gap-1">
-                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                    <Upload className="w-4 h-4" /> Import JSON
+                  <label className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10 cursor-pointer">
+                    <Upload weight="light" size={16} /> Import JSON
                     <input type="file" accept=".json" onChange={importHardwareDatabase} className="hidden" />
                   </label>
                   <Tooltip content={`{
@@ -3184,35 +3280,35 @@ export default function App() {
                 </div>
                 <button 
                   onClick={exportHardwareDatabaseJSON}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                 >
-                  <Download className="w-4 h-4" /> Export JSON
+                  <Download weight="light" size={16} /> Export JSON
                 </button>
                 <button 
                   onClick={exportHardwareDatabaseToPDF}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                 >
-                  <Download className="w-4 h-4" /> Export PDF
+                  <Download weight="light" size={16} /> Export PDF
                 </button>
                 <button onClick={() => setShowAddHardware("inverter")} className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all">
-                  <Plus className="w-4 h-4" /> Add Inverter
+                  <Plus weight="light" size={16} /> Add Inverter
                 </button>
-                <button onClick={() => setShowAddHardware("panel")} className="bg-amber-500 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-amber-600 transition-all">
-                  <Plus className="w-4 h-4" /> Add Panel
+                <button onClick={() => setShowAddHardware("panel")} className="bg-amber-900/400 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-amber-600 transition-all">
+                  <Plus weight="light" size={16} /> Add Panel
                 </button>
-                <button onClick={() => setShowAddHardware("battery")} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
-                  <Plus className="w-4 h-4" /> Add Battery
+                <button onClick={() => setShowAddHardware("battery")} className="bg-amber-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-amber-700 transition-all">
+                  <Plus weight="light" size={16} /> Add Battery
                 </button>
                 <button onClick={() => setShowAddHardware("powerstation")} className="bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all">
-                  <Plus className="w-4 h-4" /> Add Powerstation
+                  <Plus weight="light" size={16} /> Add Powerstation
                 </button>
               </div>
             </div>
 
             {isDeveloper && (
-              <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 mb-8">
+              <div className="bg-emerald-900/40 p-6 rounded-3xl border border-emerald-100 mb-8">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="p-2 bg-emerald-100 rounded-lg">
+                  <div className="p-2 bg-emerald-800/40 rounded-lg">
                     <Percent className="w-5 h-5 text-emerald-600" />
                   </div>
                   <div className="flex-1">
@@ -3223,7 +3319,7 @@ export default function App() {
                     onClick={saveGlobalSettings}
                     className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-sm"
                   >
-                    <Save className="w-4 h-4" /> Save to Server
+                    <FloppyDisk weight="light" size={16} /> Save to Server
                   </button>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
@@ -3247,7 +3343,7 @@ export default function App() {
                 {/* PDF Customization Panel */}
                 <div className="mt-8 pt-8 border-t border-emerald-100">
                   <h3 className="font-bold text-sm text-emerald-800 mb-4 flex items-center gap-2">
-                    <Settings className="w-4 h-4" /> PDF Quote Customization
+                    <Gear weight="light" size={16} /> PDF Quote Customization
                   </h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-4">
@@ -3302,12 +3398,12 @@ export default function App() {
               {/* Master Devices */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                    <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
+                  <h3 className="font-bold flex items-center gap-2 text-[#D6D3D1]">
+                    <List className="w-5 h-5 text-[#57534E]" /> Master Devices
                   </h3>
                   <div className="flex items-center gap-1">
-                    <label className="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
-                      <Upload className="w-4 h-4" />
+                    <label className="p-1.5 text-[#57534E] hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
+                      <Upload weight="light" size={16} />
                       <input type="file" accept=".json" onChange={importMasterDevices} className="hidden" />
                     </label>
                     <Tooltip content={`[
@@ -3326,22 +3422,22 @@ export default function App() {
                 </div>
                 <div className="space-y-3">
                   {masterDevices.map((md) => (
-                    <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div key={md.id} className="bg-white/[0.04] p-4 rounded-xl border border-white/10 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold text-sm">{md.name}</p>
                         <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
-                          <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                          <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-[#57534E] hover:text-emerald-600 rounded" title="Edit"><Gear weight="light" size={12} /></button>
+                          <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-[#57534E] hover:text-red-600 rounded" title="Delete">< Trash weight="light" size={12} /></button>
                         </div>
                         <div className="flex gap-1 flex-wrap">
                           {md.tags.map(tag => (
-                            <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
+                            <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-[#57534E] text-[8px] font-black uppercase rounded border border-white/10">
                               {tag}
                             </span>
                           ))}
                         </div>
                       </div>
-                      <div className="text-xs text-stone-500">
+                      <div className="text-xs text-[#A8A29E]">
                         {md.default_watts}W • {md.category}
                       </div>
                     </div>
@@ -3349,7 +3445,7 @@ export default function App() {
                   {isDeveloper && (
                     <button 
                       onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
-                      className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                      className="w-full py-2 border-2 border-dashed border-white/10 rounded-xl text-[#57534E] text-xs font-bold hover:border-stone-400 hover:text-[#A8A29E] transition-all"
                     >
                       + Add Master Device
                     </button>
@@ -3359,21 +3455,21 @@ export default function App() {
 
               {/* Inverters */}
               <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
+                <h3 className="font-bold flex items-center gap-2 text-[#D6D3D1]">
                   <Cpu className="w-5 h-5 text-emerald-600" /> Inverters
                 </h3>
                 <div className="space-y-3">
                   {inverters.map((inv) => (
-                    <div key={inv.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div key={inv.id} className="bg-white p-4 rounded-xl border border-white/10 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{inv.name}</p>
                         <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("inverter", inv)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("inverter", inv)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("inverter", inv.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => duplicateHardware("inverter", inv)} className="p-1.5 text-[#57534E] hover:text-emerald-400 hover:bg-emerald-900/30 rounded-lg" title="Duplicate"><Copy weight="light" size={14} /></button>
+                          <button onClick={() => startEditing("inverter", inv)} className="p-1.5 text-[#57534E] hover:text-emerald-600 hover:bg-emerald-900/40 rounded-lg" title="Edit"><Gear weight="light" size={14} /></button>
+                          <button onClick={() => deleteHardware("inverter", inv.id)} className="p-1.5 text-[#57534E] hover:text-red-600 hover:bg-red-900/40 rounded-lg" title="Delete">< Trash weight="light" size={14} /></button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[#A8A29E]">
                         <span>Max AC: {inv.max_ac_w}W</span>
                         <span>DC Volts: {inv.system_vdc}V</span>
                         <span>PV Max: {inv.cc_max_pv_w}W</span>
@@ -3391,21 +3487,21 @@ export default function App() {
 
               {/* Panels */}
               <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
+                <h3 className="font-bold flex items-center gap-2 text-[#D6D3D1]">
                   <Sun className="w-5 h-5 text-amber-500" /> Solar Panels
                 </h3>
                 <div className="space-y-3">
                   {panels.map((p) => (
-                    <div key={p.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div key={p.id} className="bg-white p-4 rounded-xl border border-white/10 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{p.name}</p>
                         <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("panel", p)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("panel", p)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("panel", p.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => duplicateHardware("panel", p)} className="p-1.5 text-[#57534E] hover:text-emerald-400 hover:bg-emerald-900/30 rounded-lg" title="Duplicate"><Copy weight="light" size={14} /></button>
+                          <button onClick={() => startEditing("panel", p)} className="p-1.5 text-[#57534E] hover:text-emerald-600 hover:bg-emerald-900/40 rounded-lg" title="Edit"><Gear weight="light" size={14} /></button>
+                          <button onClick={() => deleteHardware("panel", p.id)} className="p-1.5 text-[#57534E] hover:text-red-600 hover:bg-red-900/40 rounded-lg" title="Delete">< Trash weight="light" size={14} /></button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[#A8A29E]">
                         <span>Watts: {p.watts}W</span>
                         <span>Voc: {p.voc}V</span>
                         <span>Isc: {p.isc}A</span>
@@ -3418,22 +3514,22 @@ export default function App() {
 
               {/* Batteries */}
               <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <BatteryIcon className="w-5 h-5 text-blue-600" /> Batteries
+                <h3 className="font-bold flex items-center gap-2 text-[#D6D3D1]">
+                  <BatteryIcon weight="light" size={20} style={{color: '#10B981'}} /> Batteries
                 </h3>
                 <div className="space-y-3">
                   {batteries.map((b) => (
-                    <div key={b.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div key={b.id} className="bg-white p-4 rounded-xl border border-white/10 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{b.name}</p>
                         <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("battery", b)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("battery", b)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("battery", b.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => duplicateHardware("battery", b)} className="p-1.5 text-[#57534E] hover:text-emerald-400 hover:bg-emerald-900/30 rounded-lg" title="Duplicate"><Copy weight="light" size={14} /></button>
+                          <button onClick={() => startEditing("battery", b)} className="p-1.5 text-[#57534E] hover:text-emerald-600 hover:bg-emerald-900/40 rounded-lg" title="Edit"><Gear weight="light" size={14} /></button>
+                          <button onClick={() => deleteHardware("battery", b.id)} className="p-1.5 text-[#57534E] hover:text-red-600 hover:bg-red-900/40 rounded-lg" title="Delete">< Trash weight="light" size={14} /></button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{b.voltage}V {b.capacity_ah}Ah</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[#A8A29E]">
+                        <span className="font-bold text-[#D6D3D1]">{b.voltage}V {b.capacity_ah}Ah</span>
                         <span className="capitalize">Type: {b.type}</span>
                         <span>Max Parallel: {b.max_parallel_strings}</span>
                         <span>Min C-Rate: {b.min_c_rate}</span>
@@ -3446,22 +3542,22 @@ export default function App() {
 
               {/* Powerstations */}
               <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Zap className="w-5 h-5 text-stone-900" /> Powerstations
+                <h3 className="font-bold flex items-center gap-2 text-[#D6D3D1]">
+                  <Lightning className="w-5 h-5 text-[#FAFAF9]" /> Powerstations
                 </h3>
                 <div className="space-y-3">
                   {powerstations.map((ps) => (
-                    <div key={ps.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div key={ps.id} className="bg-white p-4 rounded-xl border border-white/10 shadow-sm group relative">
                       <div className="flex justify-between items-start mb-2">
                         <p className="font-bold">{ps.name}</p>
                         <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-[#57534E] hover:text-emerald-400 hover:bg-emerald-900/30 rounded-lg" title="Duplicate"><Copy weight="light" size={14} /></button>
+                          <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-[#57534E] hover:text-emerald-600 hover:bg-emerald-900/40 rounded-lg" title="Edit"><Gear weight="light" size={14} /></button>
+                          <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-[#57534E] hover:text-red-600 hover:bg-red-900/40 rounded-lg" title="Delete">< Trash weight="light" size={14} /></button>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{ps.capacity_wh}Wh</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-[#A8A29E]">
+                        <span className="font-bold text-[#D6D3D1]">{ps.capacity_wh}Wh</span>
                         <span>Output: {ps.max_output_w}W</span>
                         <span>PV Max: {ps.max_pv_input_w}W</span>
                         {ps.system_vdc && <span>Sys VDC: {ps.system_vdc}V</span>}
@@ -3489,7 +3585,7 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">Internal Developer Logs</h2>
-                <p className="text-stone-500">Historical calculation attempts and internal logic traces.</p>
+                <p className="text-[#A8A29E]">Historical calculation attempts and internal logic traces.</p>
               </div>
               <div className="flex gap-2">
                 <button 
@@ -3499,64 +3595,64 @@ export default function App() {
                       localStorage.removeItem("ss_internal_logs");
                     }
                   }}
-                  className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100"
+                  className="bg-red-900/40 text-red-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100"
                 >
-                  <Trash2 className="w-4 h-4" /> Clear All Logs
+                  < Trash weight="light" size={16} /> Clear All Logs
                 </button>
                 <button 
                   onClick={exportFullLogs}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                 >
-                  <Download className="w-4 h-4" /> Export Full Logs
+                  <Download weight="light" size={16} /> Export Full Logs
                 </button>
               </div>
             </div>
 
             <div className="space-y-4">
               {internalLogs.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                  <Activity className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                  <p className="text-stone-400">No calculation attempts recorded yet.</p>
+                <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-white/10">
+                  <ChartLine className="w-12 h-12 text-[#3A3A3A] mx-auto mb-4" />
+                  <p className="text-[#57534E]">No calculation attempts recorded yet.</p>
                 </div>
               ) : (
                 internalLogs.map((log, i) => (
-                  <div key={`${log.timestamp || "log"}-${i}`} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-4">
-                    <div className="flex items-center justify-between border-b border-stone-100 pb-4">
+                  <div key={`${log.timestamp || "log"}-${i}`} className="bg-white p-6 rounded-2xl border border-white/10 shadow-sm space-y-4">
+                    <div className="flex items-center justify-between border-b border-white/5 pb-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-stone-100 rounded-lg">
-                          <Terminal className="w-4 h-4 text-stone-600" />
+                        <div className="p-2 bg-white/[0.06] rounded-lg">
+                          <Terminal className="w-4 h-4 text-[#A8A29E]" />
                         </div>
                         <div>
                           <p className="text-sm font-bold">{new Date(log.timestamp).toLocaleString()}</p>
-                          <p className="text-xs text-stone-500">{log.location} • {log.devices.length} devices</p>
+                          <p className="text-xs text-[#A8A29E]">{log.location} • {log.devices.length} devices</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-4">
                         <div className="flex gap-4 text-xs font-bold uppercase tracking-wider">
-                          <div className="text-stone-400">Checked: <span className="text-stone-900">{log.totalCombinationsChecked}</span></div>
+                          <div className="text-[#57534E]">Checked: <span className="text-[#FAFAF9]">{log.totalCombinationsChecked}</span></div>
                           <div className="text-emerald-500">Valid: <span className="text-emerald-600">{log.validSystemsCount}</span></div>
                         </div>
                         <button 
                           onClick={() => exportSingleLog(log)}
-                          className="p-2 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                          className="p-2 text-[#57534E] hover:text-emerald-600 hover:bg-emerald-900/40 rounded-lg transition-colors"
                           title="Export this log"
                         >
-                          <Download className="w-4 h-4" />
+                          <Download weight="light" size={16} />
                         </button>
                       </div>
                     </div>
                     
                     <div className="grid grid-cols-3 gap-4 text-xs">
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Surge</p>
+                      <div className="p-3 bg-white/[0.04] rounded-xl">
+                        <p className="text-[#57534E] mb-1">Surge</p>
                         <p className="font-bold">{log.analysis.max_surge}W</p>
                       </div>
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Night Wh</p>
+                      <div className="p-3 bg-white/[0.04] rounded-xl">
+                        <p className="text-[#57534E] mb-1">Night Wh</p>
                         <p className="font-bold">{log.analysis.nighttime_wh}Wh</p>
                       </div>
-                      <div className="p-3 bg-stone-50 rounded-xl">
-                        <p className="text-stone-400 mb-1">Daily Wh</p>
+                      <div className="p-3 bg-white/[0.04] rounded-xl">
+                        <p className="text-[#57534E] mb-1">Daily Wh</p>
                         <p className="font-bold">{log.analysis.total_daily_wh}Wh</p>
                       </div>
                     </div>
@@ -3569,7 +3665,7 @@ export default function App() {
                         {log.allLogs.map((path, pi) => (
                           <div key={getLogKey("path", path[0] || "empty", pi)} className="border-l-2 border-stone-700 pl-4 space-y-1">
                             {path.map((line, li) => (
-                              <p key={getLogKey("line", line, li)} className="text-[10px] font-mono text-stone-400">{line}</p>
+                              <p key={getLogKey("line", line, li)} className="text-[10px] font-mono text-[#57534E]">{line}</p>
                             ))}
                           </div>
                         ))}
@@ -3586,12 +3682,12 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">Saved Profiles</h2>
-                <p className="text-stone-500">Quickly reuse your settings and load profiles.</p>
+                <p className="text-[#A8A29E]">Quickly reuse your settings and load profiles.</p>
               </div>
               <div className="flex gap-2 items-center">
                 <div className="flex items-center gap-1">
-                  <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
-                    <Upload className="w-4 h-4" /> Import Profiles
+                  <label className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10 cursor-pointer">
+                    <Upload weight="light" size={16} /> Import Profiles
                     <input type="file" accept=".json" onChange={importProfiles} className="hidden" />
                   </label>
                   <Tooltip content={`[
@@ -3608,9 +3704,9 @@ export default function App() {
                 </div>
                 <button 
                   onClick={exportProfilesJSON}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                 >
-                  <Download className="w-4 h-4" /> Export JSON
+                  <Download weight="light" size={16} /> Export JSON
                 </button>
                 <button 
                   onClick={() => {
@@ -3638,57 +3734,57 @@ export default function App() {
                     });
                     doc.save("SolarSizer_Profiles.pdf");
                   }}
-                  className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
+                  className="bg-white/[0.06] text-[#A8A29E] px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-white/10"
                 >
-                  <Download className="w-4 h-4" /> Export PDF
+                  <Download weight="light" size={16} /> Export PDF
                 </button>
                 <button 
                   onClick={() => setShowSaveProfile(true)}
                   className="bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-emerald-700 transition-all"
                 >
-                  <Save className="w-4 h-4" /> Save Current
+                  <FloppyDisk weight="light" size={16} /> Save Current
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {profiles.length === 0 ? (
-                <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                  <UserCircle className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                  <p className="text-stone-400">No profiles saved yet.</p>
+                <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-white/10">
+                  <UserCircle className="w-12 h-12 text-[#3A3A3A] mx-auto mb-4" />
+                  <p className="text-[#57534E]">No profiles saved yet.</p>
                 </div>
               ) : (
                 profiles.map((p) => (
-                  <div key={p.id} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm hover:border-emerald-500 transition-all group">
+                  <div key={p.id} className="bg-white p-6 rounded-2xl border border-white/10 shadow-sm hover:border-emerald-500 transition-all group">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-emerald-50 rounded-lg">
+                        <div className="p-2 bg-emerald-900/40 rounded-lg">
                           <UserCircle className="w-5 h-5 text-emerald-600" />
                         </div>
                         <div>
                           <h3 className="font-bold text-lg">{p.name}</h3>
-                          <p className="text-xs text-stone-400">{new Date(p.timestamp).toLocaleDateString()}</p>
+                          <p className="text-xs text-[#57534E]">{new Date(p.timestamp).toLocaleDateString()}</p>
                         </div>
                       </div>
                       <button 
                         onClick={() => deleteProfile(p.id)}
-                        className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        className="p-2 text-[#57534E] hover:text-red-500 hover:bg-red-900/40 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        < Trash weight="light" size={16} />
                       </button>
                     </div>
 
                     <div className="space-y-3 mb-6">
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <MapPin className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                        <MapPin weight="light" size={14} />
                         <span>{REGIONS.find(r => r.value === p.region)?.label}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <BatteryIcon className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                        <BatteryIcon weight="light" size={14} />
                         <span className="capitalize">{p.batteryPreference.replace("-", " ")} Preference</span>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-600">
-                        <Zap className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                        <Lightning weight="light" size={14} />
                         <span>{p.devices.length} Devices in Load Profile</span>
                       </div>
                     </div>
@@ -3697,7 +3793,7 @@ export default function App() {
                       onClick={() => loadProfile(p)}
                       className="w-full py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                     >
-                      <FolderOpen className="w-4 h-4" /> Load Profile
+                      <FolderOpen weight="light" size={16} /> Load Profile
                     </button>
                   </div>
                 ))
@@ -3710,14 +3806,14 @@ export default function App() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold">Saved Results</h2>
-                <p className="text-stone-500">Access your previously saved system configurations.</p>
+                <p className="text-[#A8A29E]">Access your previously saved system configurations.</p>
               </div>
               {selectedSavedAnalysis && (
                 <button 
                   onClick={() => setSelectedSavedAnalysis(null)}
-                  className="flex items-center gap-2 text-stone-500 hover:text-stone-900 font-medium transition-colors"
+                  className="flex items-center gap-2 text-[#A8A29E] hover:text-[#FAFAF9] font-medium transition-colors"
                 >
-                  <ArrowLeft className="w-4 h-4" /> Back to List
+                  <ArrowLeft weight="light" size={16} /> Back to List
                 </button>
               )}
             </div>
@@ -3725,81 +3821,81 @@ export default function App() {
             {!selectedSavedAnalysis ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {savedResults.length === 0 ? (
-                  <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-stone-200">
-                    <Save className="w-12 h-12 text-stone-300 mx-auto mb-4" />
-                    <p className="text-stone-400">No saved results yet.</p>
+                  <div className="col-span-full text-center py-20 bg-white rounded-3xl border border-dashed border-white/10">
+                    <FloppyDisk className="w-12 h-12 text-[#3A3A3A] mx-auto mb-4" />
+                    <p className="text-[#57534E]">No saved results yet.</p>
                   </div>
                 ) : (
                   savedResults.map((r) => {
                     const isAnalysis = !!r.systems && !r.is_comparison;
                     const isComparison = !!r.is_comparison;
                     return (
-                      <div key={r.id} className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm hover:border-emerald-500 transition-all group">
+                      <div key={r.id} className="bg-white p-6 rounded-2xl border border-white/10 shadow-sm hover:border-emerald-500 transition-all group">
                         <div className="flex items-center justify-between mb-4">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 bg-emerald-50 rounded-lg">
-                              {isComparison ? <Scale className="w-5 h-5 text-emerald-600" /> : isAnalysis ? <LayoutGrid className="w-5 h-5 text-emerald-600" /> : <Zap className="w-5 h-5 text-emerald-600" />}
+                            <div className="p-2 bg-emerald-900/40 rounded-lg">
+                              {isComparison ? <Scales className="w-5 h-5 text-emerald-600" /> : isAnalysis ? <SquaresFour className="w-5 h-5 text-emerald-600" /> : <Lightning className="w-5 h-5 text-emerald-600" />}
                             </div>
                             <div>
                               <h3 className="font-bold text-lg">{r.profile_name}</h3>
-                              <p className="text-xs text-stone-400">{new Date(r.created_at).toLocaleDateString()}</p>
+                              <p className="text-xs text-[#57534E]">{new Date(r.created_at).toLocaleDateString()}</p>
                             </div>
                           </div>
                           <button 
                             onClick={() => deleteResult(r.id)}
-                            className="p-2 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-[#57534E] hover:text-red-500 hover:bg-red-900/40 rounded-lg transition-colors"
                           >
-                            <Trash2 className="w-4 h-4" />
+                            < Trash weight="light" size={16} />
                           </button>
                         </div>
 
                         {isComparison ? (
                           <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600 font-medium">
-                              <Scale className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E] font-medium">
+                              <Scales weight="light" size={14} />
                               <span>Comparison of {r.systems?.length || 0} Systems</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Zap className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <Lightning weight="light" size={14} />
                               <span>{r.analysis?.max_surge.toFixed(0)}W Peak Surge</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Info className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <Info weight="light" size={14} />
                               <span>{r.has_generator ? "Owned Generator" : "New Generator"}</span>
                             </div>
                           </div>
                         ) : isAnalysis ? (
                           <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600 font-medium">
-                              <Layers className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E] font-medium">
+                              <Stack weight="light" size={14} />
                               <span>{r.systems?.length || 0} System Options</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Zap className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <Lightning weight="light" size={14} />
                               <span>{Math.max(...Object.values(r.analysis?.hourly_consumption || {})).toFixed(0)}W Peak Load</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <BatteryIcon className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <BatteryIcon weight="light" size={14} />
                               <span>{r.analysis?.total_daily_wh.toFixed(0)}Wh Daily Energy</span>
                             </div>
                           </div>
                         ) : (
                           <div className="space-y-3 mb-6">
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Cpu className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <Cpu weight="light" size={14} />
                               <span>{r.system_data?.inverter}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <BatteryIcon className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <BatteryIcon weight="light" size={14} />
                               <span>{r.system_data?.battery_config}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-stone-600">
-                              <Sun className="w-3.5 h-3.5" />
+                            <div className="flex items-center gap-2 text-xs text-[#A8A29E]">
+                              <Sun weight="light" size={14} />
                               <span>{r.system_data?.panel_config}</span>
                             </div>
-                            <div className="pt-2 border-t border-stone-100 flex justify-between items-center">
-                              <span className="text-xs font-bold text-stone-400">Total Price</span>
-                              <span className="text-sm font-black text-stone-900">₦{r.system_data?.total_price.toLocaleString()}</span>
+                            <div className="pt-2 border-t border-white/5 flex justify-between items-center">
+                              <span className="text-xs font-bold text-[#57534E]">Total Price</span>
+                              <span className="text-sm font-black text-[#FAFAF9]">₦{r.system_data?.total_price.toLocaleString()}</span>
                             </div>
                           </div>
                         )}
@@ -3825,10 +3921,10 @@ export default function App() {
                                 generateQuote(r.system_data!);
                               }
                             }}
-                            className="flex-1 py-2.5 bg-stone-100 text-stone-600 rounded-xl text-sm font-bold hover:bg-stone-200 transition-all flex items-center justify-center"
+                            className="flex-1 py-2.5 bg-white/[0.06] text-[#A8A29E] rounded-xl text-sm font-bold hover:bg-stone-200 transition-all flex items-center justify-center"
                             title="Download PDF"
                           >
-                            <Download className="w-4 h-4" />
+                            <Download weight="light" size={16} />
                           </button>
                         </div>
                       </div>
@@ -3864,7 +3960,7 @@ export default function App() {
                       onClick={() => exportResultsToPDF({ analysis: selectedSavedAnalysis.analysis!, systems: selectedSavedAnalysis.systems! }, selectedSavedAnalysis.devices)}
                       className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-600/20"
                     >
-                      <Download className="w-5 h-5" /> Export PDF Report
+                      <Download weight="light" size={20} /> Export PDF Report
                     </button>
                   </div>
 
@@ -3875,32 +3971,32 @@ export default function App() {
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200 hover:border-emerald-500 transition-all group relative overflow-hidden"
+                      className="bg-white p-6 rounded-2xl shadow-sm border border-white/10 hover:border-emerald-500 transition-all group relative overflow-hidden"
                     >
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                         <div className="space-y-4 flex-1">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 bg-stone-100 rounded-lg">
-                              <Zap className="w-5 h-5 text-stone-600" />
+                            <div className="p-2 bg-white/[0.06] rounded-lg">
+                              <Lightning className="w-5 h-5 text-[#A8A29E]" />
                             </div>
                             <div>
                               <div className="flex items-center gap-2">
                                 <h3 className="font-bold text-lg">{sys.inverter}</h3>
                                 {sys.status === "Optimal" ? (
-                                  <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <CheckCircle2 className="w-3 h-3" /> Perfect Match
+                                  <span className="px-2 py-0.5 bg-emerald-800/40 text-emerald-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                                    <CheckCircle weight="light" size={12} /> Perfect Match
                                   </span>
                                 ) : sys.status === "High Risk" ? (
                                   <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" /> High Risk
+                                    <WarningCircle weight="light" size={12} /> High Risk
                                   </span>
                                 ) : (
-                                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" /> Budget Option
+                                  <span className="px-2 py-0.5 bg-amber-800/40 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
+                                    <WarningCircle weight="light" size={12} /> Budget Option
                                   </span>
                                 )}
                               </div>
-                              <p className="text-xs text-stone-500 uppercase tracking-wider font-semibold">Hybrid System Core</p>
+                              <p className="text-xs text-[#A8A29E] uppercase tracking-wider font-semibold">Hybrid System Core</p>
                             </div>
                           </div>
                           
@@ -3909,54 +4005,54 @@ export default function App() {
                               <BatteryIcon className="w-4 h-4 text-emerald-600 mt-0.5" />
                               <div>
                                 <p className="text-sm font-semibold">{sys.battery_config}</p>
-                                <p className="text-xs text-stone-500">Storage Configuration</p>
+                                <p className="text-xs text-[#A8A29E]">Storage Configuration</p>
                               </div>
                             </div>
                             <div className="flex items-start gap-2">
                               <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
                               <div>
                                 <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
+                                <p className="text-xs text-[#A8A29E]">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
                               </div>
                             </div>
                           </div>
 
                           <div className={`p-3 rounded-xl text-xs flex gap-2 items-start ${
-                            sys.status === 'Optimal' ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' : 
-                            sys.status === 'High Risk' ? 'bg-red-50 text-red-800 border border-red-100' :
-                            'bg-amber-50 text-amber-800 border border-amber-100'
+                            sys.status === 'Optimal' ? 'bg-emerald-900/40 text-emerald-800 border border-emerald-100' : 
+                            sys.status === 'High Risk' ? 'bg-red-900/40 text-red-800 border border-red-100' :
+                            'bg-amber-900/40 text-amber-800 border border-amber-100'
                           }`}>
-                            {sys.status === 'Optimal' ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
+                            {sys.status === 'Optimal' ? <CheckCircle className="w-4 h-4 shrink-0" /> : <Info className="w-4 h-4 shrink-0" />}
                             <p>{sys.advice}</p>
                           </div>
                         </div>
 
-                        <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-stone-100">
-                          <p className="text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Estimated Cost</p>
-                          <p className="text-3xl font-black text-stone-900">
+                        <div className="md:text-right pt-4 md:pt-0 border-t md:border-t-0 border-white/5">
+                          <p className="text-xs font-bold uppercase tracking-wider text-[#57534E] mb-1">Estimated Cost</p>
+                          <p className="text-3xl font-black text-[#FAFAF9]">
                             <span className="text-sm font-bold mr-1">NGN</span>
                             {sys.total_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                           <div className="mt-4 flex flex-col gap-2">
                             <button 
                               onClick={() => setSelectedSystemLog(sys.log)}
-                              className="w-full md:w-auto px-6 py-2.5 bg-stone-100 text-stone-900 rounded-xl font-semibold hover:bg-stone-200 transition-all flex items-center justify-center gap-2"
+                              className="w-full md:w-auto px-6 py-2.5 bg-white/[0.06] text-[#FAFAF9] rounded-xl font-semibold hover:bg-stone-200 transition-all flex items-center justify-center gap-2"
                             >
-                              <ListIcon className="w-4 h-4" /> View Log
+                              <List weight="light" size={16} /> View Log
                             </button>
                             <div className="flex gap-2">
                               <button 
                                 onClick={() => setSelectedSystemDetails(sys)}
                                 className="flex-1 px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                               >
-                                View Details <ChevronRight className="w-4 h-4" />
+                                View Details <CaretRight weight="light" size={16} />
                               </button>
                                 <button 
                                   onClick={() => saveResult(sys)}
-                                  className="p-2.5 bg-emerald-50 text-emerald-700 rounded-xl font-semibold hover:bg-emerald-100 transition-all flex items-center justify-center gap-2"
+                                  className="p-2.5 bg-emerald-900/40 text-emerald-700 rounded-xl font-semibold hover:bg-emerald-800/40 transition-all flex items-center justify-center gap-2"
                                   title="Save this configuration"
                                 >
-                                  <Save className="w-5 h-5" />
+                                  <FloppyDisk weight="light" size={20} />
                                 </button>
                             </div>
                           </div>
@@ -3974,46 +4070,50 @@ export default function App() {
       {/* Save Profile Modal */}
       <AnimatePresence>
         {showSaveProfile && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" style={{background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(48px)'}}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+              className="double-bezel w-full max-w-md"
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between">
-                <h2 className="font-bold text-xl">Save Load Profile</h2>
-                <button onClick={() => setShowSaveProfile(false)} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <p className="text-sm text-stone-500">
-                  Save your current region, battery preferences, and device list as a reusable profile.
-                </p>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Profile Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. My Home Setup"
-                    value={profileName}
-                    onChange={e => setProfileName(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-stone-50 border border-stone-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
-                    autoFocus
-                  />
+              <div className="double-bezel-inner">
+                <div className="p-6 flex items-center justify-between" style={{borderBottom: '1px solid var(--color-border)'}}>
+                  <h2 className="font-bold text-xl text-[#FAFAF9]">Save Load Profile</h2>
+                  <button onClick={() => setShowSaveProfile(false)} className="btn-ghost p-2"><X weight="light" size={20} /></button>
                 </div>
-                <div className="pt-4 flex gap-3">
-                  <button 
-                    onClick={() => setShowSaveProfile(false)}
-                    className="flex-1 py-3 bg-stone-100 text-stone-900 rounded-xl font-bold hover:bg-stone-200 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={saveProfile}
-                    disabled={!profileName.trim()}
-                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Save Profile
-                  </button>
+                <div className="p-6 space-y-4">
+                  <p className="text-sm" style={{color: '#A8A29E'}}>
+                    Save your current region, battery preferences, and device list as a reusable profile.
+                  </p>
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{color: '#57534E'}}>Profile Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. My Home Setup"
+                      value={profileName}
+                      onChange={e => setProfileName(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl text-sm text-[#FAFAF9] placeholder-[#57534E] outline-none"
+                      style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="pt-4 flex gap-3">
+                    <button 
+                      onClick={() => setShowSaveProfile(false)}
+                      className="flex-1 py-3 rounded-xl font-bold transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                      style={{background: 'rgba(255,255,255,0.06)', border: '1px solid var(--color-border)', color: '#A8A29E'}}
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={saveProfile}
+                      disabled={!profileName.trim()}
+                      className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Save Profile
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -4022,44 +4122,44 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-stone-200 mt-12 py-12">
+      <footer style={{background: '#111111', borderTop: '1px solid var(--color-border)'}} className="mt-24 py-24">
         <div className="max-w-7xl mx-auto px-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-12">
             <div className="col-span-1 md:col-span-2">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-6 h-6 bg-emerald-600 rounded flex items-center justify-center">
-                  <Sun className="text-white w-4 h-4" />
+                <div className="w-7 h-7 rounded-full flex items-center justify-center" style={{background: 'var(--color-accent)'}}>
+                  <Sun weight="bold" className="text-white" size={16} />
                 </div>
-                <h2 className="font-bold tracking-tight">SolarSizer Pro</h2>
+                <h2 className="font-bold tracking-tight text-[#FAFAF9]">SolarSizer Pro</h2>
               </div>
-              <p className="text-stone-500 text-sm max-w-sm">
+              <p className="text-sm max-w-sm" style={{color: '#A8A29E'}}>
                 Advanced solar sizing algorithms based on real-world meteorological data and hardware specifications. 
                 Always consult with a certified engineer before installation.
               </p>
             </div>
             <div>
-              <h4 className="font-bold text-sm uppercase tracking-wider mb-4">Resources</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><a href="#" className="hover:text-emerald-600">Installation Guide</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Battery Safety</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Panel Efficiency</a></li>
+              <h4 className="font-bold text-xs uppercase tracking-wider mb-4" style={{color: '#57534E'}}>Resources</h4>
+              <ul className="space-y-2 text-sm" style={{color: '#A8A29E'}}>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">Installation Guide</a></li>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">Battery Safety</a></li>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">Panel Efficiency</a></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-bold text-sm uppercase tracking-wider mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-stone-500">
-                <li><a href="#" className="hover:text-emerald-600">Contact Experts</a></li>
-                <li><a href="#" className="hover:text-emerald-600">Hardware Partners</a></li>
-                <li><a href="#" className="hover:text-emerald-600">API Documentation</a></li>
+              <h4 className="font-bold text-xs uppercase tracking-wider mb-4" style={{color: '#57534E'}}>Support</h4>
+              <ul className="space-y-2 text-sm" style={{color: '#A8A29E'}}>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">Contact Experts</a></li>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">Hardware Partners</a></li>
+                <li><a href="#" className="hover:text-[#FAFAF9] transition-colors">API Documentation</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-stone-100 mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-stone-400">
+          <div className="mt-16 pt-8 flex flex-col md:flex-row justify-between items-center gap-4 text-xs" style={{borderTop: '1px solid var(--color-border)', color: '#57534E'}}>
             <p>© 2026 SolarSizer Pro. All rights reserved.</p>
             <div className="flex gap-6">
-              <a href="#" className="hover:text-stone-600">Privacy Policy</a>
-              <a href="#" className="hover:text-stone-600">Terms of Service</a>
-              <a href="#" className="hover:text-stone-600">Cookie Settings</a>
+              <a href="#" className="hover:text-[#A8A29E] transition-colors">Privacy Policy</a>
+              <a href="#" className="hover:text-[#A8A29E] transition-colors">Terms of Service</a>
+              <a href="#" className="hover:text-[#A8A29E] transition-colors">Cookie Settings</a>
             </div>
           </div>
         </div>
@@ -4079,17 +4179,17 @@ export default function App() {
               initial={{ scale: 0.96, y: 16 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.96, y: 16 }}
-              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-stone-200 p-6 md:p-8"
+              className="w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white shadow-2xl border border-white/10 p-6 md:p-8"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="space-y-6">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-2xl font-bold text-stone-900">
+                    <h3 className="text-2xl font-bold text-[#FAFAF9]">
                       {selectedSystemDetails.product_name || "System Details"}
                     </h3>
                     {selectedSystemDetails.product_description && (
-                      <p className="text-sm text-stone-500 mt-1">
+                      <p className="text-sm text-[#A8A29E] mt-1">
                         {selectedSystemDetails.product_description}
                       </p>
                     )}
@@ -4097,16 +4197,16 @@ export default function App() {
 
                   <button
                     onClick={() => setSelectedSystemDetails(null)}
-                    className="p-2 rounded-full hover:bg-stone-100 text-stone-500"
+                    className="p-2 rounded-full hover:bg-white/[0.06] text-[#A8A29E]"
                   >
-                    <X className="w-5 h-5" />
+                    <X weight="light" size={20} />
                   </button>
                 </div>
 
-                <div className="p-4 rounded-2xl border border-stone-200 bg-stone-50">
-                  <p className="text-sm font-semibold text-stone-700">Status</p>
-                  <p className="text-base text-stone-900 mt-1">{selectedSystemDetails.status}</p>
-                  <p className="text-sm text-stone-600 mt-2">{selectedSystemDetails.advice}</p>
+                <div className="p-4 rounded-2xl border border-white/10 bg-white/[0.04]">
+                  <p className="text-sm font-semibold text-[#D6D3D1]">Status</p>
+                  <p className="text-base text-[#FAFAF9] mt-1">{selectedSystemDetails.status}</p>
+                  <p className="text-sm text-[#A8A29E] mt-2">{selectedSystemDetails.advice}</p>
                 </div>
 
                 {showInteractiveBridge &&
@@ -4119,35 +4219,35 @@ export default function App() {
                 ) : (
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <Cpu className="w-4 h-4" />
+                      <div className="p-4 rounded-2xl border border-white/10 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#D6D3D1]">
+                          <Cpu weight="light" size={16} />
                           Inverter
                         </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.inverter}</p>
-                        <p className="text-xs text-stone-500 mt-1">
+                        <p className="mt-2 text-sm text-[#FAFAF9]">{selectedSystemDetails.inverter}</p>
+                        <p className="text-xs text-[#A8A29E] mt-1">
                           {selectedSystemDetails.inverter_w ? `${selectedSystemDetails.inverter_w}W` : ""}
                         </p>
                       </div>
 
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <BatteryIcon className="w-4 h-4" />
+                      <div className="p-4 rounded-2xl border border-white/10 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#D6D3D1]">
+                          <BatteryIcon weight="light" size={16} />
                           Battery
                         </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.battery_config}</p>
-                        <p className="text-xs text-stone-500 mt-1">
+                        <p className="mt-2 text-sm text-[#FAFAF9]">{selectedSystemDetails.battery_config}</p>
+                        <p className="text-xs text-[#A8A29E] mt-1">
                           {selectedSystemDetails.battery_wh ? `${selectedSystemDetails.battery_wh}Wh` : ""}
                         </p>
                       </div>
 
-                      <div className="p-4 rounded-2xl border border-stone-200 bg-white">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-stone-700">
-                          <Sun className="w-4 h-4" />
+                      <div className="p-4 rounded-2xl border border-white/10 bg-white">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-[#D6D3D1]">
+                          <Sun weight="light" size={16} />
                           Panel
                         </div>
-                        <p className="mt-2 text-sm text-stone-900">{selectedSystemDetails.panel_config}</p>
-                        <p className="text-xs text-stone-500 mt-1">
+                        <p className="mt-2 text-sm text-[#FAFAF9]">{selectedSystemDetails.panel_config}</p>
+                        <p className="text-xs text-[#A8A29E] mt-1">
                           {selectedSystemDetails.panel_w ? `${selectedSystemDetails.panel_w}W` : ""}
                         </p>
                       </div>
@@ -4157,7 +4257,7 @@ export default function App() {
                       selectedSystemDetails.component_specs.length > 0 && (
                         <div className="space-y-4">
                           <h4 className="font-bold text-lg flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-stone-400" />
+                            <Stack className="w-5 h-5 text-[#57534E]" />
                             Hardware Specs
                           </h4>
 
@@ -4165,24 +4265,24 @@ export default function App() {
                             {selectedSystemDetails.component_specs.map((item, index) => (
                               <div
                                 key={index}
-                                className="p-4 rounded-2xl border border-stone-200 bg-white"
+                                className="p-4 rounded-2xl border border-white/10 bg-white"
                               >
                                 <div className="flex items-center justify-between gap-3 mb-3">
-                                  <p className="font-bold text-stone-900 capitalize">
+                                  <p className="font-bold text-[#FAFAF9] capitalize">
                                     {item.role.replace(/_/g, " ")}
                                   </p>
-                                  <span className="text-xs font-bold text-stone-500">
+                                  <span className="text-xs font-bold text-[#A8A29E]">
                                     Qty: {item.quantity}
                                   </span>
                                 </div>
 
-                                <p className="text-sm text-stone-700 mb-3">{item.name}</p>
+                                <p className="text-sm text-[#D6D3D1] mb-3">{item.name}</p>
 
-                                <div className="space-y-1 text-xs text-stone-500">
+                                <div className="space-y-1 text-xs text-[#A8A29E]">
                                   {Object.entries(item.specs).map(([key, value]) => (
                                     <div key={key} className="flex items-center justify-between gap-4">
                                       <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                      <span className="font-semibold text-stone-700">
+                                      <span className="font-semibold text-[#D6D3D1]">
                                         {String(value)}
                                       </span>
                                     </div>
@@ -4196,16 +4296,16 @@ export default function App() {
 
                     <div className="space-y-4">
                       <h4 className="font-bold text-lg flex items-center gap-2">
-                        <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
+                        <Stack className="w-5 h-5 text-[#57534E]" /> Wiring & Installation Guide
                       </h4>
-                      <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100 space-y-4 text-sm text-stone-600 leading-relaxed">
+                      <div className="bg-white/[0.04] p-6 rounded-2xl border border-white/5 space-y-4 text-sm text-[#A8A29E] leading-relaxed">
                         <p>• <strong>DC Bus:</strong> Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration.</p>
                         <p>• <strong>PV String:</strong> Connect panels in the specified series-parallel configuration to stay within the {selectedSystemDetails.inverter}'s MPPT window.</p>
                         <p>• <strong>Protection:</strong> Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array.</p>
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <div className="flex items-center justify-between p-6 bg-emerald-900/40 rounded-2xl border border-emerald-100">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
                           Total System Investment
@@ -4218,7 +4318,7 @@ export default function App() {
                         onClick={() => generateQuote(selectedSystemDetails)}
                         className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                       >
-                        Generate Quote <ExternalLink className="w-4 h-4" />
+                        Generate Quote <ArrowSquareOut weight="light" size={16} />
                       </button>
                     </div>
                   </div>
@@ -4232,26 +4332,26 @@ export default function App() {
       {/* Add Hardware Modal */}
       <AnimatePresence>
         {showAddMasterDevice && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl overflow-y-auto">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-lg max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-lg max-h-[90vh] rounded-[2rem] overflow-hidden flex flex-col" style={{background: '#141414', border: '1px solid var(--color-border)'}}
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
                 <h2 className="font-bold text-xl">{editingMasterDevice ? "Edit" : "Add"} Master Device</h2>
-                <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
+                <button onClick={() => { setShowAddMasterDevice(false); setEditingMasterDevice(null); }} className="p-2 hover:bg-white/[0.06] rounded-full"><X weight="light" size={20} /></button>
               </div>
               <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8" onSubmit={saveMasterDevice}>
                 <div>
-                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Name</label>
-                  <input name="name" defaultValue={itemData(editingMasterDevice)?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. LED Bulb" />
+                  <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Device Name</label>
+                  <input name="name" defaultValue={itemData(editingMasterDevice)?.name} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" placeholder="e.g. LED Bulb" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
-                    <select name="category" defaultValue={itemData(editingMasterDevice)?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                    <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Category</label>
+                    <select name="category" defaultValue={itemData(editingMasterDevice)?.category || "electronics"} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl">
                       <option value="electronics">Electronics</option>
                       <option value="motor">Motor</option>
                       <option value="compressor">Compressor</option>
@@ -4260,13 +4360,13 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
-                    <input name="default_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                    <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Default Watts</label>
+                    <input name="default_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
-                  <input name="tags" defaultValue={itemData(editingMasterDevice)?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />
+                  <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Tags (comma separated)</label>
+                  <input name="tags" defaultValue={itemData(editingMasterDevice)?.tags?.join(", ")} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" placeholder="e.g. lighting, basic" />
                 </div>
                 <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
                   {editingMasterDevice ? "Update Device" : "Save Device"}
@@ -4278,16 +4378,16 @@ export default function App() {
       </AnimatePresence>
       <AnimatePresence>
         {showAddHardware && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-md max-h-[90vh] rounded-[2rem] overflow-hidden flex flex-col" style={{background: '#141414', border: '1px solid var(--color-border)'}}
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
                 <h2 className="font-bold text-xl capitalize">{editingHardware ? "Edit" : "Add New"} {showAddHardware}</h2>
-                <button onClick={() => { setShowAddHardware(null); setEditingHardware(null); }} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
+                <button onClick={() => { setShowAddHardware(null); setEditingHardware(null); }} className="p-2 hover:bg-white/[0.06] rounded-full"><X weight="light" size={20} /></button>
               </div>
               <form 
                 className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8"
@@ -4416,65 +4516,65 @@ export default function App() {
                   return (
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Model Name</label>
-                        <input name="name" defaultValue={currentItem?.name} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                        <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Model Name</label>
+                        <input name="name" defaultValue={currentItem?.name} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Description (for catalog)</label>
-                        <input name="description" defaultValue={(currentItem as any)?.description} placeholder="Brief marketing description..." className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                        <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Description (for catalog)</label>
+                        <input name="description" defaultValue={(currentItem as any)?.description} placeholder="Brief marketing description..." className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
-                        <input name="tags" defaultValue={(currentItem as any)?.tags?.join(", ")} placeholder="e.g. residential, featured, budget" className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
+                        <label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Tags (comma separated)</label>
+                        <input name="tags" defaultValue={(currentItem as any)?.tags?.join(", ")} placeholder="e.g. residential, featured, budget" className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         {showAddHardware === "inverter" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max AC (W)</label><input name="max_ac_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_ac_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">DC Volts (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Inverter)?.system_vdc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">PV Max (W)</label><input name="cc_max_pv_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_pv_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_charge_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_parallel_units || 1} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Inverter)?.cc_type || "pwm"} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max AC (W)</label><input name="max_ac_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_ac_w} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">DC Volts (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Inverter)?.system_vdc} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">PV Max (W)</label><input name="cc_max_pv_w" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_pv_w} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_voc} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.cc_max_amps} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_charge_amps} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Inverter)?.max_parallel_units || 1} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Inverter)?.cc_type || "pwm"} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
                           </>
                         )}
                         {showAddHardware === "panel" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts (W)</label><input name="watts" type="number" step="any" defaultValue={(currentItem as Panel)?.watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voc (V)</label><input name="voc" type="number" step="any" defaultValue={(currentItem as Panel)?.voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Isc (A)</label><input name="isc" type="number" step="any" defaultValue={(currentItem as Panel)?.isc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Watts (W)</label><input name="watts" type="number" step="any" defaultValue={(currentItem as Panel)?.watts} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Voc (V)</label><input name="voc" type="number" step="any" defaultValue={(currentItem as Panel)?.voc} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Isc (A)</label><input name="isc" type="number" step="any" defaultValue={(currentItem as Panel)?.isc} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
                           </>
                         )}
                         {showAddHardware === "battery" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Voltage (V)</label><input name="voltage" type="number" step="any" defaultValue={(currentItem as Battery)?.voltage} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Battery)?.capacity_ah} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Type</label><select name="type" defaultValue={(currentItem as Battery)?.type} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" step="any" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Voltage (V)</label><input name="voltage" type="number" step="any" defaultValue={(currentItem as Battery)?.voltage} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Battery)?.capacity_ah} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Type</label><select name="type" defaultValue={(currentItem as Battery)?.type} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Parallel</label><input name="max_parallel_strings" type="number" step="any" defaultValue={(currentItem as Battery)?.max_parallel_strings} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Battery)?.min_c_rate} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
                           </>
                         )}
                         {showAddHardware === "powerstation" && (
                           <>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Output (W)</label><input name="max_output_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Type</label><select name="battery_type" defaultValue={(currentItem as Powerstation)?.battery_type || "lithium"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">System VDC (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Capacity (Wh)</label><input name="capacity_wh" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_wh} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Output (W)</label><input name="max_output_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_output_w} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max PV Input (W)</label><input name="max_pv_input_w" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_pv_input_w} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Battery Type</label><select name="battery_type" defaultValue={(currentItem as Powerstation)?.battery_type || "lithium"} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl"><option value="lithium">Lithium</option><option value="lead-acid">Lead-Acid</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Inverter Type</label><select name="inverter_type" defaultValue={(currentItem as Powerstation)?.inverter_type || "pure-sine"} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl"><option value="pure-sine">Pure Sine</option><option value="modified-sine">Modified Sine</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Charge Amps (A)</label><input name="max_charge_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_charge_amps} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">System VDC (V)</label><input name="system_vdc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.system_vdc || 12} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">CC Type</label><select name="cc_type" defaultValue={(currentItem as Powerstation)?.cc_type || "mppt"} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Voc (V)</label><input name="cc_max_voc" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_voc} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max CC Amps (A)</label><input name="cc_max_amps" type="number" step="any" defaultValue={(currentItem as Powerstation)?.cc_max_amps} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Max Parallel Units</label><input name="max_parallel_units" type="number" step="any" defaultValue={(currentItem as Powerstation)?.max_parallel_units || 1} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
                           </>
                         )}
-                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-[#A8A29E] mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-white/[0.04] border border-white/10 rounded-xl" /></div>
                       </div>
                     </div>
                   );
@@ -4489,25 +4589,25 @@ export default function App() {
       </AnimatePresence>
       <AnimatePresence>
         {selectedSystemLog && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-2xl">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-white w-full max-w-2xl max-h-[80vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+              className="w-full max-w-2xl max-h-[80vh] rounded-[2rem] overflow-hidden flex flex-col" style={{background: '#141414', border: '1px solid var(--color-border)'}}
             >
-              <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50">
+              <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.04]">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-emerald-100 rounded-lg">
+                  <div className="p-2 bg-emerald-800/40 rounded-lg">
                     <Calculator className="w-5 h-5 text-emerald-600" />
                   </div>
-                  <h2 className="font-bold text-xl text-stone-900">Calculation Log</h2>
+                  <h2 className="font-bold text-xl text-[#FAFAF9]">Calculation Log</h2>
                 </div>
                 <button 
                   onClick={() => setSelectedSystemLog(null)}
                   className="p-2 hover:bg-stone-200 rounded-full transition-colors"
                 >
-                  <X className="w-6 h-6 text-stone-500" />
+                  <X className="w-6 h-6 text-[#A8A29E]" />
                 </button>
               </div>
               
@@ -4516,20 +4616,20 @@ export default function App() {
                   <div 
                     key={getLogKey("system-log", line, i)} 
                     className={`p-3 rounded-xl text-sm font-mono flex gap-3 ${
-                      line.includes('✅') ? 'bg-emerald-50 text-emerald-800 border border-emerald-100' :
-                      line.includes('❌') ? 'bg-red-50 text-red-800 border border-red-100' :
-                      line.includes('Note:') ? 'bg-amber-50 text-amber-800 border border-amber-100' :
-                      'bg-stone-50 text-stone-600 border border-stone-100'
+                      line.includes('✅') ? 'bg-emerald-900/40 text-emerald-800 border border-emerald-100' :
+                      line.includes('❌') ? 'bg-red-900/40 text-red-800 border border-red-100' :
+                      line.includes('Note:') ? 'bg-amber-900/40 text-amber-800 border border-amber-100' :
+                      'bg-white/[0.04] text-[#A8A29E] border border-white/5'
                     }`}
                   >
-                    <span className="text-stone-300 select-none">{String(i + 1).padStart(2, '0')}</span>
+                    <span className="text-[#3A3A3A] select-none">{String(i + 1).padStart(2, '0')}</span>
                     <span>{line}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="p-6 border-t border-stone-100 bg-stone-50 text-center">
-                <p className="text-xs text-stone-400">
+              <div className="p-6 border-t border-white/5 bg-white/[0.04] text-center">
+                <p className="text-xs text-[#57534E]">
                   This log shows the step-by-step validation process for this specific hardware combination.
                 </p>
               </div>

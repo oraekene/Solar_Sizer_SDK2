@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { WarningCircle, ArrowClockwise } from "@phosphor-icons/react";
 
 interface Props {
   children?: React.ReactNode;
@@ -27,29 +27,31 @@ class ErrorBoundary extends React.Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white border border-stone-200 rounded-3xl p-8 shadow-xl text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6 text-red-600">
-              <AlertCircle className="w-8 h-8" />
-            </div>
-            <h1 className="text-2xl font-bold text-stone-900 mb-2">Something went wrong</h1>
-            <p className="text-stone-500 mb-8">
-              The application encountered an unexpected error. We've logged it and are working on a fix.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 mx-auto"
-            >
-              <RefreshCw className="w-5 h-5" />
-              <span>Refresh Page</span>
-            </button>
-            {this.state.error && (
-              <div className="mt-8 p-4 bg-stone-100 rounded-xl text-left overflow-auto max-h-40">
-                <p className="text-xs font-mono text-stone-600 whitespace-pre-wrap">
-                  {this.state.error.toString()}
-                </p>
+        <div className="min-h-screen bg-[#0C0C0C] flex items-center justify-center p-4">
+          <div className="double-bezel max-w-md w-full">
+            <div className="double-bezel-inner p-8 text-center">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{background: 'rgba(220,38,38,0.1)'}}>
+                <WarningCircle weight="light" className="text-[#DC2626]" size={32} />
               </div>
-            )}
+              <h1 className="text-2xl font-bold text-[#FAFAF9] mb-2">Something went wrong</h1>
+              <p className="text-[#A8A29E] mb-8">
+                The application encountered an unexpected error.
+              </p>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-primary mx-auto"
+              >
+                <ArrowClockwise weight="light" size={18} />
+                <span>Refresh Page</span>
+              </button>
+              {this.state.error && (
+                <div className="mt-8 p-4 rounded-xl text-left overflow-auto max-h-40" style={{background: 'rgba(255,255,255,0.03)', border: '1px solid var(--color-border)'}}>
+                  <p className="text-xs font-mono text-[#A8A29E] whitespace-pre-wrap">
+                    {this.state.error.toString()}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       );
