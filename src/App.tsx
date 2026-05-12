@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { 
   Sun,
-  Battery as BatteryIcon,
+  BatteryHigh as BatteryIcon,
   Lightning,
   MapPin,
   Plus,

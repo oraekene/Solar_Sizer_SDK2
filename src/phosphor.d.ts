@@ -7,7 +7,7 @@ declare module "@phosphor-icons/react" {
     className?: string;
   }
   export const Sun: FC<IconProps>;
-  export const Battery: FC<IconProps>;
+  export const BatteryHigh: FC<IconProps>;
   export const Lightning: FC<IconProps>;
   export const MapPin: FC<IconProps>;
   export const Plus: FC<IconProps>;
