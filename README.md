@@ -1,4 +1,4 @@
-# SolarSizer Pro on Cloudflare
+# SolarSizer Pro on Cloudflare.
 
 SolarSizer Pro is now structured for Cloudflare free-tier hosting:
 
