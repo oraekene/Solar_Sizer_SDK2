@@ -2610,7 +2610,7 @@ export default function App() {
           {/* Right Column: Results */}
           <div className="lg:col-span-7 space-y-8">
             {!results ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-16 double-bezel">
+              <div className="min-h-[420px] flex flex-col items-center justify-center text-center p-16 double-bezel">
                 <div className="double-bezel-inner p-12">
                   <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6" style={{background: 'rgba(255,255,255,0.04)', border: '1px solid var(--color-border)'}}>
                     <Calculator weight="light" className="text-[#57534E]" size={32} />
