@@ -1,5 +1,6 @@
 import { buildCombinations } from '../src/utils/solarCalculator.ts';
 import type { BatteryPreference, Device, Hardware, Product, Region } from '../src/types.ts';
+import { enrichCombinationData } from './enrich.ts';
 import { seedDevices, seedHardware, seedProducts } from './seed-data';
 
 type Env = {
@@ -89,57 +90,106 @@ function normalizeHardware(row: Record<string, unknown>): Record<string, unknown
 function normalizeProduct(row: Record<string, unknown>): Record<string, unknown> & { combination_data: JsonRecord | null; tags: string[] } {
   return {
     ...row,
-    combination_data: safeJsonParse<JsonRecord | null>(row.combination_data, null),
+    combination_data: enrichCombinationData(row, safeJsonParse<unknown>(row.combination_data, null)),
     tags: safeJsonParse<string[]>(row.tags, []),
   };
 }
 
+const SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS devices_master (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    default_watts REAL NOT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS hardware (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    data TEXT NOT NULL DEFAULT '{}',
+    tags TEXT NOT NULL DEFAULT '[]',
+    description TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL,
+    combination_data TEXT DEFAULT NULL,
+    tags TEXT NOT NULL DEFAULT '[]',
+    price REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT DEFAULT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  'CREATE INDEX IF NOT EXISTS idx_hardware_user_id ON hardware(user_id)',
+  'CREATE INDEX IF NOT EXISTS idx_hardware_type ON hardware(type)',
+  'CREATE INDEX IF NOT EXISTS idx_products_type ON products(type)',
+];
+
+async function tableIsEmpty(db: D1Database, table: 'devices_master' | 'products' | 'hardware') {
+  const row = await first<{ count: number }>(db, `SELECT COUNT(*) AS count FROM ${table}`);
+  return (row?.count ?? 0) === 0;
+}
+
 async function ensureBootstrapped(db: D1Database) {
-  const existing = await first<{ count: number }>(db, 'SELECT COUNT(*) AS count FROM devices_master');
-  if ((existing?.count ?? 0) > 0) return;
+  // Keep working on a fresh D1 even if the migration has not been applied yet.
+  await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
 
   const statements: D1PreparedStatement[] = [];
 
-  for (const device of seedDevices) {
-    statements.push(
-      db
-        .prepare('INSERT OR IGNORE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)')
-        .bind(device.id, device.name, device.category, device.watts, JSON.stringify(device.tags)),
-    );
+  if (await tableIsEmpty(db, 'devices_master')) {
+    for (const device of seedDevices) {
+      statements.push(
+        db
+          .prepare('INSERT OR IGNORE INTO devices_master (id, name, category, default_watts, tags) VALUES (?, ?, ?, ?, ?)')
+          .bind(device.id, device.name, device.category, device.watts, JSON.stringify(device.tags)),
+      );
+    }
   }
 
-  for (const product of seedProducts) {
-    statements.push(
-      db
-        .prepare('INSERT OR IGNORE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(
-          product.id,
-          product.name,
-          product.description,
-          product.type,
-          JSON.stringify(product.combination_data ?? null),
-          JSON.stringify(product.tags),
-          product.price,
-        ),
-    );
+  if (await tableIsEmpty(db, 'products')) {
+    for (const product of seedProducts) {
+      statements.push(
+        db
+          .prepare('INSERT OR IGNORE INTO products (id, name, description, type, combination_data, tags, price) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .bind(
+            product.id,
+            product.name,
+            product.description,
+            product.type,
+            JSON.stringify(product.combination_data ?? null),
+            JSON.stringify(product.tags),
+            product.price,
+          ),
+      );
+    }
   }
 
-  for (const hardware of seedHardware) {
-    statements.push(
-      db
-        .prepare('INSERT OR IGNORE INTO hardware (id, user_id, type, data, tags, description) VALUES (?, ?, ?, ?, ?, ?)')
-        .bind(
-          hardware.id,
-          'system',
-          hardware.type,
-          JSON.stringify(hardware.data ?? {}),
-          JSON.stringify(hardware.tags),
-          hardware.description,
-        ),
-    );
+  if (await tableIsEmpty(db, 'hardware')) {
+    for (const hardware of seedHardware) {
+      statements.push(
+        db
+          .prepare('INSERT OR IGNORE INTO hardware (id, user_id, type, data, tags, description) VALUES (?, ?, ?, ?, ?, ?)')
+          .bind(
+            hardware.id,
+            'system',
+            hardware.type,
+            JSON.stringify(hardware.data ?? {}),
+            JSON.stringify(hardware.tags),
+            hardware.description,
+          ),
+      );
+    }
   }
 
-  await db.batch(statements);
+  if (statements.length > 0) await db.batch(statements);
 }
 
 async function boot(db: D1Database) {
@@ -185,8 +235,32 @@ async function handleApi(request: Request, env: Env, pathname: string) {
     return json({ valid: await timingSafeEqual(password, adminPassword) });
   }
 
+  // Auth stays disabled, but keep the old contract for clients and future OAuth work.
+  if (pathname === '/api/auth/user' && method === 'GET') {
+    return json({ user: null });
+  }
+
+  if (pathname === '/api/auth/logout' && method === 'POST') {
+    return json({ success: true });
+  }
+
+  if (pathname === '/api/user/data' && method === 'GET') {
+    return json({ profiles: [], results: [], hardware: [] });
+  }
+
+  if (
+    (pathname === '/api/user/profiles' || pathname === '/api/user/results' || pathname === '/api/user/hardware') &&
+    method === 'POST'
+  ) {
+    return json({ success: true });
+  }
+
+  if (pathname.startsWith('/api/user/') && method === 'DELETE') {
+    return json({ success: true });
+  }
+
   if (pathname === '/api/devices' && method === 'GET') {
-    const devices = await all<Record<string, unknown>>(env.DB, 'SELECT * FROM devices_master ORDER BY name');
+    const devices = await all<Record<string, unknown>>(env.DB, 'SELECT * FROM devices_master');
     return json(devices.map(normalizeDevice));
   }
 
@@ -219,7 +293,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
   }
 
   if (pathname === '/api/hardware' && method === 'GET') {
-    const hardware = await all<Record<string, unknown>>(env.DB, "SELECT * FROM hardware WHERE user_id = 'system' ORDER BY id");
+    const hardware = await all<Record<string, unknown>>(env.DB, "SELECT * FROM hardware WHERE user_id = 'system'");
     return json(hardware.map(normalizeHardware));
   }
 
@@ -253,8 +327,8 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
   if (pathname === '/api/products' && method === 'GET') {
     const tag = url.searchParams.get('tag');
-    const products = (await all<Record<string, unknown>>(env.DB, 'SELECT * FROM products ORDER BY name')).map(normalizeProduct);
-    const hardware = (await all<Record<string, unknown>>(env.DB, "SELECT * FROM hardware WHERE tags IS NOT NULL AND tags != '[]' ORDER BY id")).map(normalizeHardware);
+    const products = (await all<Record<string, unknown>>(env.DB, 'SELECT * FROM products')).map(normalizeProduct);
+    const hardware = (await all<Record<string, unknown>>(env.DB, "SELECT * FROM hardware WHERE tags IS NOT NULL AND tags != '[]'")).map(normalizeHardware);
 
     const productList = tag ? products.filter((product) => product.tags.includes(tag)) : products;
     const hardwareList = tag ? hardware.filter((item) => item.tags.includes(tag)) : hardware;
@@ -265,6 +339,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
   if (pathname === '/api/products' && method === 'POST') {
     if (!(await requireAdmin(request, env))) return unauthorized();
     const product = await readBody<{ id: string; name: string; description: string; type: string; combination_data?: JsonRecord | null; tags?: string[]; price: number }>(request);
+    const combinationData = enrichCombinationData(product, product.combination_data ?? null);
 
     await run(
       env.DB,
@@ -281,7 +356,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
       product.name,
       product.description,
       product.type,
-      JSON.stringify(product.combination_data ?? null),
+      JSON.stringify(combinationData),
       JSON.stringify(product.tags ?? []),
       product.price,
     );
@@ -331,7 +406,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
     if (!body.hardware) return badRequest('Hardware database is required for calculation.');
 
-    const products = (await all<Record<string, unknown>>(env.DB, 'SELECT * FROM products ORDER BY name')).map(
+    const products = (await all<Record<string, unknown>>(env.DB, 'SELECT * FROM products')).map(
       (product) => normalizeProduct(product) as unknown as Product,
     );
     const result = buildCombinations(
@@ -350,10 +425,15 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === '/healthz') {
+      return new Response('OK', { status: 200, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+    }
+
     try {
       await boot(env.DB);
 
-      const url = new URL(request.url);
       if (url.pathname.startsWith('/api/')) {
         return await handleApi(request, env, url.pathname);
       }
