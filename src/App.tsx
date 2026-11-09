@@ -1,5 +1,5 @@
 // Merged App.tsx (best of v1 + v2)
-import { useState, useMemo, useEffect, ChangeEvent } from "react";
+import { useState, useMemo, useEffect, useRef, ChangeEvent } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -67,6 +67,7 @@ import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
+import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
 
 const CATEGORIES: { value: DeviceCategory; label: string }[] = [
   { value: "compressor", label: "Compressor (Fridge/AC)" },
@@ -677,10 +678,26 @@ export default function App() {
       const globalBatteries = data.filter((h: any) => h.type === 'battery').map((h: any) => h.data);
       const globalPowerstations = data.filter((h: any) => h.type === 'powerstation').map((h: any) => h.data);
 
-      if (globalInverters.length > 0) setInverters(globalInverters);
-      if (globalPanels.length > 0) setPanels(globalPanels);
-      if (globalBatteries.length > 0) setBatteries(globalBatteries);
-      if (globalPowerstations.length > 0) setPowerstations(globalPowerstations);
+      // Merge global hardware into the local list by id so user-added custom
+      // items (which only exist in local storage) are never wiped out when the
+      // server catalog is refreshed. Local-only ids are preserved; ids present
+      // in the global list are updated in place; new global ids are appended.
+      // If local storage is empty, fall back to the global defaults.
+      const mergeById = <T extends { id: string }>(local: T[], globalItems: T[]): T[] => {
+        if (local.length === 0) return globalItems;
+        const merged = [...local];
+        for (const item of globalItems) {
+          const idx = merged.findIndex(m => m.id === item.id);
+          if (idx >= 0) merged[idx] = item;
+          else merged.push(item);
+        }
+        return merged;
+      };
+
+      if (globalInverters.length > 0) setInverters(prev => mergeById(prev, globalInverters));
+      if (globalPanels.length > 0) setPanels(prev => mergeById(prev, globalPanels));
+      if (globalBatteries.length > 0) setBatteries(prev => mergeById(prev, globalBatteries));
+      if (globalPowerstations.length > 0) setPowerstations(prev => mergeById(prev, globalPowerstations));
     }).catch(console.error);
   }, []); // Empty dependency array — runs once on mount
   
@@ -834,6 +851,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem("ss_has_generator", String(hasGenerator));
+    storeSet("ss_has_generator", hasGenerator).catch(() => {});
   }, [hasGenerator]);
 
   const [selectedForComparison, setSelectedForComparison] = useState<SystemCombination[]>([]);
@@ -878,6 +896,8 @@ export default function App() {
   const safeLocalStorageSet = (key: string, value: any) => {
     try {
       localStorage.setItem(key, JSON.stringify(value));
+      // Mirror to SQLite so clearing browser storage does not destroy the data.
+      storeSet(key, value).catch(() => {});
       return true;
     } catch (e) {
       if (e instanceof DOMException && e.name === "QuotaExceededError") {
@@ -894,6 +914,63 @@ export default function App() {
     const saved = localStorage.getItem("ss_profiles");
     return saved ? JSON.parse(saved) : [];
   });
+
+  // Restore localStorage from SQLite when a key is missing (e.g. user cleared
+  // browser storage). Runs once on mount after all useState declarations; the
+  // setters repopulate the UI. The persist effect's first-run skip (below)
+  // prevents defaults from clobbering the restored values.
+  useEffect(() => {
+    let cancelled = false;
+    const restore = async () => {
+      const restorations: Array<[string, Promise<unknown | null>]> = [
+        [KEY.INVERTERS, storeGet<Inverter[]>(KEY.INVERTERS)],
+        [KEY.PANELS, storeGet<Panel[]>(KEY.PANELS)],
+        [KEY.BATTERIES, storeGet<Battery[]>(KEY.BATTERIES)],
+        [KEY.POWERSTATIONS, storeGet<Powerstation[]>(KEY.POWERSTATIONS)],
+        [KEY.PROFILES, storeGet<UserProfile[]>(KEY.PROFILES)],
+        [KEY.RESULTS, storeGet<SavedResult[]>(KEY.RESULTS)],
+        [KEY.MARGINS, storeGet<ProfitMargins>(KEY.MARGINS)],
+        [KEY.PDF_SETTINGS, storeGet<PDFSettings>(KEY.PDF_SETTINGS)],
+        [KEY.INTERNAL_LOGS, storeGet<CalculationAttempt[]>(KEY.INTERNAL_LOGS)],
+      ];
+      for (const [key, promise] of restorations) {
+        if (localStorage.getItem(key) != null) continue; // already present
+        const value = await promise;
+        if (cancelled || value == null) continue;
+        try {
+          localStorage.setItem(key, JSON.stringify(value));
+        } catch {
+          // ignore — the in-memory state below is what matters
+        }
+        switch (key) {
+          case KEY.INVERTERS: setInverters(value as Inverter[]); break;
+          case KEY.PANELS: setPanels(value as Panel[]); break;
+          case KEY.BATTERIES: setBatteries(value as Battery[]); break;
+          case KEY.POWERSTATIONS: setPowerstations(value as Powerstation[]); break;
+          case KEY.PROFILES: setProfiles(value as UserProfile[]); break;
+          case KEY.RESULTS: setSavedResults(value as SavedResult[]); break;
+          case KEY.MARGINS: setMargins(value as ProfitMargins); break;
+          case KEY.PDF_SETTINGS: setPdfSettings(value as PDFSettings); break;
+          case KEY.INTERNAL_LOGS: setInternalLogs(value as CalculationAttempt[]); break;
+        }
+      }
+      // ss_has_generator is a boolean flag, handled separately below
+      if (localStorage.getItem(KEY.HAS_GENERATOR) == null) {
+        const flag = await storeGet<boolean>(KEY.HAS_GENERATOR);
+        if (!cancelled && flag != null) {
+          try { localStorage.setItem(KEY.HAS_GENERATOR, String(flag)); } catch {}
+          setHasGenerator(flag);
+        }
+      }
+    };
+    restore();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Skip the first mount run so the restore effect above can populate state
+  // from SQLite before anything is written back. Subsequent runs mirror the
+  // current state to both localStorage and SQLite.
+  const persistMountedRef = useRef(false);
   const [showSaveProfile, setShowSaveProfile] = useState(false);
   const [profileName, setProfileName] = useState("");
 
@@ -953,13 +1030,18 @@ export default function App() {
 
   // Persist Hardware
   useEffect(() => {
+    if (!persistMountedRef.current) {
+      persistMountedRef.current = true;
+      return;
+    }
     safeLocalStorageSet("ss_inverters", inverters);
     safeLocalStorageSet("ss_panels", panels);
     safeLocalStorageSet("ss_batteries", batteries);
     safeLocalStorageSet("ss_powerstations", powerstations);
     safeLocalStorageSet("ss_profiles", profiles);
     safeLocalStorageSet("ss_margins", margins);
-  }, [inverters, panels, batteries, powerstations, profiles, margins]);
+    safeLocalStorageSet("ss_pdf_settings", pdfSettings);
+  }, [inverters, panels, batteries, powerstations, profiles, margins, pdfSettings]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) return;
@@ -1077,6 +1159,7 @@ export default function App() {
     setSavedResults((prev) => {
       const updated = prev.filter((r) => r.id !== id);
       localStorage.setItem("ss_results", JSON.stringify(updated));
+      storeSet("ss_results", updated).catch(() => {});
       return updated;
     });
   };
@@ -1577,6 +1660,8 @@ export default function App() {
       await sdk.saveSettings("pdf_settings", pdfSettings, adminKey);
       localStorage.setItem("ss_margins", JSON.stringify(margins));
       localStorage.setItem("ss_pdf_settings", JSON.stringify(pdfSettings));
+      storeSet("ss_margins", margins).catch(() => {});
+      storeSet("ss_pdf_settings", pdfSettings).catch(() => {});
       alert("✅ Global settings (margins & PDF customization) saved to server successfully!");
     } catch (err) {
       alert("Failed to save settings: " + (err instanceof Error ? err.message : String(err)));
@@ -3525,6 +3610,7 @@ export default function App() {
                     if (confirm("Are you sure you want to clear all internal logs? This cannot be undone.")) {
                       setInternalLogs([]);
                       localStorage.removeItem("ss_internal_logs");
+                      storeRemove("ss_internal_logs").catch(() => {});
                     }
                   }}
                   className="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-red-100 transition-all border border-red-100"
