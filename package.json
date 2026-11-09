@@ -1,5 +1,5 @@
 {
-  "name": "solarsizer-pro",
+  "name": "react-example",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -22,7 +22,7 @@
     "axios": "^1.13.6",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
-    "@phosphor-icons/react": "^2.1.10",
+    "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
