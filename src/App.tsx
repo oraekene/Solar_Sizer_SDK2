@@ -2523,7 +2523,7 @@ export default function App() {
           {/* Right Column: Results */}
           <div className="lg:col-span-7 space-y-8">
             {!results ? (
-              <div className="h-full flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-stone-200 border-dashed">
+              <div className="min-h-[420px] flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-stone-200 border-dashed">
                 <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4">
                   <Calculator className="w-8 h-8 text-stone-400" />
                 </div>
