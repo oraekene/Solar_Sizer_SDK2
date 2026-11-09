@@ -5,6 +5,7 @@ import { seedDevices, seedHardware, seedProducts } from './seed-data';
 
 type Env = {
   ADMIN_PASSWORD?: string;
+  BACHS_API_KEY?: string;
   ASSETS: Fetcher;
   DB: D1Database;
 };
@@ -393,6 +394,57 @@ async function handleApi(request: Request, env: Env, pathname: string) {
       );
       return json({ success: true });
     }
+  }
+
+  if (pathname === '/api/checkout' && method === 'POST') {
+    const apiKey = env.BACHS_API_KEY;
+    if (!apiKey) return json({ error: 'Payment is not configured yet.' }, 503);
+
+    const body = await readBody<{ productId?: string; amount?: number; description?: string }>(request);
+
+    // Catalog products are priced from D1. Custom systems and hardware-derived products send their computed total.
+    // shortcut: fallback amounts come from the client, so re-price them server-side before fulfilment if this becomes a paid flow.
+    let amount = Number(body.amount);
+    if (body.productId) {
+      const product = await first<{ price: number }>(
+        env.DB,
+        'SELECT price FROM products WHERE id = ?',
+        body.productId,
+      );
+      if (product) amount = Number(product.price);
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000_000) {
+      return badRequest('Invalid checkout amount.');
+    }
+
+    const origin = new URL(request.url).origin;
+    const base = apiKey.startsWith('sk_sandbox_')
+      ? 'https://sandbox-api.bachs.io'
+      : 'https://api.bachs.io';
+    const response = await fetch(`${base}/v1/checkout-sessions`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        pricing: { currency: 'NGN', amount: amount.toFixed(2) },
+        metadata: { description: (body.description || 'SolarSizer system').slice(0, 120) },
+        success_url: `${origin}/?payment=success`,
+        cancel_url: `${origin}/?payment=cancelled`,
+      }),
+    });
+
+    const data = (await response.json().catch(() => null)) as
+      | { checkout_url?: string; message?: string; error?: string }
+      | null;
+
+    if (!response.ok || !data?.checkout_url) {
+      return json({ error: data?.message || data?.error || 'Could not create checkout.' }, 502);
+    }
+
+    return json({ url: data.checkout_url });
   }
 
   if (pathname === '/api/calculate' && method === 'POST') {
