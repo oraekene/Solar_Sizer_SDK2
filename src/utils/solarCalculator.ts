@@ -333,8 +333,6 @@ export function buildCombinations(
   const validSystems: SystemCombination[] = [];
   const allLogs: string[][] = [];
 
-  const isAcceptableStatus = (status: "Optimal" | "Conditional" | "High Risk") => status !== "High Risk";
-
   // --- 1. Pre-configured Kits ---
   // --- 1. Pre-configured Kits ---
   for (const prod of safeProducts) {
@@ -395,16 +393,9 @@ export function buildCombinations(
     } else {
       status = "High Risk";
       advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
-      allLogs.push(prodLog);
-      continue;
     }
 
     prodLog.push(`Status: ${status}.`);
-
-    if (!isAcceptableStatus(status)) {
-      allLogs.push(prodLog);
-      continue;
-    }
 
     const totalPrice = applyMargin(prod.price, margins.product);
 
@@ -483,17 +474,10 @@ export function buildCombinations(
     } else {
       status = "High Risk";
       advice = `🚨 High Blackout Risk: Short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
-      allLogs.push(psLog);
-      continue;
     }
 
     psLog.push(`Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
     psLog.push(`Status: ${status}.`);
-
-    if (!isAcceptableStatus(status)) {
-      allLogs.push(psLog);
-      continue;
-    }
 
     const psPrice = applyMargin(ps.price, margins.powerstation);
     const panelEquivalentCount = Math.max(1, Math.ceil(ps.max_pv_input_w / 350));
@@ -703,11 +687,11 @@ export function buildCombinations(
             panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
           }
           
-          if (status === "High Risk") {
-            allLogs.push(panelLog);
-            continue;
-          }
-
+          // High Risk systems are kept and surfaced to the UI so users whose
+          // load needs an undersized system get a warned option instead of
+          // "No Matching Systems". The old tree pushed them to validSystems;
+          // the current tree dropped them here, leaving the High Risk branches
+          // in the UI unreachable.
           const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
           const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
           const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;

@@ -356,7 +356,7 @@ function ComparisonModal({
   const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
   const exportToPDF = () => {
-    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, true, genHours, fuelPriceOverride, analysis);
+    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, hasGenerator, genHours, fuelPriceOverride, analysis);
   };
 
   return (
@@ -1207,8 +1207,13 @@ export default function App() {
     const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
     const consumption = selectedGen.fuel_consumption_l_hr;
     const maintenance = selectedGen.maintenance_mo;
-    const initialCost = 0; 
-    const monthlyFuel = fuelPrice * consumption * genHours * 30; 
+    // Mirror the ComparisonModal logic: the generator is only a column when
+    // hasGen is true, and its initial cost is 0 when the user owns it
+    // (hasGen true) versus the purchase price when they do not (hasGen false).
+    // The old code hard-coded initialCost = 0 and always appended a generator
+    // cell to every row, which misaligned the table when hasGen was false.
+    const initialCost = hasGen ? 0 : selectedGen.price;
+    const monthlyFuel = fuelPrice * consumption * genHours * 30;
     const monthlyTotal = monthlyFuel + maintenance;
     const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
@@ -1216,13 +1221,13 @@ export default function App() {
     if (hasGen) headers.push("Generator");
 
     const rows = [
-      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`)],
-      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), `N${monthlyTotal.toLocaleString()}`],
-      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), `N${fiveYearTotal.toLocaleString()}`],
-      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), `N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`],
-      ["Fuel Type", ...systems.map(_ => "N/A"), selectedGen.fuel_type],
-      ["Fuel Consumption", ...systems.map(_ => "N/A"), `${selectedGen.fuel_consumption_l_hr} L/hr`],
-      ["Reliability", ...systems.map(_ => "Silent, Automatic"), "Noisy, Fumes, Manual"]
+      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${initialCost.toLocaleString()}`] : [])],
+      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), ...(hasGen ? [`N${monthlyTotal.toLocaleString()}`] : [])],
+      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${fiveYearTotal.toLocaleString()}`] : [])],
+      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), ...(hasGen ? [`N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`] : [])],
+      ["Fuel Type", ...systems.map(_ => "N/A"), ...(hasGen ? [selectedGen.fuel_type] : [])],
+      ["Fuel Consumption", ...systems.map(_ => "N/A"), ...(hasGen ? [`${selectedGen.fuel_consumption_l_hr} L/hr`] : [])],
+      ["Reliability", ...systems.map(_ => "Silent, Automatic"), ...(hasGen ? ["Noisy, Fumes, Manual"] : [])],
     ];
 
     autoTable(doc, {
@@ -1461,7 +1466,7 @@ export default function App() {
   };
 
   const exportHardwareDatabaseJSON = () => {
-    const data = { inverters, panels, batteries };
+    const data = { inverters, panels, batteries, powerstations };
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     downloadFile(JSON.stringify(data, null, 2), `SolarSizer_Hardware_${timestamp}.json`, "application/json");
   };
@@ -1834,6 +1839,14 @@ export default function App() {
     content += `| :--- | :--- | :--- | :--- | :--- | :--- |\n`;
     batteries.forEach(b => {
       content += `| ${b.name} | ${b.voltage} | ${b.capacity_ah} | ${b.type} | ${b.min_c_rate} | ${b.price.toLocaleString()} |\n`;
+    });
+    content += `\n`;
+
+    content += `## 4. POWERSTATIONS\n`;
+    content += `| Name | Capacity (Wh) | Max Output (W) | Max PV Input (W) | Price (₦) |\n`;
+    content += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    powerstations.forEach(ps => {
+      content += `| ${ps.name} | ${ps.capacity_wh} | ${ps.max_output_w} | ${ps.max_pv_input_w} | ${ps.price.toLocaleString()} |\n`;
     });
 
     const blob = new Blob([content], { type: 'text/markdown' });
@@ -3288,7 +3301,8 @@ export default function App() {
                   <Tooltip content={`{
   "inverters": [{"name": "...", "max_ac_w": 5000, ...}],
   "panels": [{"name": "...", "watts": 400, ...}],
-  "batteries": [{"name": "...", "voltage": 48, ...}]
+  "batteries": [{"name": "...", "voltage": 48, ...}],
+  "powerstations": [{"name": "...", "watts": 1000, ...}]
 }`}>
                     <div className="w-5 h-5 bg-stone-200 rounded-full flex items-center justify-center cursor-help hover:bg-stone-300 transition-colors">
                       <span className="text-[10px] font-bold">!</span>
