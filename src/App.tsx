@@ -67,7 +67,8 @@ import {
   TimeRange
 } from "./types";
 import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS } from "./constants";
+import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
+import { sizeWiring, normalizeWiringSpecs } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
 import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
@@ -798,7 +799,12 @@ export default function App() {
     // v2 key: v1 only ever held the small default seed, before wiring was editable.
     const saved = localStorage.getItem("ss_wiring_v2");
     const data: WiringItem[] = saved ? JSON.parse(saved) : DEFAULT_WIRING;
-    return data.map((item, idx) => ({ ...item, id: item.id || `w-legacy-${idx}` }));
+    return data.map((item, idx) => ({
+      ...item,
+      id: item.id || `w-legacy-${idx}`,
+      // Seeds used to store title-case spec keys, which blanked the edit form.
+      specs: normalizeWiringSpecs(item.specs ?? {}),
+    }));
   });
 
   // Track which nice-to-have wiring items are selected
@@ -1893,6 +1899,17 @@ export default function App() {
     powerstations.forEach(ps => {
       content += `| ${ps.name} | ${ps.capacity_wh} | ${ps.max_output_w} | ${ps.max_pv_input_w} | ${ps.price.toLocaleString()} |\n`;
     });
+    content += `\n`;
+
+    content += `## 5. WIRING\n`;
+    content += `| Category | Item Type | Name | Specs | Price (₦) |\n`;
+    content += `| :--- | :--- | :--- | :--- | :--- |\n`;
+    wiring.forEach(w => {
+      const specs = Object.entries(w.specs ?? {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      content += `| ${WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category} | ${w.type === "mandatory" ? "Required" : "Optional"} | ${w.name} | ${specs} | ${w.price.toLocaleString()} |\n`;
+    });
 
     const blob = new Blob([content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
@@ -2300,9 +2317,8 @@ export default function App() {
         WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category,
         `${w.name} - N${safePrice(w.price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
       ]),
-      ["DC Bus", "Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration."],
-      ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`],
-      ["Protection", "Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array."]
+      ...(sys.wiring_notes ?? []).map(note => ["Sizing", note]),
+      ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`]
     ];
 
     autoTable(doc, {
@@ -2353,10 +2369,27 @@ export default function App() {
   };
 
   // The details modal keeps a snapshot, so wiring is recomputed live from the
-  // current selection. Products without wiring_items keep their own total.
-  const hasWiring = Array.isArray(selectedSystemDetails?.wiring_items);
-  const includedWiring = wiring.filter((w) => w.type === "mandatory" || selectedNiceToHaveIds.has(w.id));
-  const liveWiringPrice = hasWiring
+  // current selection. Products carry no wiring_items, so they get the same
+  // sized list the calculator uses; internet kits have no wiring at all.
+  const hasWiring =
+    !!selectedSystemDetails &&
+    selectedSystemDetails.kit_type !== "internet" &&
+    (Array.isArray(selectedSystemDetails.wiring_items) || !!selectedSystemDetails.product_id);
+  const liveSizing = hasWiring
+    ? sizeWiring(
+        {
+          items: wiring,
+          inverter: selectedSystemDetails?.inverter_data,
+          panel: selectedSystemDetails?.panel_data,
+          arrayWatts: selectedSystemDetails?.array_size_w || 0,
+          batteryWh: selectedSystemDetails?.battery_total_wh || 0,
+          maxAcW: selectedSystemDetails?.inverter_w,
+        },
+        Array.from(selectedNiceToHaveIds)
+      )
+    : null;
+  const includedWiring = liveSizing ? wiring.filter((w) => liveSizing.includeIds.has(w.id)) : [];
+  const liveWiringPrice = liveSizing
     ? Math.round(includedWiring.reduce((sum, w) => sum + w.price, 0) * (1 + margins.product / 100))
     : 0;
   const liveSystemTotal = selectedSystemDetails
@@ -2367,6 +2400,7 @@ export default function App() {
         ...selectedSystemDetails,
         wiring_items: includedWiring,
         wiring_price: liveWiringPrice,
+        wiring_notes: liveSizing?.notes,
         total_price: liveSystemTotal,
         selected_nice_to_have: Array.from(selectedNiceToHaveIds),
       }
@@ -4441,7 +4475,7 @@ export default function App() {
                         : "Conditional Recommendation"}
                     </h4>
                     <p className="text-sm text-stone-600 mt-1">{selectedSystemDetails.advice}</p>
-                    {selectedSystemDetails.status === "Conditional" && !showInteractiveBridge && (
+                    {selectedSystemDetails.status !== "Optimal" && !showInteractiveBridge && (
                       <button
                         onClick={() => setShowInteractiveBridge(true)}
                         className="mt-3 px-4 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-all flex items-center gap-2"
@@ -4452,7 +4486,7 @@ export default function App() {
                   </div>
                 </div>
 
-                {showInteractiveBridge && selectedSystemDetails.status === "Conditional" ? (
+                {showInteractiveBridge && selectedSystemDetails.status !== "Optimal" ? (
                   <InteractiveBridge
                     devices={devices}
                     initialDeficit={selectedSystemDetails.deficit}
@@ -4913,7 +4947,7 @@ export default function App() {
                             </div>
                             <div className="col-span-2">
                               <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Item Type</label>
-                              <select name="wiring_type" defaultValue={currentItem?.type || "mandatory"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                              <select name="wiring_type" defaultValue={currentItem?.type || (WIRING_OPTIONAL_BY_DEFAULT.includes(currentItem?.category || wiringCategoryForAdd) ? "nice-to-have" : "mandatory")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
                                 <option value="mandatory">Required</option>
                                 <option value="nice-to-have">Optional</option>
                               </select>

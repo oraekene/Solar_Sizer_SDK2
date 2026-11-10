@@ -1,5 +1,6 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES, WIRING as DEFAULT_WIRING } from "../constants";
 import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
+import { sizeWiring } from "./wiringSizer";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -380,7 +381,7 @@ export function buildCombinations(
       advice = `⚠️ Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
     } else {
       status = "High Risk";
-      advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+      advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). Use the sliders below to adjust your schedule and prevent this.`;
     }
 
     prodLog.push(`Status: ${status}.`);
@@ -723,35 +724,37 @@ export function buildCombinations(
     validSystems = validSystems.filter(s => s.status !== "High Risk");
   }
 
-  // Integrate wiring items into each system
+  // Integrate wiring items into each system, sized to that system's own current.
   const selectedNiceToHaveList = selectedNiceToHave ?? [];
-  const computeWiringForSystem = () => {
-    const items: WiringItem[] = [];
-    let totalCost = 0;
-    
-    for (const item of safeHardware.wiring) {
-      // Always include mandatory items
-      // Include nice-to-have items only if they are selected
-      if (item.type === 'mandatory' || (item.type === 'nice-to-have' && selectedNiceToHaveList.includes(item.id))) {
-        items.push(item);
-        totalCost += item.price;
-      }
-    }
-    return { items, totalCost };
-  };
 
-  const wiringForSystems = computeWiringForSystem();
-  
-  for (const system of validSystems) {
-    const wiredSystem = {
+  for (const [index, system] of validSystems.entries()) {
+    const sizing = sizeWiring(
+      {
+        items: safeHardware.wiring,
+        inverter: system.inverter_data,
+        panel: system.panel_data,
+        arrayWatts: system.array_size_w,
+        batteryWh: system.battery_total_wh,
+        maxAcW: system.inverter_w,
+      },
+      selectedNiceToHaveList
+    );
+
+    const wiringItems = safeHardware.wiring.filter((w) => sizing.includeIds.has(w.id));
+    const wiringPrice = Math.round(
+      wiringItems.reduce((sum, w) => sum + w.price, 0) * (1 + margins.product / 100)
+    );
+
+    validSystems[index] = {
       ...system,
-      wiring_items: wiringForSystems.items,
-      wiring_price: Math.round(wiringForSystems.totalCost * (1 + (margins.product / 100))),
-      total_price: system.total_price + Math.round(wiringForSystems.totalCost * (1 + (margins.product / 100))),
+      wiring_items: wiringItems,
+      wiring_price: wiringPrice,
+      wiring_notes: sizing.notes,
+      total_price: system.total_price + wiringPrice,
       selected_nice_to_have: selectedNiceToHaveList,
       component_specs: [
         ...(system.component_specs ?? []),
-        ...wiringForSystems.items.map(w => ({
+        ...wiringItems.map(w => ({
           role: 'wiring' as const,
           name: w.name,
           quantity: 1,
@@ -765,7 +768,6 @@ export function buildCombinations(
         }))
       ]
     };
-    validSystems[validSystems.indexOf(system)] = wiredSystem;
   }
 
   return { analysis, systems: validSystems, allLogs };

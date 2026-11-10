@@ -145,24 +145,15 @@ export const POWERSTATIONS: Powerstation[] = [
 ];
 
 export const WIRING: WiringItem[] = [
-  // Cables - Mandatory
+  // Cables - Mandatory. Gauge ladder drives per-system selection in wiringSizer.ts.
   {
     id: "w-1",
     name: "4mm² Copper Cable (Battery to Inverter)",
     category: "cables",
     type: "mandatory",
-    description: "Flexible copper cable for small inverter battery runs. Use 10mm² or larger for high current systems.",
+    description: "Flexible copper cable for small inverter battery runs.",
     price: 8500,
-    specs: { "Gauge": "4mm²", "Length": "5m", "Type": "Copper" }
-  },
-  {
-    id: "w-2",
-    name: "6mm² Solar Cable (Panel to Controller)",
-    category: "cables",
-    type: "mandatory",
-    description: "UV-resistant solar cable for PV connections. Rated for outdoor installation.",
-    price: 12000,
-    specs: { "Gauge": "6mm²", "Length": "10m", "Type": "PV Wire" }
+    specs: { gauge: "4mm²", length: 5, type: "Copper" }
   },
   {
     id: "w-11",
@@ -171,7 +162,79 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Heavier copper cable for 1kVA to 3kVA inverter battery connections.",
     price: 16500,
-    specs: { "Gauge": "10mm²", "Length": "5m", "Type": "Copper" }
+    specs: { gauge: "10mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-33",
+    name: "16mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Battery cable for 3kVA to 5kVA inverters on 48V banks.",
+    price: 24000,
+    specs: { gauge: "16mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-34",
+    name: "25mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Battery cable for 5kVA inverters drawing over 100A.",
+    price: 33000,
+    specs: { gauge: "25mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-35",
+    name: "35mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Heavy battery cable for 5kVA to 8kVA inverter banks.",
+    price: 45000,
+    specs: { gauge: "35mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-36",
+    name: "50mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Heavy battery cable for 8kVA to 10kVA inverter banks.",
+    price: 62000,
+    specs: { gauge: "50mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-37",
+    name: "70mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Largest battery cable for parallel inverter banks above 10kVA.",
+    price: 84000,
+    specs: { gauge: "70mm²", length: 5, type: "Copper" }
+  },
+  {
+    id: "w-2",
+    name: "6mm² Solar Cable (Panel to Controller)",
+    category: "cables",
+    type: "mandatory",
+    description: "UV-resistant solar cable for PV connections. Rated for outdoor installation.",
+    price: 12000,
+    specs: { gauge: "6mm²", length: 10, type: "PV Wire" }
+  },
+  {
+    id: "w-38",
+    name: "10mm² Solar Cable (Panel to Controller)",
+    category: "cables",
+    type: "mandatory",
+    description: "Larger PV cable for multi-string arrays feeding one controller.",
+    price: 19000,
+    specs: { gauge: "10mm²", length: 10, type: "PV Wire" }
+  },
+  {
+    id: "w-39",
+    name: "16mm² Solar Cable (Panel to Controller)",
+    category: "cables",
+    type: "mandatory",
+    description: "PV cable for long high-current array runs to the charge controller.",
+    price: 27000,
+    specs: { gauge: "16mm²", length: 10, type: "PV Wire" }
   },
   {
     id: "w-12",
@@ -180,9 +243,45 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Twin and earth cable for AC distribution from the inverter to wall sockets.",
     price: 7500,
-    specs: { "Gauge": "2.5mm²", "Length": "10m", "Type": "Twin & Earth" }
+    specs: { gauge: "2.5mm²", length: 10, type: "Twin & Earth" }
   },
-  // Breakers - Mandatory
+  {
+    id: "w-40",
+    name: "4mm² AC Cable (Inverter to Load)",
+    category: "cables",
+    type: "mandatory",
+    description: "AC cable for 3kVA inverter output feeding a small distribution board.",
+    price: 11500,
+    specs: { gauge: "4mm²", length: 10, type: "Twin & Earth" }
+  },
+  {
+    id: "w-41",
+    name: "6mm² AC Cable (Inverter to Load)",
+    category: "cables",
+    type: "mandatory",
+    description: "AC cable for 5kVA inverter output feeding a distribution board.",
+    price: 15500,
+    specs: { gauge: "6mm²", length: 10, type: "Twin & Earth" }
+  },
+  {
+    id: "w-42",
+    name: "10mm² AC Cable (Inverter to Load)",
+    category: "cables",
+    type: "mandatory",
+    description: "AC cable for 8kVA to 10kVA inverter output.",
+    price: 24000,
+    specs: { gauge: "10mm²", length: 10, type: "Twin & Earth" }
+  },
+  // Breakers - Mandatory. Amperage ladder drives per-system selection.
+  {
+    id: "w-43",
+    name: "DC Breaker (63A)",
+    category: "breakers",
+    type: "mandatory",
+    description: "Battery isolation breaker for 1kVA to 3kVA inverters on 24V or 48V banks.",
+    price: 18000,
+    specs: { amperage: 63, voltage: 150, poles: "2" }
+  },
   {
     id: "w-3",
     name: "DC Breakers (100A)",
@@ -190,7 +289,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Required for disconnecting battery banks and PV arrays. Install at battery terminal.",
     price: 25000,
-    specs: { "Amperage": 100, "Voltage": 150, "Poles": 2 }
+    specs: { amperage: 100, voltage: 150, poles: "2" }
   },
   {
     id: "w-13",
@@ -199,7 +298,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Fast-acting fuse for the battery positive cable. Protects against short circuit fires.",
     price: 9000,
-    specs: { "Amperage": 200, "Type": "ANL", "Voltage": 32 }
+    specs: { amperage: 200, type: "ANL", voltage: 32 }
   },
   {
     id: "w-14",
@@ -208,7 +307,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Surface enclosure that holds the DC breakers and fuses near the battery bank.",
     price: 7500,
-    specs: { "Ways": 2, "Rating": "IP65", "Material": "ABS" }
+    specs: { ways: 2, rating: "IP65", material: "ABS" }
   },
   // DC Bus - Optional
   {
@@ -218,7 +317,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Tinned copper bus bar for clean battery bank connections. Keep all battery cables equal length.",
     price: 35000,
-    specs: { "Voltage": 48, "Current": 200, "Material": "Aluminum" }
+    specs: { voltage: 48, current: 200, material: "Tinned Copper" }
   },
   {
     id: "w-15",
@@ -227,7 +326,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Smaller bus bar for 24V battery banks and compact inverter setups.",
     price: 24000,
-    specs: { "Voltage": 24, "Current": 150, "Material": "Aluminum" }
+    specs: { voltage: 24, current: 150, material: "Aluminium" }
   },
   {
     id: "w-16",
@@ -236,7 +335,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Insulating cover that shields exposed bus bar terminals from accidental contact.",
     price: 4500,
-    specs: { "Material": "PVC", "Length": "300mm", "Rating": "IP20" }
+    specs: { material: "PVC", length: 0.3, rating: "IP20" }
   },
   // Surge Protectors - Nice-to-have
   {
@@ -246,7 +345,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Protects system from voltage spikes during lightning storms. Recommended for all installations.",
     price: 18000,
-    specs: { "Voltage": 150, "Joules": 1200, "Response": "<1ns" }
+    specs: { voltage: 150, joules: 1200, response_time: "<1ns" }
   },
   {
     id: "w-17",
@@ -255,7 +354,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Clamps grid spikes before they reach the inverter AC input.",
     price: 22000,
-    specs: { "Type": "Type 2", "Voltage": 230, "Rating": "20kA" }
+    specs: { voltage: 230, joules: 2000, response_time: "<25ns" }
   },
   {
     id: "w-18",
@@ -264,7 +363,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Protects the PV strings and charge controller from induced surges.",
     price: 19000,
-    specs: { "Voltage": 1000, "Type": "DC SPD", "Rating": "40kA" }
+    specs: { voltage: 1000, joules: 4000, response_time: "<25ns" }
   },
   // Casings - Optional
   {
@@ -274,7 +373,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Protective enclosures for cable connections. Prevents corrosion and short circuits.",
     price: 5000,
-    specs: { "Material": "PVC", "Count": 4, "Rating": "IP65" }
+    specs: { material: "PVC", count: 4, rating: "IP65" }
   },
   {
     id: "w-19",
@@ -283,7 +382,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Weatherproof box for MC4 joints on outdoor PV runs.",
     price: 3500,
-    specs: { "Material": "PVC", "Count": 1, "Rating": "IP65" }
+    specs: { material: "PVC", count: 1, rating: "IP65" }
   },
   {
     id: "w-20",
@@ -292,7 +391,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Dust and water resistant enclosure for AC and DC breakers.",
     price: 7500,
-    specs: { "Ways": 6, "Material": "ABS", "Rating": "IP65" }
+    specs: { material: "ABS", count: 1, rating: "IP65" }
   },
   // Mounting Racks - Optional
   {
@@ -302,7 +401,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Equipment rack for organizing inverter, controller, and distribution components.",
     price: 45000,
-    specs: { "Height": "12U", "Width": "600mm", "Depth": "500mm" }
+    specs: { height: 12, width: 600, load: 120, material: "Steel" }
   },
   {
     id: "w-21",
@@ -311,7 +410,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Heavy duty brackets to hang the inverter and charge controller on a wall.",
     price: 18000,
-    specs: { "Load": "80kg", "Material": "Powder-coated steel", "Pieces": 2 }
+    specs: { height: 1, width: 400, load: 80, material: "Powder-coated steel" }
   },
   {
     id: "w-22",
@@ -320,7 +419,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Aluminium rails for roof or ground mounting of solar panels.",
     price: 26000,
-    specs: { "Length": "4m", "Material": "Aluminium", "Pieces": 2 }
+    specs: { height: 1, width: 4000, load: 200, material: "Aluminium" }
   },
   // MC4 Connectors - Mandatory
   {
@@ -330,7 +429,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Standard MC4 connectors for PV panel connections. Includes male and female pairs.",
     price: 15000,
-    specs: { "Current": "30A", "Voltage": "1000V", "Pairs": 10 }
+    specs: { current: 30, voltage: 1000, pairs: 10 }
   },
   {
     id: "w-23",
@@ -339,7 +438,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Parallel Y connectors for joining two PV strings into one controller input.",
     price: 6000,
-    specs: { "Current": "30A", "Voltage": "1000V", "Pairs": 1 }
+    specs: { current: 30, voltage: 1000, pairs: 1 }
   },
   {
     id: "w-24",
@@ -348,7 +447,7 @@ export const WIRING: WiringItem[] = [
     type: "mandatory",
     description: "Assembly and release spanner for MC4 connector locking nuts.",
     price: 2500,
-    specs: { "Type": "MC4 Spanner", "Material": "ABS", "Pieces": 2 }
+    specs: { pairs: 2 }
   },
   // Circuit Breakers - Nice-to-have
   {
@@ -358,7 +457,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Overcurrent protection for AC output circuits. Install on main distribution panel.",
     price: 8000,
-    specs: { "Amperage": 15, "Trip": "Thermal-Magnetic", "Poles": 1 }
+    specs: { amperage: 15, trip_type: "Thermal-Magnetic", poles: "1", rating: 230 }
   },
   {
     id: "w-25",
@@ -367,7 +466,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Main AC breaker for inverter output feeding a small distribution board.",
     price: 9500,
-    specs: { "Amperage": 32, "Trip": "Thermal-Magnetic", "Poles": 2 }
+    specs: { amperage: 32, trip_type: "Thermal-Magnetic", poles: "2", rating: 230 }
   },
   {
     id: "w-26",
@@ -376,7 +475,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Consumer unit that holds the AC breakers for separate house circuits.",
     price: 16000,
-    specs: { "Ways": 6, "Voltage": 230, "Mounting": "Surface" }
+    specs: { trip_type: "Miniature", poles: "2", rating: 230 }
   },
   // Earthing Systems - Optional
   {
@@ -386,7 +485,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Grounding system for safety. Required by electrical codes for all renewable energy installations.",
     price: 12000,
-    specs: { "Length": "2.5m", "Material": "Copper", "Resistance": "<10Ω" }
+    specs: { length: 2.5, material: "Copper", resistance: 10, rod_size: 16 }
   },
   {
     id: "w-27",
@@ -395,7 +494,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Green and yellow earth cable tying the inverter, panel frames and rod together.",
     price: 8500,
-    specs: { "Gauge": "16mm²", "Length": "10m", "Colour": "Green/Yellow" }
+    specs: { length: 10, material: "Copper", resistance: 10, rod_size: 16 }
   },
   {
     id: "w-28",
@@ -404,7 +503,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Clamp that bonds the earth cable to the rod and equipment chassis.",
     price: 3000,
-    specs: { "Material": "Brass", "Rod Size": "16mm", "Pieces": 2 }
+    specs: { length: 0.1, material: "Copper", resistance: 10, rod_size: 16 }
   },
   // Smart Controls - Optional
   {
@@ -414,7 +513,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Whole-home energy meter that logs solar, battery and grid usage from your phone.",
     price: 45000,
-    specs: { "Current": "100A", "Connectivity": "Wi-Fi", "Display": "LCD" }
+    specs: { current: 100, connectivity: "Wi-Fi", type: "Smart Meter" }
   },
   {
     id: "w-30",
@@ -423,7 +522,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "In-wall socket with app scheduling and live watt readings for one circuit.",
     price: 18000,
-    specs: { "Current": "16A", "Connectivity": "Wi-Fi", "Sockets": 1 }
+    specs: { current: 16, connectivity: "Wi-Fi", type: "Smart Outlet" }
   },
   {
     id: "w-31",
@@ -432,7 +531,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Plug-in smart adapter that meters and switches any UK 13A appliance.",
     price: 12000,
-    specs: { "Rating": "13A", "Connectivity": "Wi-Fi", "Type": "UK" }
+    specs: { current: 13, connectivity: "Wi-Fi", type: "Smart Plug" }
   },
   {
     id: "w-32",
@@ -441,7 +540,7 @@ export const WIRING: WiringItem[] = [
     type: "nice-to-have",
     description: "Desk display with a clamp sensor for real-time watts and daily kWh totals.",
     price: 22000,
-    specs: { "Sensor": "CT Clamp", "Range": "Up to 100A", "Connectivity": "Wi-Fi" }
+    specs: { current: 100, connectivity: "Wi-Fi", type: "Energy Monitor" }
   }
 ];
 
@@ -458,6 +557,15 @@ export const WIRING_CATEGORY_LABELS: Record<WiringCategory, { label: string; des
   earthing_systems: { label: "Earthing Systems", description: "Grounding and safety equipment" },
   smart_controls: { label: "Smart Meters & Outlets", description: "Wattmeters, smart wall outlets and adapters" }
 };
+
+// Categories whose new items default to Optional in the add form.
+export const WIRING_OPTIONAL_BY_DEFAULT: WiringCategory[] = [
+  "dc_bus",
+  "casings",
+  "mounting_racks",
+  "earthing_systems",
+  "smart_controls",
+];
 
 // Category-specific spec fields for wiring item forms
 export const WIRING_SPEC_FIELDS: Record<WiringCategory, { key: string; label: string; type: 'number' | 'select' | 'text'; options?: string[] }[]> = {

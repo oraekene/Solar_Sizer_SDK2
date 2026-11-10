@@ -160,6 +160,7 @@ export interface SystemCombination {
   product_description?: string;
   wiring_items?: WiringItem[];
   wiring_price?: number;
+  wiring_notes?: string[];
   selected_nice_to_have?: string[];
 }
 
