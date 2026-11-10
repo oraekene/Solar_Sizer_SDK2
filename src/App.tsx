@@ -809,6 +809,8 @@ export default function App() {
 
   // Track which nice-to-have wiring items are selected
   const [selectedNiceToHaveIds, setSelectedNiceToHaveIds] = useState<Set<string>>(new Set());
+  // Track quantity for each wiring item (by id)
+  const [wiringQuantities, setWiringQuantities] = useState<Record<string, number>>({});
 
   // Internal Logs State
   const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
@@ -2391,10 +2393,26 @@ export default function App() {
         Array.from(selectedNiceToHaveIds)
       )
     : null;
-  const includedWiring = liveSizing ? wiring.filter((w) => liveSizing.includeIds.has(w.id)) : [];
-  const liveWiringPrice = liveSizing
-    ? Math.round(includedWiring.reduce((sum, w) => sum + w.price, 0) * (1 + margins.product / 100))
-    : 0;
+  // Get wire items with dynamic quantities from state
+const includedWiring = liveSizing ? wiring.filter((w) => liveSizing.includeIds.has(w.id)).map(w => ({
+  ...w,
+  qty: wiringQuantities[w.id] || w.qty || 1
+})) : [];
+
+/** Calculate wire price accounting for qty and length override. */
+const calculateWirePrice = (item: WiringItem): number => {
+  const qty = item.qty || 1;
+  // Get base length from specs, default to 1 (full price)
+  const specLength = typeof item.specs?.length === "number" ? item.specs.length : 1;
+  const overrideLength = item.length_override || specLength;
+  // Price scales with length ratio
+  const lengthMultiplier = overrideLength > 0 ? overrideLength / specLength : 1;
+  return Math.round(item.price * qty * lengthMultiplier * (1 + margins.product / 100));
+};
+
+const liveWiringPrice = liveSizing
+  ? Math.round(includedWiring.reduce((sum, w) => sum + calculateWirePrice(w), 0))
+  : 0;
   const liveSystemTotal = selectedSystemDetails
     ? (selectedSystemDetails.total_price || 0) - (hasWiring ? selectedSystemDetails.wiring_price || 0 : 0) + liveWiringPrice
     : 0;
@@ -4559,7 +4577,7 @@ export default function App() {
                   </div>
                 )}
 
-                    {hasWiring && (
+                    {hasWiring && liveSizing && (
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-3">
                           <h4 className="font-bold text-lg flex items-center gap-2">
@@ -4567,69 +4585,119 @@ export default function App() {
                           </h4>
                           <span className="text-sm font-bold text-emerald-600">₦{liveWiringPrice.toLocaleString()}</span>
                         </div>
-                        <p className="text-xs text-stone-500">Required items are always included. Tick the optional items to add them to this system.</p>
+                        <p className="text-xs text-stone-500">
+                          Required cables are sized automatically for your system. 
+                          Adjust quantities or add optional items below.
+                        </p>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {wiring.map((item) => {
-                            const optional = item.type === "nice-to-have";
-                            const included = !optional || selectedNiceToHaveIds.has(item.id);
-                            return (
-                              <div
-                                key={item.id}
-                                className={`p-4 rounded-2xl border ${
-                                  included ? "bg-stone-50 border-stone-100" : "bg-white border-dashed border-stone-200 opacity-70"
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-3 mb-2">
-                                  <div>
-                                    <p className="font-bold text-stone-900">{item.name}</p>
-                                    <p className="text-xs text-stone-500">
-                                      {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
-                                    </p>
-                                  </div>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                                    optional ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                  }`}>
-                                    {optional ? "Optional" : "Required"}
-                                  </span>
-                                </div>
+                        <div className="space-y-3">
+                          {/* Selected (sized and optional) wiring items */}
+                          {liveSizing.includeIds.size > 0 && (
+                            <>
+                              {Array.from(liveSizing.includeIds)
+                                .map(id => wiring.find(w => w.id === id))
+                                .filter(Boolean)
+                                .map((item) => {
+                                  if (!item) return null;
+                                  const isOptional = item.type === "nice-to-have";
+                                  const isIncluded = (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
+                                  const currentQty = wiringQuantities[item.id] || item.qty || 1;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      className={`p-4 rounded-2xl border transition-all ${
+                                        isIncluded 
+                                          ? (isOptional 
+                                            ? "bg-amber-50 border-amber-100" 
+                                            : "bg-emerald-50 border-emerald-100")
+                                          : "bg-white border-dashed border-stone-200 opacity-50"
+                                      }`}
+                                    >
+                                      <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                          <p className="font-bold text-stone-900">{item.name}</p>
+                                          <p className="text-xs text-stone-500">
+                                            {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                          </p>
+                                        </div>
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                          isOptional 
+                                            ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
+                                            : "bg-emerald-100 text-emerald-700"
+                                        }`}>
+                                          {isOptional ? "Optional" : "Required"}
+                                        </span>
+                                      </div>
 
-                                <div className="space-y-1 text-xs text-stone-500 mb-3">
-                                  {Object.entries(item.specs || {}).map(([key, value]) => (
-                                    <div key={key} className="flex items-center justify-between gap-4">
-                                      <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                      <span className="font-semibold text-stone-700">{String(value)}</span>
+                                      <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                        {Object.entries(item.specs || {}).map(([key, value]) => (
+                                          <div key={key} className="flex items-center justify-between gap-4">
+                                            <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                            <span className="font-semibold text-stone-700">{String(value)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+
+                                      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
+                                        <span className="font-bold text-emerald-600">₦{calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override }).toLocaleString()}</span>
+                                        <div className="flex items-center gap-4">
+                                          {/* Checkbox for optional items */}
+                                          {isOptional ? (
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={isIncluded}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  const next = new Set(selectedNiceToHaveIds);
+                                                  if (e.target.checked) next.add(item.id);
+                                                  else next.delete(item.id);
+                                                  setSelectedNiceToHaveIds(next);
+                                                }}
+                                                className="w-4 h-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500"
+                                              />
+                                              <span className="text-xs font-bold text-stone-600">Include</span>
+                                            </label>
+                                          ) : (
+                                            <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
+                                              <CheckCircle2 className="w-3 h-3" /> Required
+                                            </span>
+                                          )}
+                                          {/* Quantity control for all items */}
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-stone-500">Qty:</span>
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              max="100"
+                                              value={currentQty}
+                                              onChange={(e) => {
+                                                e.stopPropagation();
+                                                const qty = Math.max(1, parseInt(e.target.value) || 1);
+                                                setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                // Also persist to wiring state for localStorage
+                                                setWiring(prev => prev.map(w => 
+                                                  w.id === item.id 
+                                                    ? { ...w, qty } 
+                                                    : w
+                                                ));
+                                              }}
+                                              className="w-16 px-2 py-1 text-sm border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
                                     </div>
-                                  ))}
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2 border-t border-stone-200">
-                                  <span className="font-bold text-emerald-600">₦{item.price.toLocaleString()}</span>
-                                  {optional ? (
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedNiceToHaveIds.has(item.id)}
-                                        onChange={(e) => {
-                                          const next = new Set(selectedNiceToHaveIds);
-                                          if (e.target.checked) next.add(item.id);
-                                          else next.delete(item.id);
-                                          setSelectedNiceToHaveIds(next);
-                                        }}
-                                        className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
-                                      />
-                                      <span className="text-xs font-bold text-stone-600">Include</span>
-                                    </label>
-                                  ) : (
-                                    <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
-                                      <CheckCircle2 className="w-3 h-3" /> Included
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                                  );
+                                })
+                              }
+                            </>
+                          )}
                         </div>
+
+                        <p className="text-xs text-stone-500 mt-2">
+                          * Only the correctly sized cable gauge is included. Different gauges serve different current requirements.
+                        </p>
                       </div>
                     )}
 
@@ -4828,6 +4896,9 @@ export default function App() {
                     const mergedSpecs = editingHardware?.item?.specs
                       ? { ...editingHardware.item.specs, ...specs }
                       : specs;
+                    // Build data object with category-specific fields
+                    const qtyValue = fd.get("qty");
+                    const lengthValue = fd.get("length_override");
                     const data: WiringItem = {
                       id: editingHardware?.id || crypto.randomUUID(),
                       name: commonData.name,
@@ -4836,6 +4907,8 @@ export default function App() {
                       description: commonData.description,
                       price: commonData.price,
                       specs: mergedSpecs,
+                      ...(qtyValue && { qty: Number(qtyValue) }),
+                      ...(lengthValue && { length_override: Number(lengthValue) }),
                     };
                     setWiring(prev => prev.some(w => w.id === data.id)
                       ? prev.map(w => w.id === data.id ? data : w)
@@ -5004,7 +5077,31 @@ export default function App() {
                             }
                           });
                         })()}
-                        <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                        <div className="col-span-2 sm:col-span-1"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                        {((currentItem?.category || "cables") as WiringCategory) === "cables" && (
+                          <>
+                            <div className="col-span-2 sm:col-span-1">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Quantity</label>
+                              <input 
+                                name="qty" 
+                                type="number" 
+                                min="1"
+                                defaultValue={(currentItem as any)?.qty || 1} 
+                                className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" 
+                              />
+                            </div>
+                            <div className="col-span-2 sm:col-span-1">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Length Override (m)</label>
+                              <input 
+                                name="length_override" 
+                                type="number" 
+                                step="any"
+                                defaultValue={(currentItem as any)?.length_override || ""} 
+                                className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" 
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   );

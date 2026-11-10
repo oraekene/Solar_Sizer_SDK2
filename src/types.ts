@@ -105,6 +105,10 @@ export interface WiringItem {
   type: 'mandatory' | 'nice-to-have';
   description: string;
   price: number;
+  /** Number of physical units. Default 1. For cables, also affects price. */
+  qty?: number;
+  /** Override length in meters for cables (affects price proportionally). */
+  length_override?: number;
   /** Specs may be nested objects; flattenSpec renders them as display strings. */
   specs: Record<string, unknown>;
 }
