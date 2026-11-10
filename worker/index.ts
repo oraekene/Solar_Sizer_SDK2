@@ -65,12 +65,74 @@ async function timingSafeEqual(left: string, right: string) {
   return diff === 0;
 }
 
+// Lockout constants: after 5 failed attempts the source IP is blocked for 15
+// minutes. This stops password spraying without affecting legitimate admin
+// sessions, which clear their counter on every successful auth.
+const MAX_ADMIN_ATTEMPTS = 5;
+const LOCKOUT_MS = 15 * 60 * 1000;
+
+async function getClientIp(request: Request): Promise<string> {
+  return request.headers.get('cf-connecting-ip') || 'unknown';
+}
+
+async function getLockoutState(db: D1Database, ip: string) {
+  const row = await first<{ failed_count: number; locked_until: string | null }>(
+    db,
+    'SELECT failed_count, locked_until FROM admin_attempts WHERE ip = ?',
+    ip
+  );
+  return row ?? { failed_count: 0, locked_until: null };
+}
+
+async function recordAdminFailure(db: D1Database, ip: string) {
+  const now = new Date().toISOString();
+  const { failed_count } = await getLockoutState(db, ip);
+  const newCount = failed_count + 1;
+  const lockedUntil = newCount >= MAX_ADMIN_ATTEMPTS
+    ? new Date(Date.now() + LOCKOUT_MS).toISOString()
+    : null;
+  await run(
+    db,
+    `INSERT INTO admin_attempts (ip, failed_count, locked_until, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(ip) DO UPDATE SET
+       failed_count = excluded.failed_count,
+       locked_until = excluded.locked_until,
+       updated_at = excluded.updated_at`,
+    ip, newCount, lockedUntil, now
+  );
+}
+
+async function clearAdminFailures(db: D1Database, ip: string) {
+  await run(db, 'DELETE FROM admin_attempts WHERE ip = ?', ip);
+}
+
+async function isLockedOut(db: D1Database, ip: string): Promise<boolean> {
+  const state = await getLockoutState(db, ip);
+  if (!state.locked_until) return false;
+  return new Date(state.locked_until) > new Date();
+}
+
 async function requireAdmin(request: Request, env: Env) {
+  const ip = await getClientIp(request);
+  if (await isLockedOut(env.DB, ip)) return false;
+
   const adminPassword = env.ADMIN_PASSWORD;
   const candidate = request.headers.get('x-admin-key');
 
-  if (!adminPassword || !candidate) return false;
-  return timingSafeEqual(candidate, adminPassword);
+  if (!adminPassword || !candidate) {
+    await recordAdminFailure(env.DB, ip);
+    return false;
+  }
+
+  const ok = await timingSafeEqual(candidate, adminPassword);
+  if (ok) {
+    await clearAdminFailures(env.DB, ip);
+    return true;
+  }
+
+  await recordAdminFailure(env.DB, ip);
+  return false;
 }
 
 function normalizeDevice(row: Record<string, unknown>): Record<string, unknown> & { tags: string[] } {
@@ -225,6 +287,11 @@ async function handleApi(request: Request, env: Env, pathname: string) {
   const method = request.method.toUpperCase();
 
   if (pathname === '/api/admin/verify' && method === 'POST') {
+    const ip = await getClientIp(request);
+    if (await isLockedOut(env.DB, ip)) {
+      return json({ valid: false, error: 'Too many attempts. Try again later.' }, 429);
+    }
+
     const body = await readBody<{ password?: string }>(request);
     const password = body.password ?? '';
     const adminPassword = env.ADMIN_PASSWORD;
@@ -233,7 +300,14 @@ async function handleApi(request: Request, env: Env, pathname: string) {
       return json({ valid: false, error: 'Admin password not configured on server.' });
     }
 
-    return json({ valid: await timingSafeEqual(password, adminPassword) });
+    const ok = await timingSafeEqual(password, adminPassword);
+    if (ok) {
+      await clearAdminFailures(env.DB, ip);
+      return json({ valid: true });
+    }
+
+    await recordAdminFailure(env.DB, ip);
+    return json({ valid: false, error: 'Invalid password.' });
   }
 
   // Auth stays disabled, but keep the old contract for clients and future OAuth work.

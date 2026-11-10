@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS admin_attempts (
+  ip TEXT PRIMARY KEY,
+  failed_count INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT DEFAULT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

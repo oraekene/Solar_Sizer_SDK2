@@ -1,4 +1,4 @@
-import { Battery, DeviceCategory, Inverter, Panel, Powerstation, Region } from "./types";
+import { Battery, DeviceCategory, Inverter, Panel, Powerstation, Region, WiringItem, WiringCategory } from "./types";
 
 export const LOCATION_PSH: Record<Region, number> = {
   SE_SS: 2.2,
@@ -143,3 +143,375 @@ export const POWERSTATIONS: Powerstation[] = [
     inverter_type: "pure-sine"
   }
 ];
+
+export const WIRING: WiringItem[] = [
+  // Cables - Mandatory
+  {
+    id: "w-1",
+    name: "4mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Flexible copper cable for small inverter battery runs. Use 10mm² or larger for high current systems.",
+    price: 8500,
+    specs: { "Gauge": "4mm²", "Length": "5m", "Type": "Copper" }
+  },
+  {
+    id: "w-2",
+    name: "6mm² Solar Cable (Panel to Controller)",
+    category: "cables",
+    type: "mandatory",
+    description: "UV-resistant solar cable for PV connections. Rated for outdoor installation.",
+    price: 12000,
+    specs: { "Gauge": "6mm²", "Length": "10m", "Type": "PV Wire" }
+  },
+  {
+    id: "w-11",
+    name: "10mm² Copper Cable (Battery to Inverter)",
+    category: "cables",
+    type: "mandatory",
+    description: "Heavier copper cable for 1kVA to 3kVA inverter battery connections.",
+    price: 16500,
+    specs: { "Gauge": "10mm²", "Length": "5m", "Type": "Copper" }
+  },
+  {
+    id: "w-12",
+    name: "2.5mm² AC Cable (Inverter to Load)",
+    category: "cables",
+    type: "mandatory",
+    description: "Twin and earth cable for AC distribution from the inverter to wall sockets.",
+    price: 7500,
+    specs: { "Gauge": "2.5mm²", "Length": "10m", "Type": "Twin & Earth" }
+  },
+  // Breakers - Mandatory
+  {
+    id: "w-3",
+    name: "DC Breakers (100A)",
+    category: "breakers",
+    type: "mandatory",
+    description: "Required for disconnecting battery banks and PV arrays. Install at battery terminal.",
+    price: 25000,
+    specs: { "Amperage": 100, "Voltage": 150, "Poles": 2 }
+  },
+  {
+    id: "w-13",
+    name: "Battery Fuse (200A ANL)",
+    category: "breakers",
+    type: "mandatory",
+    description: "Fast-acting fuse for the battery positive cable. Protects against short circuit fires.",
+    price: 9000,
+    specs: { "Amperage": 200, "Type": "ANL", "Voltage": 32 }
+  },
+  {
+    id: "w-14",
+    name: "DC Breaker Enclosure (2-Way)",
+    category: "breakers",
+    type: "mandatory",
+    description: "Surface enclosure that holds the DC breakers and fuses near the battery bank.",
+    price: 7500,
+    specs: { "Ways": 2, "Rating": "IP65", "Material": "ABS" }
+  },
+  // DC Bus - Optional
+  {
+    id: "w-4",
+    name: "DC Bus Bar (48V System)",
+    category: "dc_bus",
+    type: "nice-to-have",
+    description: "Tinned copper bus bar for clean battery bank connections. Keep all battery cables equal length.",
+    price: 35000,
+    specs: { "Voltage": 48, "Current": 200, "Material": "Aluminum" }
+  },
+  {
+    id: "w-15",
+    name: "DC Bus Bar (24V System)",
+    category: "dc_bus",
+    type: "nice-to-have",
+    description: "Smaller bus bar for 24V battery banks and compact inverter setups.",
+    price: 24000,
+    specs: { "Voltage": 24, "Current": 150, "Material": "Aluminum" }
+  },
+  {
+    id: "w-16",
+    name: "Bus Bar Insulator Cover",
+    category: "dc_bus",
+    type: "nice-to-have",
+    description: "Insulating cover that shields exposed bus bar terminals from accidental contact.",
+    price: 4500,
+    specs: { "Material": "PVC", "Length": "300mm", "Rating": "IP20" }
+  },
+  // Surge Protectors - Nice-to-have
+  {
+    id: "w-5",
+    name: "DC Surge Protector (150V)",
+    category: "surge_protectors",
+    type: "nice-to-have",
+    description: "Protects system from voltage spikes during lightning storms. Recommended for all installations.",
+    price: 18000,
+    specs: { "Voltage": 150, "Joules": 1200, "Response": "<1ns" }
+  },
+  {
+    id: "w-17",
+    name: "AC Surge Protector (Type 2)",
+    category: "surge_protectors",
+    type: "nice-to-have",
+    description: "Clamps grid spikes before they reach the inverter AC input.",
+    price: 22000,
+    specs: { "Type": "Type 2", "Voltage": 230, "Rating": "20kA" }
+  },
+  {
+    id: "w-18",
+    name: "PV Surge Protection Device (1000V)",
+    category: "surge_protectors",
+    type: "nice-to-have",
+    description: "Protects the PV strings and charge controller from induced surges.",
+    price: 19000,
+    specs: { "Voltage": 1000, "Type": "DC SPD", "Rating": "40kA" }
+  },
+  // Casings - Optional
+  {
+    id: "w-6",
+    name: "Cable Lug Casings",
+    category: "casings",
+    type: "nice-to-have",
+    description: "Protective enclosures for cable connections. Prevents corrosion and short circuits.",
+    price: 5000,
+    specs: { "Material": "PVC", "Count": 4, "Rating": "IP65" }
+  },
+  {
+    id: "w-19",
+    name: "MC4 Connector Casing",
+    category: "casings",
+    type: "nice-to-have",
+    description: "Weatherproof box for MC4 joints on outdoor PV runs.",
+    price: 3500,
+    specs: { "Material": "PVC", "Count": 1, "Rating": "IP65" }
+  },
+  {
+    id: "w-20",
+    name: "Breaker Box Casing (IP65)",
+    category: "casings",
+    type: "nice-to-have",
+    description: "Dust and water resistant enclosure for AC and DC breakers.",
+    price: 7500,
+    specs: { "Ways": 6, "Material": "ABS", "Rating": "IP65" }
+  },
+  // Mounting Racks - Optional
+  {
+    id: "w-7",
+    name: "Mounting Rack (12U)",
+    category: "mounting_racks",
+    type: "nice-to-have",
+    description: "Equipment rack for organizing inverter, controller, and distribution components.",
+    price: 45000,
+    specs: { "Height": "12U", "Width": "600mm", "Depth": "500mm" }
+  },
+  {
+    id: "w-21",
+    name: "Wall Mount Bracket Kit",
+    category: "mounting_racks",
+    type: "nice-to-have",
+    description: "Heavy duty brackets to hang the inverter and charge controller on a wall.",
+    price: 18000,
+    specs: { "Load": "80kg", "Material": "Powder-coated steel", "Pieces": 2 }
+  },
+  {
+    id: "w-22",
+    name: "Panel Mounting Rails (4m Pair)",
+    category: "mounting_racks",
+    type: "nice-to-have",
+    description: "Aluminium rails for roof or ground mounting of solar panels.",
+    price: 26000,
+    specs: { "Length": "4m", "Material": "Aluminium", "Pieces": 2 }
+  },
+  // MC4 Connectors - Mandatory
+  {
+    id: "w-8",
+    name: "MC4 Connector Kit (10 pairs)",
+    category: "mc4_connectors",
+    type: "mandatory",
+    description: "Standard MC4 connectors for PV panel connections. Includes male and female pairs.",
+    price: 15000,
+    specs: { "Current": "30A", "Voltage": "1000V", "Pairs": 10 }
+  },
+  {
+    id: "w-23",
+    name: "MC4 Y-Branch Connectors (Pair)",
+    category: "mc4_connectors",
+    type: "mandatory",
+    description: "Parallel Y connectors for joining two PV strings into one controller input.",
+    price: 6000,
+    specs: { "Current": "30A", "Voltage": "1000V", "Pairs": 1 }
+  },
+  {
+    id: "w-24",
+    name: "MC4 Spanner Tool",
+    category: "mc4_connectors",
+    type: "mandatory",
+    description: "Assembly and release spanner for MC4 connector locking nuts.",
+    price: 2500,
+    specs: { "Type": "MC4 Spanner", "Material": "ABS", "Pieces": 2 }
+  },
+  // Circuit Breakers - Nice-to-have
+  {
+    id: "w-9",
+    name: "AC Circuit Breaker (15A)",
+    category: "circuit_breakers",
+    type: "nice-to-have",
+    description: "Overcurrent protection for AC output circuits. Install on main distribution panel.",
+    price: 8000,
+    specs: { "Amperage": 15, "Trip": "Thermal-Magnetic", "Poles": 1 }
+  },
+  {
+    id: "w-25",
+    name: "AC Circuit Breaker (32A)",
+    category: "circuit_breakers",
+    type: "nice-to-have",
+    description: "Main AC breaker for inverter output feeding a small distribution board.",
+    price: 9500,
+    specs: { "Amperage": 32, "Trip": "Thermal-Magnetic", "Poles": 2 }
+  },
+  {
+    id: "w-26",
+    name: "Distribution Board (6-Way)",
+    category: "circuit_breakers",
+    type: "nice-to-have",
+    description: "Consumer unit that holds the AC breakers for separate house circuits.",
+    price: 16000,
+    specs: { "Ways": 6, "Voltage": 230, "Mounting": "Surface" }
+  },
+  // Earthing Systems - Optional
+  {
+    id: "w-10",
+    name: "Earthing Rod Kit",
+    category: "earthing_systems",
+    type: "nice-to-have",
+    description: "Grounding system for safety. Required by electrical codes for all renewable energy installations.",
+    price: 12000,
+    specs: { "Length": "2.5m", "Material": "Copper", "Resistance": "<10Ω" }
+  },
+  {
+    id: "w-27",
+    name: "Earth Cable (16mm², 10m)",
+    category: "earthing_systems",
+    type: "nice-to-have",
+    description: "Green and yellow earth cable tying the inverter, panel frames and rod together.",
+    price: 8500,
+    specs: { "Gauge": "16mm²", "Length": "10m", "Colour": "Green/Yellow" }
+  },
+  {
+    id: "w-28",
+    name: "Earth Clamp / Grounding Lug",
+    category: "earthing_systems",
+    type: "nice-to-have",
+    description: "Clamp that bonds the earth cable to the rod and equipment chassis.",
+    price: 3000,
+    specs: { "Material": "Brass", "Rod Size": "16mm", "Pieces": 2 }
+  },
+  // Smart Controls - Optional
+  {
+    id: "w-29",
+    name: "Smart Energy Meter (Wi-Fi, 100A)",
+    category: "smart_controls",
+    type: "nice-to-have",
+    description: "Whole-home energy meter that logs solar, battery and grid usage from your phone.",
+    price: 45000,
+    specs: { "Current": "100A", "Connectivity": "Wi-Fi", "Display": "LCD" }
+  },
+  {
+    id: "w-30",
+    name: "Smart Wall Outlet (16A, Wi-Fi)",
+    category: "smart_controls",
+    type: "nice-to-have",
+    description: "In-wall socket with app scheduling and live watt readings for one circuit.",
+    price: 18000,
+    specs: { "Current": "16A", "Connectivity": "Wi-Fi", "Sockets": 1 }
+  },
+  {
+    id: "w-31",
+    name: "Smart Plug Adapter (UK 13A)",
+    category: "smart_controls",
+    type: "nice-to-have",
+    description: "Plug-in smart adapter that meters and switches any UK 13A appliance.",
+    price: 12000,
+    specs: { "Rating": "13A", "Connectivity": "Wi-Fi", "Type": "UK" }
+  },
+  {
+    id: "w-32",
+    name: "Energy Monitor Display (CT Clamp)",
+    category: "smart_controls",
+    type: "nice-to-have",
+    description: "Desk display with a clamp sensor for real-time watts and daily kWh totals.",
+    price: 22000,
+    specs: { "Sensor": "CT Clamp", "Range": "Up to 100A", "Connectivity": "Wi-Fi" }
+  }
+];
+
+// Category labels for UI display
+export const WIRING_CATEGORY_LABELS: Record<WiringCategory, { label: string; description: string }> = {
+  cables: { label: "Cables", description: "Wiring and conductors for DC and AC connections" },
+  breakers: { label: "Breakers", description: "Circuit protection devices" },
+  dc_bus: { label: "DC Bus", description: "Distribution and busbar components" },
+  surge_protectors: { label: "Surge Protectors", description: "Lightning and surge protection" },
+  casings: { label: "Casings", description: "Protective enclosures and housings" },
+  mounting_racks: { label: "Mounting Racks", description: "Equipment mounting and cabinets" },
+  mc4_connectors: { label: "MC4 Connectors", description: "PV panel and connector interfaces" },
+  circuit_breakers: { label: "Circuit Breakers", description: "AC circuit protection" },
+  earthing_systems: { label: "Earthing Systems", description: "Grounding and safety equipment" },
+  smart_controls: { label: "Smart Meters & Outlets", description: "Wattmeters, smart wall outlets and adapters" }
+};
+
+// Category-specific spec fields for wiring item forms
+export const WIRING_SPEC_FIELDS: Record<WiringCategory, { key: string; label: string; type: 'number' | 'select' | 'text'; options?: string[] }[]> = {
+  cables: [
+    { key: "gauge", label: "Gauge", type: "text", options: [] },
+    { key: "length", label: "Length", type: "number" },
+    { key: "type", label: "Cable Type", type: "select", options: ["Copper", "PV Wire", "Twin & Earth", "Aluminium"] }
+  ],
+  breakers: [
+    { key: "amperage", label: "Amperage (A)", type: "number" },
+    { key: "voltage", label: "Voltage (V)", type: "number" },
+    { key: "poles", label: "Number of Poles", type: "select", options: ["1", "2", "3"] }
+  ],
+  dc_bus: [
+    { key: "voltage", label: "Voltage (V)", type: "number" },
+    { key: "current", label: "Current (A)", type: "number" },
+    { key: "material", label: "Material", type: "select", options: ["Aluminium", "Copper", "Tinned Copper"] }
+  ],
+  surge_protectors: [
+    { key: "voltage", label: "Voltage (V)", type: "number" },
+    { key: "joules", label: "Protection (J)", type: "number" },
+    { key: "response_time", label: "Response Time", type: "text" }
+  ],
+  casings: [
+    { key: "material", label: "Material", type: "text", options: [] },
+    { key: "count", label: "Number of Casings", type: "number" },
+    { key: "rating", label: "IP Rating", type: "text", options: [] }
+  ],
+  mounting_racks: [
+    { key: "height", label: "Height (U)", type: "number" },
+    { key: "width", label: "Width (mm)", type: "number" },
+    { key: "load", label: "Load Capacity (kg)", type: "number" },
+    { key: "material", label: "Material", type: "select", options: ["Steel", "Aluminium", "Powder-coated steel"] }
+  ],
+  mc4_connectors: [
+    { key: "current", label: "Current Rating (A)", type: "number" },
+    { key: "voltage", label: "Voltage (V)", type: "number" },
+    { key: "pairs", label: "Number of Pairs", type: "number" }
+  ],
+  circuit_breakers: [
+    { key: "amperage", label: "Amperage (A)", type: "number" },
+    { key: "trip_type", label: "Trip Type", type: "select", options: ["Thermal-Magnetic", "Magnetic Trip", "Miniature"] },
+    { key: "poles", label: "Number of Poles", type: "select", options: ["1", "2", "3"] },
+    { key: "rating", label: "Voltage Rating (V)", type: "number" }
+  ],
+  earthing_systems: [
+    { key: "length", label: "Length (m)", type: "number" },
+    { key: "material", label: "Material", type: "select", options: ["Copper", "Galvanised Steel"] },
+    { key: "resistance", label: "Resistance (Ω)", type: "number" },
+    { key: "rod_size", label: "Rod Size (mm)", type: "number" }
+  ],
+  smart_controls: [
+    { key: "current", label: "Current (A)", type: "number" },
+    { key: "connectivity", label: "Connectivity", type: "select", options: ["Wi-Fi", "Ethernet", "Zigbee", "Z-Wave"] },
+    { key: "type", label: "Device Type", type: "select", options: ["Smart Meter", "Smart Outlet", "Smart Plug", "Energy Monitor"] }
+  ]
+};

@@ -1,5 +1,5 @@
-import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES } from "../constants";
-import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins, KitComponentSpec } from "../types";
+import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES, WIRING as DEFAULT_WIRING } from "../constants";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -205,20 +205,6 @@ function getHourlyDeficitPct(totalDailyWh: number, simDeficitWh: number): number
   return (simDeficitWh / totalDailyWh) * 100;
 }
 
-function getStatusFromSimulation(
-  simPassed: boolean,
-  simDeficitWh: number,
-  totalDailyWh: number,
-  tolerance: number
-): "Optimal" | "Conditional" | "High Risk" {
-  const deficitPct = getHourlyDeficitPct(totalDailyWh, simDeficitWh);
-
-  if (simPassed) return "Optimal";
-  if (deficitPct <= tolerance) return "Conditional";
-  return "High Risk";
-}
-
-
 const getKitType = (data: SystemCombination): "solar" | "internet" | "powerstation" => {
   if (
     data.kit_type === "solar" ||
@@ -309,18 +295,21 @@ const getEffectiveDeficitWh = (
 export function buildCombinations(
   location: Region,
   devices: Device[],
-  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[] },
+  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[]; wiring?: WiringItem[] },
   batteryPreference: BatteryPreference = "any",
   tolerance: number = 20,
   products: Product[] = [],
-  margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 }
+  margins: ProfitMargins = { inverter: 0, panel: 0, battery: 0, powerstation: 0, product: 0 },
+  showHighRisk: boolean = true,
+  selectedNiceToHave?: string[]
 ): { analysis: LoadAnalysis; systems: SystemCombination[]; allLogs: string[][] } {
   const safeDevices = Array.isArray(devices) ? devices : [];
   const safeHardware = {
     inverters: Array.isArray(hardware?.inverters) ? hardware.inverters : [],
     panels: Array.isArray(hardware?.panels) ? hardware.panels : [],
     batteries: Array.isArray(hardware?.batteries) ? hardware.batteries : [],
-    powerstations: Array.isArray(hardware?.powerstations) ? hardware.powerstations : []
+    powerstations: Array.isArray(hardware?.powerstations) ? hardware.powerstations : [],
+    wiring: hardware.wiring ?? DEFAULT_WIRING
   };
   const safeProducts = Array.isArray(products) ? products : [];
 
@@ -330,10 +319,9 @@ export function buildCombinations(
 
   const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
 
-  const validSystems: SystemCombination[] = [];
+  let validSystems: SystemCombination[] = [];
   const allLogs: string[][] = [];
 
-  // --- 1. Pre-configured Kits ---
   // --- 1. Pre-configured Kits ---
   for (const prod of safeProducts) {
     if (prod.type !== "combination" || !prod.combination_data) continue;
@@ -722,6 +710,63 @@ export function buildCombinations(
     }
   }
 
-  validSystems.sort((a, b) => a.total_price - b.total_price);
+  validSystems.sort((a, b) => {
+    const statusOrder = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
+    if (statusOrder[a.status] !== statusOrder[b.status]) {
+      return statusOrder[a.status] - statusOrder[b.status];
+    }
+    return a.total_price - b.total_price;
+  });
+
+  // Filter out High Risk systems if the user doesn't want to see them
+  if (!showHighRisk) {
+    validSystems = validSystems.filter(s => s.status !== "High Risk");
+  }
+
+  // Integrate wiring items into each system
+  const selectedNiceToHaveList = selectedNiceToHave ?? [];
+  const computeWiringForSystem = () => {
+    const items: WiringItem[] = [];
+    let totalCost = 0;
+    
+    for (const item of safeHardware.wiring) {
+      // Always include mandatory items
+      // Include nice-to-have items only if they are selected
+      if (item.type === 'mandatory' || (item.type === 'nice-to-have' && selectedNiceToHaveList.includes(item.id))) {
+        items.push(item);
+        totalCost += item.price;
+      }
+    }
+    return { items, totalCost };
+  };
+
+  const wiringForSystems = computeWiringForSystem();
+  
+  for (const system of validSystems) {
+    const wiredSystem = {
+      ...system,
+      wiring_items: wiringForSystems.items,
+      wiring_price: Math.round(wiringForSystems.totalCost * (1 + (margins.product / 100))),
+      total_price: system.total_price + Math.round(wiringForSystems.totalCost * (1 + (margins.product / 100))),
+      selected_nice_to_have: selectedNiceToHaveList,
+      component_specs: [
+        ...(system.component_specs ?? []),
+        ...wiringForSystems.items.map(w => ({
+          role: 'wiring' as const,
+          name: w.name,
+          quantity: 1,
+          specs: {
+            category: w.category,
+            type: w.type,
+            price: w.price,
+            description: w.description,
+            ...w.specs
+          }
+        }))
+      ]
+    };
+    validSystems[validSystems.indexOf(system)] = wiredSystem;
+  }
+
   return { analysis, systems: validSystems, allLogs };
 }

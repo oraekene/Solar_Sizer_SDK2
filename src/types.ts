@@ -86,11 +86,34 @@ export interface Powerstation {
   description?: string;
 }
 
+export type WiringCategory = 
+  | 'cables' 
+  | 'breakers' 
+  | 'dc_bus' 
+  | 'surge_protectors' 
+  | 'casings' 
+  | 'mounting_racks' 
+  | 'mc4_connectors' 
+  | 'circuit_breakers' 
+  | 'earthing_systems'
+  | 'smart_controls';
+
+export interface WiringItem {
+  id: string;
+  name: string;
+  category: WiringCategory;
+  type: 'mandatory' | 'nice-to-have';
+  description: string;
+  price: number;
+  specs: Record<string, string | number>;
+}
+
 export interface Hardware {
   inverters: Inverter[];
   panels: Panel[];
   batteries: Battery[];
   powerstations: Powerstation[];
+  wiring?: WiringItem[];
 }
 
 export interface LoadAnalysis {
@@ -101,7 +124,7 @@ export interface LoadAnalysis {
 }
 
 export interface KitComponentSpec {
-  role: 'inverter' | 'battery' | 'panel' | 'powerstation' | 'internet' | 'controller' | 'network';
+  role: 'inverter' | 'battery' | 'panel' | 'powerstation' | 'internet' | 'controller' | 'network' | 'wiring';
   name: string;
   quantity: number;
   specs: Record<string, string | number | boolean | null>;
@@ -135,6 +158,9 @@ export interface SystemCombination {
   component_specs?: KitComponentSpec[];
   product_name?: string;
   product_description?: string;
+  wiring_items?: WiringItem[];
+  wiring_price?: number;
+  selected_nice_to_have?: string[];
 }
 
 export interface CalculationAttempt {

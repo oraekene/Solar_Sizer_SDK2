@@ -1,5 +1,5 @@
 // Merged App.tsx (best of v1 + v2)
-import { useState, useMemo, useEffect, useRef, ChangeEvent } from "react";
+import { useState, useMemo, useEffect, useRef, ChangeEvent, ReactNode } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -61,10 +61,13 @@ import {
   Product,
   Powerstation,
   ProfitMargins,
-  PDFSettings
+  PDFSettings,
+  WiringItem,
+  WiringCategory,
+  TimeRange
 } from "./types";
 import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS } from "./constants";
+import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS } from "./constants";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
 import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
@@ -195,7 +198,7 @@ const FUEL_PRICES = {
   Diesel: 1400,
 };
 
-type HardwareType = "inverter" | "panel" | "battery" | "powerstation";
+type HardwareType = "inverter" | "panel" | "battery" | "powerstation" | "wiring";
 
 const itemData = (item: any, fallbackType?: HardwareType) => {
   if (!item) return null;
@@ -219,14 +222,62 @@ const itemData = (item: any, fallbackType?: HardwareType) => {
   };
 };
 
-  const buildProductDetails = (product: Product): SystemCombination => {
+// One horizontal, scrolling strip per hardware category.
+const HardwareRow = ({ title, icon, action, children }: { title: string; icon: ReactNode; action?: ReactNode; children: ReactNode }) => (
+  <section className="space-y-3">
+    <div className="flex items-center justify-between gap-3">
+      <h3 className="font-bold flex items-center gap-2 text-stone-700">
+        {icon} {title}
+      </h3>
+      {action}
+    </div>
+    <div className="flex gap-4 overflow-x-auto pb-3">{children}</div>
+  </section>
+);
+
+const HardwareCard = ({
+  name,
+  isDeveloper,
+  onEdit,
+  onDuplicate,
+  onDelete,
+  children,
+}: {
+  name: string;
+  isDeveloper: boolean;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  children: ReactNode;
+}) => (
+  <div className="w-[260px] shrink-0 bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+    <div className="flex justify-between items-start gap-2 mb-2">
+      <p className="font-bold text-sm">{name}</p>
+      <div className={`flex gap-0.5 shrink-0 transition-opacity ${isDeveloper ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+        <button onClick={onDuplicate} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
+        <button onClick={onEdit} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
+        <button onClick={onDelete} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+      </div>
+    </div>
+    {children}
+  </div>
+);
+
+const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
+      const cd = product.combination_data;
       return {
-        ...product.combination_data,
+        ...cd,
+        // DB-enriched products often omit these; the details modal calls toFixed on them.
+        array_size_w: cd.array_size_w ?? cd.panel_w ?? 0,
+        battery_total_wh: cd.battery_total_wh ?? cd.battery_wh ?? 0,
+        daily_yield: cd.daily_yield ?? 0,
+        deficit: cd.deficit ?? 0,
+        total_price: cd.total_price ?? product.price ?? 0,
         product_id: product.id,
         product_name: product.name,
         product_description: product.description,
-        component_specs: product.combination_data.component_specs ?? [],
+        component_specs: cd.component_specs ?? [],
       };
     }
 
@@ -312,6 +363,26 @@ const getSystemKey = (sys: SystemCombination, index: number) =>
 const getLogKey = (prefix: string, value: string, index: number) =>
   `${prefix}::${index}::${value}`;
 
+/**
+ * Shared generator cost maths used by both the ComparisonModal display and
+ * the exportComparisonToPDF function. Keeping one source of truth prevents
+ * the two from drifting when fuel prices or amortisation rules change.
+ */
+const computeGeneratorCosts = (
+  selectedGen: GeneratorProfile,
+  hasGen: boolean,
+  genHours: number,
+  fuelPriceOverride: number | null,
+  defaultFuelPrice: number
+) => {
+  const fuelPrice = fuelPriceOverride ?? defaultFuelPrice;
+  const initialCost = hasGen ? 0 : selectedGen.price;
+  const monthlyFuel = fuelPrice * selectedGen.fuel_consumption_l_hr * genHours * 30;
+  const monthlyTotal = monthlyFuel + selectedGen.maintenance_mo;
+  const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
+  return { initialCost, monthlyFuel, monthlyTotal, fiveYearTotal, fuelPrice };
+};
+
 function ComparisonModal({ 
   systems, 
   analysis, 
@@ -346,14 +417,9 @@ function ComparisonModal({
   const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
   
   const defaultFuelPrice = FUEL_PRICES[selectedGen.fuel_type];
-  const fuelPrice = fuelPriceOverride ?? defaultFuelPrice;
-  const consumption = selectedGen.fuel_consumption_l_hr;
+  const { initialCost, monthlyFuel, monthlyTotal, fiveYearTotal, fuelPrice } =
+    computeGeneratorCosts(selectedGen, hasGenerator, genHours, fuelPriceOverride, defaultFuelPrice);
   const maintenance = selectedGen.maintenance_mo;
-  const initialCost = hasGenerator ? 0 : selectedGen.price;
-  
-  const monthlyFuel = fuelPrice * consumption * genHours * 30; 
-  const monthlyTotal = monthlyFuel + maintenance;
-  const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
   const exportToPDF = () => {
     exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, hasGenerator, genHours, fuelPriceOverride, analysis);
@@ -604,6 +670,7 @@ export default function App() {
   const [region, setRegion] = useState<Region>("SE_SS");
   const [batteryPreference, setBatteryPreference] = useState<BatteryPreference>("any");
   const [tolerance, setTolerance] = useState<number>(20);
+  const [showHighRisk, setShowHighRisk] = useState<boolean>(true); // Show High Risk systems in results
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
   const [devices, setDevices] = useState<Device[]>([]);
@@ -727,6 +794,15 @@ export default function App() {
     const data: Powerstation[] = saved ? JSON.parse(saved) : (typeof POWERSTATIONS !== 'undefined' ? POWERSTATIONS : []);
     return data.map((item, idx) => ({ ...item, id: item.id || `ps-legacy-${idx}` }));
   });
+  const [wiring, setWiring] = useState<WiringItem[]>(() => {
+    // v2 key: v1 only ever held the small default seed, before wiring was editable.
+    const saved = localStorage.getItem("ss_wiring_v2");
+    const data: WiringItem[] = saved ? JSON.parse(saved) : DEFAULT_WIRING;
+    return data.map((item, idx) => ({ ...item, id: item.id || `w-legacy-${idx}` }));
+  });
+
+  // Track which nice-to-have wiring items are selected
+  const [selectedNiceToHaveIds, setSelectedNiceToHaveIds] = useState<Set<string>>(new Set());
 
   // Internal Logs State
   const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
@@ -842,6 +918,10 @@ export default function App() {
     }
   };
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  // Track which range index is being edited inline (for quick schedule tweaks)
+  const [editingRangeDeviceId, setEditingRangeDeviceId] = useState<string | null>(null);
+  const [editingRangeIndex, setEditingRangeIndex] = useState<number>(-1);
+  const [tempRange, setTempRange] = useState<TimeRange>({ start: 18, end: 23 });
   const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
   const [selectedSavedAnalysis, setSelectedSavedAnalysis] = useState<SavedResult | null>(null);
   const [selectedSavedComparison, setSelectedSavedComparison] = useState<SavedResult | null>(null);
@@ -887,8 +967,9 @@ export default function App() {
   };
 
   // Hardware Form State
-  const [showAddHardware, setShowAddHardware] = useState<"inverter" | "panel" | "battery" | "powerstation" | null>(null);
+  const [showAddHardware, setShowAddHardware] = useState<HardwareType | null>(null);
   const [editingHardware, setEditingHardware] = useState<{ type: HardwareType, id: string, item?: any } | null>(null);
+  const [wiringCategoryForAdd, setWiringCategoryForAdd] = useState<WiringCategory>("cables");
 
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
@@ -976,19 +1057,9 @@ export default function App() {
 
   const results = useMemo(() => {
     if (devices.length === 0) return null;
-    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations }, batteryPreference, tolerance, products, margins);
-    
-    // Sort systems: Optimal -> Conditional -> High Risk, then by price
-    res.systems.sort((a, b) => {
-      const statusOrder = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
-      if (statusOrder[a.status] !== statusOrder[b.status]) {
-        return statusOrder[a.status] - statusOrder[b.status];
-      }
-      return a.total_price - b.total_price;
-    });
-
+    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations, wiring }, batteryPreference, tolerance, products, margins, showHighRisk, Array.from(selectedNiceToHaveIds));
     return res;
-  }, [region, devices, inverters, panels, batteries, powerstations, batteryPreference, tolerance, products, margins]);
+  }, [region, devices, inverters, panels, batteries, powerstations, wiring, batteryPreference, tolerance, products, margins, showHighRisk, selectedNiceToHaveIds]);
 
   // Internal Logging with Duplicate Check
   useEffect(() => {
@@ -1038,10 +1109,11 @@ export default function App() {
     safeLocalStorageSet("ss_panels", panels);
     safeLocalStorageSet("ss_batteries", batteries);
     safeLocalStorageSet("ss_powerstations", powerstations);
+    safeLocalStorageSet("ss_wiring_v2", wiring);
     safeLocalStorageSet("ss_profiles", profiles);
     safeLocalStorageSet("ss_margins", margins);
     safeLocalStorageSet("ss_pdf_settings", pdfSettings);
-  }, [inverters, panels, batteries, powerstations, profiles, margins, pdfSettings]);
+  }, [inverters, panels, batteries, powerstations, wiring, profiles, margins, pdfSettings]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) return;
@@ -1204,18 +1276,11 @@ export default function App() {
     const peakWatts = activeAnalysis?.max_surge || 0;
     const requiredVA = peakWatts / 0.8;
     const selectedGen = GENERATOR_PROFILES.find(g => g.capacity_va >= requiredVA) || GENERATOR_PROFILES[GENERATOR_PROFILES.length - 1];
-    const fuelPrice = fuelPriceOverride ?? FUEL_PRICES[selectedGen.fuel_type];
-    const consumption = selectedGen.fuel_consumption_l_hr;
+    // Shared with ComparisonModal via computeGeneratorCosts so the two
+    // cannot drift when fuel prices or amortisation rules change.
+    const { initialCost, monthlyFuel, monthlyTotal, fiveYearTotal, fuelPrice } =
+      computeGeneratorCosts(selectedGen, hasGen, genHours, fuelPriceOverride, FUEL_PRICES[selectedGen.fuel_type]);
     const maintenance = selectedGen.maintenance_mo;
-    // Mirror the ComparisonModal logic: the generator is only a column when
-    // hasGen is true, and its initial cost is 0 when the user owns it
-    // (hasGen true) versus the purchase price when they do not (hasGen false).
-    // The old code hard-coded initialCost = 0 and always appended a generator
-    // cell to every row, which misaligned the table when hasGen was false.
-    const initialCost = hasGen ? 0 : selectedGen.price;
-    const monthlyFuel = fuelPrice * consumption * genHours * 30;
-    const monthlyTotal = monthlyFuel + maintenance;
-    const fiveYearTotal = initialCost + (monthlyTotal * 12 * 5);
 
     const headers = ["Feature", ...systems.map((s, i) => s.inverter || `Option ${i+1}`)];
     if (hasGen) headers.push("Generator");
@@ -1256,59 +1321,6 @@ export default function App() {
     doc.save(`Comparison_${profileName.replace(/\s+/g, '_')}.pdf`);
   };
 
-  const exportSingleResultToPDF = (result: SystemCombination, profileName: string) => {
-    const doc = new jsPDF();
-    const pageWidth = doc.internal.pageSize.getWidth();
-
-    // Header
-    doc.setFillColor(15, 23, 42);
-    doc.rect(0, 0, pageWidth, 40, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
-    doc.setFont("helvetica", "bold");
-    doc.text("SolarSizer Pro", 14, 20);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text("System Configuration Report", 14, 30);
-    doc.text(new Date().toLocaleDateString(), pageWidth - 35, 30);
-
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(16);
-    doc.text(`Configuration for: ${profileName}`, 14, 55);
-
-    // System Overview
-    autoTable(doc, {
-      startY: 65,
-      head: [["Component", "Configuration"]],
-      body: [
-        ["Inverter", result.inverter],
-        ["Battery Bank", result.battery_config],
-        ["Solar Array", result.panel_config],
-        ["Total Price", `N${result.total_price.toLocaleString()}`],
-      ],
-      theme: "striped",
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    // Detailed Specs
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [["Technical Specification", "Value"]],
-      body: [
-        ["System Voltage", `${result.inverter_data.system_vdc}V DC`],
-        ["AC Output", `${result.inverter_data.max_ac_w}W`],
-        ["PV Input Max", `${result.inverter_data.cc_max_pv_w}W`],
-        ["Battery Type", result.battery_data.type.toUpperCase()],
-        ["Battery Capacity", `${result.battery_data.capacity_ah}Ah`],
-        ["Panel Wattage", `${result.panel_data.watts}W`],
-      ],
-      theme: "grid",
-      headStyles: { fillColor: [15, 23, 42] },
-    });
-
-    doc.save(`SolarSizer_${profileName.replace(/\s+/g, "_")}_Config.pdf`);
-  };
-
   const exportResultsToPDF = (results: { analysis: LoadAnalysis; systems: SystemCombination[] }, savedDevices?: Device[]) => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const timestamp = new Date().toLocaleString();
@@ -1331,7 +1343,7 @@ export default function App() {
       startY: 50,
       head: [["Metric", "Value"]],
       body: [
-        ["Peak Load", `${Math.max(...Object.values(results.analysis.hourly_consumption)).toFixed(0)}W`],
+        ["Max Hourly Average", `${Math.max(...Object.values(results.analysis.hourly_consumption)).toFixed(0)}W`],
         ["Peak Surge Load", `${results.analysis.max_surge.toFixed(0)}W`],
         ["Daily Energy Consumption", `${results.analysis.total_daily_wh.toFixed(0)}Wh`],
         ["Nighttime Consumption (6PM-7AM)", `${results.analysis.nighttime_wh.toFixed(0)}Wh`],
@@ -1373,35 +1385,31 @@ export default function App() {
       headStyles: { fillColor: [16, 185, 129] },
     });
 
+    // Add Hardware Specs section with wiring items
+    doc.addPage();
+    doc.setFontSize(16);
+    doc.setTextColor(0);
+    doc.text("Hardware Specs", 14, 20);
+
+    for (const sys of results.systems) {
+      const startY = (doc as any).autoTable || 25;
+      const wiringItems = sys.component_specs?.filter(c => c.role === 'wiring') || [];
+      
+      if (wiringItems.length > 0) {
+        autoTable(doc, {
+          startY: 35,
+          head: [[`${sys.inverter} - Wiring & Installation`]],
+          body: wiringItems.map(w => [
+            `${w.name} (${w.specs.category}, ${w.specs.type})\n${Object.entries(w.specs).filter(([k]) => !['category', 'type', 'price', 'description'].includes(k)).map(([k, v]) => `${k}: ${v}`).join(', ')}\nPrice: ₦${w.specs.price?.toLocaleString() || 0}`
+          ]),
+          theme: 'striped',
+          headStyles: { fillColor: [16, 185, 129] },
+          margin: { left: 14, right: 14 },
+        });
+      }
+    }
+
     doc.save(`SolarSizer_Report_${new Date().getTime()}.pdf`);
-  };
-
-  const exportProfileToPDF = (p: UserProfile) => {
-    const doc = new jsPDF('p', 'mm', 'a4');
-    doc.setFontSize(22);
-    doc.setTextColor(16, 185, 129);
-    doc.text(`Profile: ${p.name}`, 14, 20);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Region: ${REGIONS.find(r => r.value === p.region)?.label}`, 14, 28);
-    doc.text(`Battery Preference: ${p.batteryPreference}`, 14, 33);
-
-    autoTable(doc, {
-      startY: 40,
-      head: [["Device", "Qty", "Watts", "Category", "Schedule"]],
-      body: p.devices.map(d => [
-        d.name,
-        d.qty.toString(),
-        `${d.watts}W`,
-        d.category,
-        d.ranges.map(r => `${r.start}:00 - ${r.end}:00`).join(", ")
-      ]),
-      theme: 'grid',
-      headStyles: { fillColor: [16, 185, 129] },
-    });
-
-    doc.save(`SolarSizer_Profile_${p.name.replace(/\s+/g, '_')}.pdf`);
   };
 
   const exportHardwareDatabaseToPDF = () => {
@@ -1447,6 +1455,22 @@ export default function App() {
       headStyles: { fillColor: [16, 185, 129] },
     });
 
+    // Add Wiring section
+    doc.text("Wiring & Installation", 14, (doc as any).lastAutoTable.finalY + 15);
+    autoTable(doc, {
+      startY: (doc as any).lastAutoTable.finalY + 20,
+      head: [["Name", "Category", "Type", "Price", "Description"]],
+      body: wiring.map(w => [
+        w.name,
+        w.category,
+        w.type,
+        `₦${w.price.toLocaleString()}`,
+        w.description
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [16, 185, 129] },
+    });
+
     doc.save("SolarSizer_Complete_Product_Catalog.pdf");
   };
 
@@ -1466,7 +1490,7 @@ export default function App() {
   };
 
   const exportHardwareDatabaseJSON = () => {
-    const data = { inverters, panels, batteries, powerstations };
+    const data = { inverters, panels, batteries, powerstations, wiring };
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     downloadFile(JSON.stringify(data, null, 2), `SolarSizer_Hardware_${timestamp}.json`, "application/json");
   };
@@ -1581,10 +1605,31 @@ export default function App() {
           importedCount++;
         }
 
+        if (data.wiring && Array.isArray(data.wiring)) {
+          const sanitizedWiring = data.wiring.map((w: any) => ({
+            ...w,
+            id: w.id || crypto.randomUUID(),
+            price: Number(w.price) || 0,
+          }));
+          setWiring(prev => {
+            const merged = [...prev];
+            sanitizedWiring.forEach(newItem => {
+              const index = merged.findIndex(item => item.id === newItem.id);
+              if (index !== -1) {
+                merged[index] = newItem;
+              } else {
+                merged.push(newItem);
+              }
+            });
+            return merged;
+          });
+          importedCount++;
+        }
+
         if (importedCount > 0) {
           alert("Hardware database updated successfully!");
         } else {
-          alert("Invalid hardware database file format. Please ensure it contains 'inverters', 'panels', 'batteries', or 'powerstations' arrays.");
+          alert("Invalid hardware database file format. Please ensure it contains 'inverters', 'panels', 'batteries', 'powerstations', or 'wiring' arrays.");
         }
       } catch (err) {
         alert("Failed to parse the file. Please ensure it is a valid JSON.");
@@ -1926,12 +1971,34 @@ export default function App() {
     });
   };
 
+  // Inline range editing helpers
+  const startEditingRange = (deviceId: string, index: number, range: TimeRange) => {
+    setEditingRangeDeviceId(deviceId);
+    setEditingRangeIndex(index);
+    setTempRange({ ...range });
+  };
+  const cancelEditingRange = () => {
+    setEditingRangeDeviceId(null);
+    setEditingRangeIndex(-1);
+    setTempRange({ start: 18, end: 23 });
+  };
+  const saveEditedRange = () => {
+    if (editingRangeDeviceId === null) return;
+    setDevices(devices.map(d => {
+      if (d.id !== editingRangeDeviceId) return d;
+      const newRanges = [...d.ranges];
+      newRanges[editingRangeIndex] = { ...tempRange };
+      return { ...d, ranges: newRanges };
+    }));
+    cancelEditingRange();
+  };
+
   const removeDevice = (id: string) => {
     setDevices(devices.filter((d) => d.id !== id));
   };
 
-  const deleteHardware = async (type: "inverter" | "panel" | "battery" | "powerstation", id: string) => {
-    if (isDeveloper) {
+  const deleteHardware = async (type: HardwareType, id: string) => {
+    if (isDeveloper && type !== "wiring") {
       const adminKey = sessionStorage.getItem("ss_admin_key");
       if (adminKey) {
         try {
@@ -1946,6 +2013,7 @@ export default function App() {
     if (type === "panel") setPanels(panels.filter(p => p.id !== id));
     if (type === "battery") setBatteries(batteries.filter(b => b.id !== id));
     if (type === "powerstation") setPowerstations(powerstations.filter(ps => ps.id !== id));
+    if (type === "wiring") setWiring(wiring.filter(w => w.id !== id));
   };
 
   const deleteMasterDevice = async (id: string) => {
@@ -2005,7 +2073,7 @@ export default function App() {
     }
   };
   
-  const duplicateHardware = (type: "inverter" | "panel" | "battery" | "powerstation", item: any) => {
+  const duplicateHardware = (type: HardwareType, item: any) => {
     const newItem = {
       ...item,
       id: crypto.randomUUID(),
@@ -2015,6 +2083,7 @@ export default function App() {
     if (type === "panel") setPanels([...panels, newItem]);
     if (type === "battery") setBatteries([...batteries, newItem]);
     if (type === "powerstation") setPowerstations([...powerstations, newItem]);
+    if (type === "wiring") setWiring([...wiring, newItem]);
   };
 
   const generateUsageProfile = (targetDevices?: Device[]) => {
@@ -2178,6 +2247,9 @@ export default function App() {
       ["1", "Inverter Unit", getUnits(sys.inverter), `N${safePrice(sys.inverter_price).toLocaleString()}`],
       ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${safePrice(sys.battery_price).toLocaleString()}`],
       ["3", "Solar PV Array", getUnits(sys.panel_config), `N${safePrice(sys.panel_price).toLocaleString()}`],
+      ...(sys.wiring_items && sys.wiring_items.length > 0
+        ? [["4", "Wiring & Installation", `${sys.wiring_items.length} items`, `N${safePrice(sys.wiring_price).toLocaleString()}`]]
+        : []),
       ["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]
     ];
 
@@ -2224,6 +2296,10 @@ export default function App() {
     doc.setFontSize(10);
     doc.setTextColor(60);
     const guide = [
+      ...(sys.wiring_items ?? []).map(w => [
+        WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category,
+        `${w.name} - N${safePrice(w.price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
+      ]),
       ["DC Bus", "Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration."],
       ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`],
       ["Protection", "Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array."]
@@ -2275,6 +2351,26 @@ export default function App() {
       setCheckoutLoading(false);
     }
   };
+
+  // The details modal keeps a snapshot, so wiring is recomputed live from the
+  // current selection. Products without wiring_items keep their own total.
+  const hasWiring = Array.isArray(selectedSystemDetails?.wiring_items);
+  const includedWiring = wiring.filter((w) => w.type === "mandatory" || selectedNiceToHaveIds.has(w.id));
+  const liveWiringPrice = hasWiring
+    ? Math.round(includedWiring.reduce((sum, w) => sum + w.price, 0) * (1 + margins.product / 100))
+    : 0;
+  const liveSystemTotal = selectedSystemDetails
+    ? (selectedSystemDetails.total_price || 0) - (hasWiring ? selectedSystemDetails.wiring_price || 0 : 0) + liveWiringPrice
+    : 0;
+  const quotedSystem = selectedSystemDetails && hasWiring
+    ? {
+        ...selectedSystemDetails,
+        wiring_items: includedWiring,
+        wiring_price: liveWiringPrice,
+        total_price: liveSystemTotal,
+        selected_nice_to_have: Array.from(selectedNiceToHaveIds),
+      }
+    : selectedSystemDetails;
 
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans selection:bg-emerald-100">
@@ -2455,6 +2551,25 @@ export default function App() {
               </div>
             </section>
 
+            {/* High Risk Toggle */}
+            <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <div>
+                    <h2 className="font-semibold text-lg">Show High Risk Systems</h2>
+                    <p className="text-xs text-stone-500 mt-0.5">Include significantly undersized options that carry blackout warnings</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowHighRisk(!showHighRisk)}
+                  className={`w-12 h-6 rounded-full transition-all relative ${showHighRisk ? 'bg-emerald-600' : 'bg-stone-200'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${showHighRisk ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
+            </section>
+
             {/* Device Input */}
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
               <div className="flex items-center gap-2 mb-6">
@@ -2616,12 +2731,60 @@ export default function App() {
                           <p className="font-semibold text-sm">{d.name}</p>
                           <div className="flex flex-wrap gap-x-2 text-xs text-stone-500">
                             <span>{d.qty}x {d.watts}W</span>
-                            <span className="text-stone-300">•</span>
-                            <div className="flex gap-1">
-                              {d.ranges.map((r, i) => (
-                                <span key={`${d.id}-${r.start}-${r.end}-${i}`}>{getHourLabel(r.start)}-{getHourLabel(r.end)}{i < d.ranges.length - 1 ? "," : ""}</span>
-                              ))}
-                            </div>
+                            <span className="text-stone-300">·</span>
+                            {d.ranges.length > 0 && (
+                              <div className="flex gap-1">
+                                {d.ranges.map((r, i) => {
+                                  const isEditingInline = editingRangeDeviceId === d.id && editingRangeIndex === i;
+                                  if (isEditingInline) {
+                                    return (
+                                      <div key={`${d.id}-inline-edit-${i}`} className="flex items-center gap-1 bg-amber-50 px-2 py-1 rounded">
+                                        <select
+                                          value={tempRange.start}
+                                          onChange={(e) => setTempRange({ ...tempRange, start: parseInt(e.target.value) })}
+                                          className="text-xs w-10 bg-white border border-stone-200 rounded"
+                                        >
+                                          {HOUR_OPTIONS.slice(0, 24).map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                          ))}
+                                        </select>
+                                        <span className="text-stone-500">-</span>
+                                        <select
+                                          value={tempRange.end}
+                                          onChange={(e) => setTempRange({ ...tempRange, end: parseInt(e.target.value) })}
+                                          className="text-xs w-10 bg-white border border-stone-200 rounded"
+                                        >
+                                          {HOUR_OPTIONS.slice(1).map(opt => (
+                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                          ))}
+                                        </select>
+                                        <button 
+                                          onClick={saveEditedRange}
+                                          className="text-emerald-600 hover:text-emerald-700 text-xs font-bold"
+                                        >
+                                          Save
+                                        </button>
+                                        <button 
+                                          onClick={cancelEditingRange}
+                                          className="text-stone-400 hover:text-stone-600 text-xs"
+                                        >
+                                          ✕
+                                        </button>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <span 
+                                      key={`${d.id}-${r.start}-${r.end}-${i}`} 
+                                      className="cursor-pointer hover:bg-emerald-100 hover:text-emerald-800 px-1.5 py-0.5 rounded transition-colors"
+                                      onClick={() => startEditingRange(d.id, i, r)}
+                                    >
+                                      {getHourLabel(r.start)}-{getHourLabel(r.end)}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
@@ -2644,10 +2807,10 @@ export default function App() {
                 </AnimatePresence>
               </div>
             </section>
-          </div>
+        </div>
 
-          {/* Right Column: Results */}
-          <div className="lg:col-span-7 space-y-8">
+        {/* Right Column: Results */}
+        <div className="lg:col-span-7 space-y-8">
             {!results ? (
               <div className="min-h-[420px] flex flex-col items-center justify-center text-center p-12 bg-white rounded-3xl border border-stone-200 border-dashed">
                 <div className="w-16 h-16 bg-stone-100 rounded-full flex items-center justify-center mb-4">
@@ -3128,36 +3291,7 @@ export default function App() {
                       <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
                     </div>
                     <button 
-                      onClick={() => {
-                        if (product.combination_data) {
-                          setSelectedSystemDetails({
-                            ...product.combination_data,
-                            product_id: product.id,
-                            product_name: product.name,
-                            product_description: product.description,
-                          });
-                        } else {
-                          // Create a dummy system combination for standalone products so they can have a specs view
-                          setSelectedSystemDetails({
-                            inverter: product.name,
-                            inverter_price: product.price,
-                            battery_config: "N/A",
-                            battery_price: 0,
-                            panel_config: "N/A",
-                            panel_price: 0,
-                            array_size_w: 0,
-                            battery_total_wh: 0,
-                            total_price: product.price,
-                            daily_yield: 0,
-                            deficit: 0,
-                            status: "Optimal",
-                            advice: product.description,
-                            log: [product.description],
-                            is_preconfigured: true,
-                            product_id: product.id
-                          });
-                        }
-                      }}
+                      onClick={() => setSelectedSystemDetails(buildProductDetails(product))}
                       className="px-4 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all"
                     >
                       View Specs
@@ -3333,6 +3467,45 @@ export default function App() {
                 <button onClick={() => setShowAddHardware("powerstation")} className="bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all">
                   <Plus className="w-4 h-4" /> Add Powerstation
                 </button>
+                {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => {
+                  const colors: Record<WiringCategory, string> = {
+                    cables: "text-white",
+                    breakers: "text-white",
+                    dc_bus: "text-white",
+                    surge_protectors: "text-white",
+                    casings: "text-white",
+                    mounting_racks: "text-white",
+                    mc4_connectors: "text-white",
+                    circuit_breakers: "text-white",
+                    earthing_systems: "text-white",
+                    smart_controls: "text-white",
+                  };
+                  const bgColors: Record<WiringCategory, string> = {
+                    cables: "bg-teal-600",
+                    breakers: "bg-teal-600",
+                    dc_bus: "bg-teal-600",
+                    surge_protectors: "bg-amber-600",
+                    casings: "bg-amber-600",
+                    mounting_racks: "bg-amber-600",
+                    mc4_connectors: "bg-teal-600",
+                    circuit_breakers: "bg-amber-600",
+                    earthing_systems: "bg-emerald-600",
+                    smart_controls: "bg-emerald-600",
+                  };
+                  return (
+                    <button 
+                      key={category}
+                      onClick={() => {
+                        setWiringCategoryForAdd(category);
+                        setShowAddHardware("wiring");
+                      }} 
+                      className={`${bgColors[category]} ${colors[category]} px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 hover:opacity-90 transition-all`}
+                    >
+                      <Plus className="w-3 h-3" />
+                      {WIRING_CATEGORY_LABELS[category].label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -3425,13 +3598,11 @@ export default function App() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-8">
-              {/* Master Devices */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                    <ListIcon className="w-5 h-5 text-stone-400" /> Master Devices
-                  </h3>
+            <div className="space-y-8">
+              <HardwareRow
+                title="Master Devices"
+                icon={<ListIcon className="w-5 h-5 text-stone-400" />}
+                action={
                   <div className="flex items-center gap-1">
                     <label className="p-1.5 text-stone-400 hover:text-emerald-600 rounded-lg cursor-pointer" title="Import Master Devices">
                       <Upload className="w-4 h-4" />
@@ -3450,163 +3621,176 @@ export default function App() {
                       </div>
                     </Tooltip>
                   </div>
-                </div>
-                <div className="space-y-3">
-                  {masterDevices.map((md) => (
-                    <div key={md.id} className="bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold text-sm">{md.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
-                          <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
-                        </div>
-                        <div className="flex gap-1 flex-wrap">
-                          {md.tags.map(tag => (
-                            <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
+                }
+              >
+                {masterDevices.map((md) => (
+                  <div key={md.id} className="w-[260px] shrink-0 bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="font-bold text-sm">{md.name}</p>
+                      <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
+                        <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
                       </div>
-                      <div className="text-xs text-stone-500">
-                        {md.default_watts}W • {md.category}
+                      <div className="flex gap-1 flex-wrap">
+                        {md.tags.map(tag => (
+                          <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
+                            {tag}
+                          </span>
+                        ))}
                       </div>
                     </div>
-                  ))}
-                  {isDeveloper && (
-                    <button 
-                      onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
-                      className="w-full py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
-                    >
-                      + Add Master Device
-                    </button>
-                  )}
-                </div>
-              </div>
+                    <div className="text-xs text-stone-500">
+                      {md.default_watts}W • {md.category}
+                    </div>
+                  </div>
+                ))}
+                {isDeveloper && (
+                  <button 
+                    onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
+                    className="w-[260px] shrink-0 py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                  >
+                    + Add Master Device
+                  </button>
+                )}
+              </HardwareRow>
 
-              {/* Inverters */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Cpu className="w-5 h-5 text-emerald-600" /> Inverters
-                </h3>
-                <div className="space-y-3">
-                  {inverters.map((inv) => (
-                    <div key={inv.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{inv.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("inverter", inv)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("inverter", inv)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("inverter", inv.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>Max AC: {inv.max_ac_w}W</span>
-                        <span>DC Volts: {inv.system_vdc}V</span>
-                        <span>PV Max: {inv.cc_max_pv_w}W</span>
-                        <span>Max Voc: {inv.cc_max_voc}V</span>
-                        <span>Max Amps: {inv.cc_max_amps}A</span>
-                        <span>Charge: {inv.max_charge_amps}A</span>
-                        <span>Parallel: {inv.max_parallel_units} Units</span>
-                        <span className="uppercase">CC: {inv.cc_type || "pwm"}</span>
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{inv.price.toLocaleString()}</span>
-                      </div>
+              <HardwareRow title="Inverters" icon={<Cpu className="w-5 h-5 text-emerald-600" />}>
+                {inverters.map((inv) => (
+                  <HardwareCard
+                    key={inv.id}
+                    name={inv.name}
+                    isDeveloper={isDeveloper}
+                    onDuplicate={() => duplicateHardware("inverter", inv)}
+                    onEdit={() => startEditing("inverter", inv)}
+                    onDelete={() => deleteHardware("inverter", inv.id)}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <span>Max AC: {inv.max_ac_w}W</span>
+                      <span>DC Volts: {inv.system_vdc}V</span>
+                      <span>PV Max: {inv.cc_max_pv_w}W</span>
+                      <span>Max Voc: {inv.cc_max_voc}V</span>
+                      <span>Max Amps: {inv.cc_max_amps}A</span>
+                      <span>Charge: {inv.max_charge_amps}A</span>
+                      <span>Parallel: {inv.max_parallel_units} Units</span>
+                      <span className="uppercase">CC: {inv.cc_type || "pwm"}</span>
+                      <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{inv.price.toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </HardwareCard>
+                ))}
+              </HardwareRow>
 
-              {/* Panels */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Sun className="w-5 h-5 text-amber-500" /> Solar Panels
-                </h3>
-                <div className="space-y-3">
-                  {panels.map((p) => (
-                    <div key={p.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{p.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("panel", p)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("panel", p)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("panel", p.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span>Watts: {p.watts}W</span>
-                        <span>Voc: {p.voc}V</span>
-                        <span>Isc: {p.isc}A</span>
-                        <span>Price: ₦{p.price.toLocaleString()}</span>
-                      </div>
+              <HardwareRow title="Solar Panels" icon={<Sun className="w-5 h-5 text-amber-500" />}>
+                {panels.map((p) => (
+                  <HardwareCard
+                    key={p.id}
+                    name={p.name}
+                    isDeveloper={isDeveloper}
+                    onDuplicate={() => duplicateHardware("panel", p)}
+                    onEdit={() => startEditing("panel", p)}
+                    onDelete={() => deleteHardware("panel", p.id)}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <span>Watts: {p.watts}W</span>
+                      <span>Voc: {p.voc}V</span>
+                      <span>Isc: {p.isc}A</span>
+                      <span>Price: ₦{p.price.toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </HardwareCard>
+                ))}
+              </HardwareRow>
 
-              {/* Batteries */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <BatteryIcon className="w-5 h-5 text-blue-600" /> Batteries
-                </h3>
-                <div className="space-y-3">
-                  {batteries.map((b) => (
-                    <div key={b.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{b.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("battery", b)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("battery", b)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("battery", b.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{b.voltage}V {b.capacity_ah}Ah</span>
-                        <span className="capitalize">Type: {b.type}</span>
-                        <span>Max Parallel: {b.max_parallel_strings}</span>
-                        <span>Min C-Rate: {b.min_c_rate}</span>
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{b.price.toLocaleString()}</span>
-                      </div>
+              <HardwareRow title="Batteries" icon={<BatteryIcon className="w-5 h-5 text-blue-600" />}>
+                {batteries.map((b) => (
+                  <HardwareCard
+                    key={b.id}
+                    name={b.name}
+                    isDeveloper={isDeveloper}
+                    onDuplicate={() => duplicateHardware("battery", b)}
+                    onEdit={() => startEditing("battery", b)}
+                    onDelete={() => deleteHardware("battery", b.id)}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <span className="font-bold text-stone-700">{b.voltage}V {b.capacity_ah}Ah</span>
+                      <span className="capitalize">Type: {b.type}</span>
+                      <span>Max Parallel: {b.max_parallel_strings}</span>
+                      <span>Min C-Rate: {b.min_c_rate}</span>
+                      <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{b.price.toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </HardwareCard>
+                ))}
+              </HardwareRow>
 
-              {/* Powerstations */}
-              <div className="space-y-4">
-                <h3 className="font-bold flex items-center gap-2 text-stone-700">
-                  <Zap className="w-5 h-5 text-stone-900" /> Powerstations
-                </h3>
-                <div className="space-y-3">
-                  {powerstations.map((ps) => (
-                    <div key={ps.id} className="bg-white p-4 rounded-xl border border-stone-200 shadow-sm group relative">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold">{ps.name}</p>
-                        <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                          <button onClick={() => duplicateHardware("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Duplicate"><Copy className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => startEditing("powerstation", ps)} className="p-1.5 text-stone-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" title="Edit"><Settings className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteHardware("powerstation", ps.id)} className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
-                        <span className="font-bold text-stone-700">{ps.capacity_wh}Wh</span>
-                        <span>Output: {ps.max_output_w}W</span>
-                        <span>PV Max: {ps.max_pv_input_w}W</span>
-                        {ps.system_vdc && <span>Sys VDC: {ps.system_vdc}V</span>}
-                        {ps.cc_type && <span>CC: {ps.cc_type.toUpperCase()}</span>}
-                        {ps.cc_max_voc && <span>Max Voc: {ps.cc_max_voc}V</span>}
-                        {ps.cc_max_amps && <span>Max CC: {ps.cc_max_amps}A</span>}
-                        {ps.max_charge_amps && <span>Charge: {ps.max_charge_amps}A</span>}
-                        {ps.max_parallel_units && <span>Parallel: {ps.max_parallel_units} Units</span>}
-                        {ps.battery_voltage && <span>Bat: {ps.battery_voltage}V</span>}
-                        {ps.capacity_ah && <span>Cap: {ps.capacity_ah}Ah</span>}
-                        {ps.battery_type && <span className="capitalize">{ps.battery_type}</span>}
-                        {ps.min_c_rate && <span>Min C: {ps.min_c_rate}</span>}
-                        <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{ps.price.toLocaleString()}</span>
-                      </div>
+              <HardwareRow title="Powerstations" icon={<Zap className="w-5 h-5 text-stone-900" />}>
+                {powerstations.map((ps) => (
+                  <HardwareCard
+                    key={ps.id}
+                    name={ps.name}
+                    isDeveloper={isDeveloper}
+                    onDuplicate={() => duplicateHardware("powerstation", ps)}
+                    onEdit={() => startEditing("powerstation", ps)}
+                    onDelete={() => deleteHardware("powerstation", ps.id)}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <span className="font-bold text-stone-700">{ps.capacity_wh}Wh</span>
+                      <span>Output: {ps.max_output_w}W</span>
+                      <span>PV Max: {ps.max_pv_input_w}W</span>
+                      {ps.system_vdc && <span>Sys VDC: {ps.system_vdc}V</span>}
+                      {ps.cc_type && <span>CC: {ps.cc_type.toUpperCase()}</span>}
+                      {ps.cc_max_voc && <span>Max Voc: {ps.cc_max_voc}V</span>}
+                      {ps.cc_max_amps && <span>Max CC: {ps.cc_max_amps}A</span>}
+                      {ps.max_charge_amps && <span>Charge: {ps.max_charge_amps}A</span>}
+                      {ps.max_parallel_units && <span>Parallel: {ps.max_parallel_units} Units</span>}
+                      {ps.battery_voltage && <span>Bat: {ps.battery_voltage}V</span>}
+                      {ps.capacity_ah && <span>Cap: {ps.capacity_ah}Ah</span>}
+                      {ps.battery_type && <span className="capitalize">{ps.battery_type}</span>}
+                      {ps.min_c_rate && <span>Min C: {ps.min_c_rate}</span>}
+                      <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{ps.price.toLocaleString()}</span>
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </HardwareCard>
+                ))}
+              </HardwareRow>
+
+              {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => {
+                const items = wiring.filter((w) => w.category === category);
+                return (
+                  <HardwareRow
+                    key={category}
+                    title={WIRING_CATEGORY_LABELS[category].label}
+                    icon={<Layers className="w-5 h-5 text-stone-400" />}
+                  >
+                    {items.map((w) => (
+                      <HardwareCard
+                        key={w.id}
+                        name={w.name}
+                        isDeveloper={isDeveloper}
+                        onDuplicate={() => duplicateHardware("wiring", w)}
+                        onEdit={() => startEditing("wiring", w)}
+                        onDelete={() => deleteHardware("wiring", w.id)}
+                      >
+                        <div className="space-y-2 text-xs text-stone-500">
+                          <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            w.type === "mandatory" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"
+                          }`}>
+                            {w.type === "mandatory" ? "Required" : "Optional"}
+                          </span>
+                          <p className="line-clamp-2">{w.description}</p>
+                          <div className="grid grid-cols-2 gap-1">
+                            {Object.entries(w.specs || {}).slice(0, 4).map(([key, value]) => (
+                              <span key={key} className="truncate">
+                                <span className="text-stone-400">{key}: </span>{String(value)}
+                              </span>
+                            ))}
+                          </div>
+                          <p className="font-bold text-emerald-600">₦{w.price.toLocaleString()}</p>
+                        </div>
+                      </HardwareCard>
+                    ))}
+                    {items.length === 0 && (
+                      <p className="text-xs text-stone-400 italic self-center">No items in this category.</p>
+                    )}
+                  </HardwareRow>
+                );
+              })}
             </div>
           </div>
         )}
@@ -3904,7 +4088,7 @@ export default function App() {
                             </div>
                             <div className="flex items-center gap-2 text-xs text-stone-600">
                               <Zap className="w-3.5 h-3.5" />
-                              <span>{Math.max(...Object.values(r.analysis?.hourly_consumption || {})).toFixed(0)}W Peak Load</span>
+                              <span>{Math.max(...Object.values(r.analysis?.hourly_consumption || {})).toFixed(0)}W Max Hourly Average</span>
                             </div>
                             <div className="flex items-center gap-2 text-xs text-stone-600">
                               <BatteryIcon className="w-3.5 h-3.5" />
@@ -3971,7 +4155,7 @@ export default function App() {
                       <h3 className="font-bold text-emerald-900 mb-2">Analysis Summary: {selectedSavedAnalysis.profile_name}</h3>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Peak Load</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-1">Max Hourly Average</p>
                           <p className="text-lg font-black text-emerald-900">{selectedSavedAnalysis.analysis ? Math.max(...Object.values(selectedSavedAnalysis.analysis.hourly_consumption)).toFixed(0) : 0}W</p>
                         </div>
                         <div>
@@ -4323,8 +4507,8 @@ export default function App() {
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.panel_config}</h3>
                         <p className="text-sm text-stone-500">Photovoltaic Array</p>
                         <div className="mt-4 space-y-2 text-xs">
-                          <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w}W</span></div>
-                          <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{selectedSystemDetails.daily_yield.toFixed(0)}Wh</span></div>
+                          <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w || 0}W</span></div>
+                          <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{(selectedSystemDetails.daily_yield || 0).toFixed(0)}Wh</span></div>
                           <div className="flex justify-between pt-2 border-t border-stone-200">
                             <span className="text-amber-600 font-bold">Price</span>
                             <span className="font-bold">
@@ -4338,58 +4522,79 @@ export default function App() {
                   </div>
                 )}
 
-                    {!showInteractiveBridge &&
-                      selectedSystemDetails.component_specs &&
-                      selectedSystemDetails.component_specs.length > 0 && (
-                        <div className="space-y-4">
+                    {hasWiring && (
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between gap-3">
                           <h4 className="font-bold text-lg flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-stone-400" />
-                            Hardware Specs
+                            <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation
                           </h4>
+                          <span className="text-sm font-bold text-emerald-600">₦{liveWiringPrice.toLocaleString()}</span>
+                        </div>
+                        <p className="text-xs text-stone-500">Required items are always included. Tick the optional items to add them to this system.</p>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {selectedSystemDetails.component_specs.map((item, index) => (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {wiring.map((item) => {
+                            const optional = item.type === "nice-to-have";
+                            const included = !optional || selectedNiceToHaveIds.has(item.id);
+                            return (
                               <div
-                                key={index}
-                                className="p-4 rounded-2xl border border-stone-200 bg-white"
+                                key={item.id}
+                                className={`p-4 rounded-2xl border ${
+                                  included ? "bg-stone-50 border-stone-100" : "bg-white border-dashed border-stone-200 opacity-70"
+                                }`}
                               >
-                                <div className="flex items-center justify-between gap-3 mb-3">
-                                  <p className="font-bold text-stone-900 capitalize">
-                                    {item.role.replace(/_/g, " ")}
-                                  </p>
-                                  <span className="text-xs font-bold text-stone-500">
-                                    Qty: {item.quantity}
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                  <div>
+                                    <p className="font-bold text-stone-900">{item.name}</p>
+                                    <p className="text-xs text-stone-500">
+                                      {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                    </p>
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                    optional ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                  }`}>
+                                    {optional ? "Optional" : "Required"}
                                   </span>
                                 </div>
 
-                                <p className="text-sm text-stone-700 mb-3">{item.name}</p>
-
-                                <div className="space-y-1 text-xs text-stone-500">
-                                  {Object.entries(item.specs).map(([key, value]) => (
+                                <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                  {Object.entries(item.specs || {}).map(([key, value]) => (
                                     <div key={key} className="flex items-center justify-between gap-4">
                                       <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                      <span className="font-semibold text-stone-700">
-                                        {String(value)}
-                                      </span>
+                                      <span className="font-semibold text-stone-700">{String(value)}</span>
                                     </div>
                                   ))}
                                 </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
 
-                    <div className="space-y-4">
-                      <h4 className="font-bold text-lg flex items-center gap-2">
-                        <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation Guide
-                      </h4>
-                      <div className="bg-stone-50 p-6 rounded-2xl border border-stone-100 space-y-4 text-sm text-stone-600 leading-relaxed">
-                        <p>• <strong>DC Bus:</strong> Ensure all battery cables are of equal length and minimum 35mm² gauge for this configuration.</p>
-                        <p>• <strong>PV String:</strong> Connect panels in the specified series-parallel configuration to stay within the {selectedSystemDetails.inverter}'s MPPT window.</p>
-                        <p>• <strong>Protection:</strong> Install a 63A DC Breaker between the battery and inverter, and a 20A DC Surge Protector for the PV array.</p>
+                                <div className="flex items-center justify-between pt-2 border-t border-stone-200">
+                                  <span className="font-bold text-emerald-600">₦{item.price.toLocaleString()}</span>
+                                  {optional ? (
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedNiceToHaveIds.has(item.id)}
+                                        onChange={(e) => {
+                                          const next = new Set(selectedNiceToHaveIds);
+                                          if (e.target.checked) next.add(item.id);
+                                          else next.delete(item.id);
+                                          setSelectedNiceToHaveIds(next);
+                                        }}
+                                        className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                      />
+                                      <span className="text-xs font-bold text-stone-600">Include</span>
+                                    </label>
+                                  ) : (
+                                    <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" /> Included
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
                       <div>
@@ -4397,18 +4602,18 @@ export default function App() {
                           Total System Investment
                         </p>
                         <p className="text-3xl font-black text-emerald-900">
-                          ₦{(selectedSystemDetails.total_price || 0).toLocaleString()}
+                          ₦{liveSystemTotal.toLocaleString()}
                         </p>
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
                         <button
-                          onClick={() => generateQuote(selectedSystemDetails)}
+                          onClick={() => generateQuote(quotedSystem ?? selectedSystemDetails)}
                           className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                         >
                           Generate Quote <ExternalLink className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => startBachsCheckout(selectedSystemDetails)}
+                          onClick={() => startBachsCheckout(quotedSystem ?? selectedSystemDetails)}
                           disabled={checkoutLoading}
                           className="bg-stone-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-stone-800 transition-all flex items-center gap-2 disabled:opacity-60"
                         >
@@ -4572,10 +4777,36 @@ export default function App() {
                         sdk.saveHardware({ id: data.id, type: "powerstation", data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
                       }
                     }
+                  } else if (showAddHardware === "wiring") {
+                    const category = fd.get("category") as WiringCategory;
+                    const categoryFields = WIRING_SPEC_FIELDS[category] || [];
+                    const specs: Record<string, string | number> = {};
+                    for (const field of categoryFields) {
+                      const val = fd.get(field.key);
+                      if (typeof val === "string" && val !== "") {
+                        specs[field.key] = field.type === "number" ? Number(val) : val;
+                      }
+                    }
+                    // Preserve existing specs on edit
+                    const mergedSpecs = editingHardware?.item?.specs
+                      ? { ...editingHardware.item.specs, ...specs }
+                      : specs;
+                    const data: WiringItem = {
+                      id: editingHardware?.id || crypto.randomUUID(),
+                      name: commonData.name,
+                      category,
+                      type: fd.get("wiring_type") as WiringItem["type"],
+                      description: commonData.description,
+                      price: commonData.price,
+                      specs: mergedSpecs,
+                    };
+                    setWiring(prev => prev.some(w => w.id === data.id)
+                      ? prev.map(w => w.id === data.id ? data : w)
+                      : [...prev, data]);
                   }
 
                   // Global sync for other types if developer
-                  if (isDeveloper && showAddHardware !== "powerstation") {
+                  if (isDeveloper && showAddHardware !== "powerstation" && showAddHardware !== "wiring") {
                     const adminKey = sessionStorage.getItem("ss_admin_key");
                     if (adminKey) {
                       const id = editingHardware?.id || crypto.randomUUID();
@@ -4601,7 +4832,9 @@ export default function App() {
                         editingHardware.type === "inverter" ? inverters.find(i => i.id === editingHardware.id)
                           : editingHardware.type === "panel" ? panels.find(p => p.id === editingHardware.id)
                           : editingHardware.type === "battery" ? batteries.find(b => b.id === editingHardware.id)
-                          : powerstations.find(ps => ps.id === editingHardware.id)
+                          : editingHardware.type === "powerstation" ? powerstations.find(ps => ps.id === editingHardware.id)
+                          : editingHardware.type === "wiring" ? wiring.find(w => w.id === editingHardware.id)
+                          : null
                       ),
                       editingHardware.type
                     )
@@ -4668,6 +4901,72 @@ export default function App() {
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
+                        {showAddHardware === "wiring" && (
+                          <>
+                            <div className="col-span-2">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
+                              <select name="category" defaultValue={currentItem?.category || wiringCategoryForAdd} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                                {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => (
+                                  <option key={category} value={category}>{WIRING_CATEGORY_LABELS[category].label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Item Type</label>
+                              <select name="wiring_type" defaultValue={currentItem?.type || "mandatory"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                                <option value="mandatory">Required</option>
+                                <option value="nice-to-have">Optional</option>
+                              </select>
+                            </div>
+                          </>
+                        )}
+                        {showAddHardware === "wiring" && (() => {
+                          const selectedCategory = (currentItem?.category || "cables") as WiringCategory;
+                          const fields = WIRING_SPEC_FIELDS[selectedCategory] || [];
+                          return fields.map((field) => {
+                            if (field.type === "number") {
+                              return (
+                                <div key={field.key} className="col-span-2">
+                                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">{field.label}</label>
+                                  <input 
+                                    name={field.key} 
+                                    type="number" 
+                                    step="any" 
+                                    defaultValue={(currentItem as any)?.specs?.[field.key] || ""} 
+                                    className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" 
+                                  />
+                                </div>
+                              );
+                            } else if (field.type === "select" && field.options) {
+                              return (
+                                <div key={field.key} className="col-span-2 sm:col-span-1">
+                                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">{field.label}</label>
+                                  <select 
+                                    name={field.key} 
+                                    defaultValue={(currentItem as any)?.specs?.[field.key] || field.options[0]} 
+                                    className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                                  >
+                                    {field.options.map(opt => (
+                                      <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div key={field.key} className="col-span-2 sm:col-span-1">
+                                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">{field.label}</label>
+                                  <input 
+                                    name={field.key} 
+                                    type="text" 
+                                    defaultValue={(currentItem as any)?.specs?.[field.key] || ""} 
+                                    className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" 
+                                  />
+                                </div>
+                              );
+                            }
+                          });
+                        })()}
                         <div className="col-span-2"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                       </div>
                     </div>
