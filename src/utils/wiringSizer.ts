@@ -35,6 +35,22 @@ export const specNumber = (value: unknown): number => {
   return match ? Number(match[0]) : 0;
 };
 
+/** Recursively converts nested objects/arrays into a display string. */
+export const flattenSpec = (key: string, value: unknown, indent = 0): string[] => {
+  const pad = "  ".repeat(indent);
+  if (value === null || value === undefined) return [`${pad}${key}: `];
+  const v = typeof value === "object" ? JSON.stringify(value) : String(value);
+  if (typeof value === "object" && value !== null) {
+    if (Array.isArray(value)) {
+      return value.flatMap((item, i) => flattenSpec(`${key}[${i}]`, item, indent + 1));
+    }
+    return Object.entries(value as Record<string, unknown>).flatMap(([k, v2]) =>
+      flattenSpec(`${key}.${k}`, v2, indent + 1)
+    );
+  }
+  return [`${pad}${key}: ${v}`];
+};
+
 /** Category to the spec key that decides which sibling is the right size. */
 const SIZED_SPEC: Partial<Record<WiringCategory, string>> = {
   cables: "gauge",
@@ -245,8 +261,8 @@ const NUMERIC_SPEC_KEYS = new Set([
 ]);
 
 /** Rewrites legacy spec keys in place and drops duplicate rows. */
-export const normalizeWiringSpecs = (specs: Record<string, string | number>): Record<string, string | number> => {
-  const out: Record<string, string | number> = {};
+export const normalizeWiringSpecs = (specs: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
   for (const [rawKey, rawValue] of Object.entries(specs)) {
     const key = LEGACY_SPEC_KEYS[rawKey] ?? rawKey;
     if (key in out && rawValue === "") continue;

@@ -1906,7 +1906,10 @@ export default function App() {
     content += `| :--- | :--- | :--- | :--- | :--- |\n`;
     wiring.forEach(w => {
       const specs = Object.entries(w.specs ?? {})
-        .map(([k, v]) => `${k}: ${v}`)
+        .map(([k, v]) => {
+          if (typeof v === "object" && v !== null) return `${k}: ${JSON.stringify(v)}`;
+          return `${k}: ${v}`;
+        })
         .join(", ");
       content += `| ${WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category} | ${w.type === "mandatory" ? "Required" : "Optional"} | ${w.name} | ${specs} | ${w.price.toLocaleString()} |\n`;
     });

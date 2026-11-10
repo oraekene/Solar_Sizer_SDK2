@@ -105,7 +105,8 @@ export interface WiringItem {
   type: 'mandatory' | 'nice-to-have';
   description: string;
   price: number;
-  specs: Record<string, string | number>;
+  /** Specs may be nested objects; flattenSpec renders them as display strings. */
+  specs: Record<string, unknown>;
 }
 
 export interface Hardware {
