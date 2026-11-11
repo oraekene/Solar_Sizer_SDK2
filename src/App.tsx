@@ -2427,7 +2427,7 @@ export default function App() {
       setWiringQuantities({});
       setSelectedNiceToHaveIds(new Set());
     }
-  }, [selectedSystemDetails?.id, selectedSystemDetails?.product_id]);
+  }, [selectedSystemDetails?.product_id, selectedSystemDetails?.inverter, selectedSystemDetails?.battery_config, selectedSystemDetails?.panel_config]);
 
   const liveSizing = hasWiring
     ? sizeWiring(
