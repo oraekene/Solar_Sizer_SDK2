@@ -4952,12 +4952,7 @@ const liveWiringPrice = liveSizing
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
                         <button
-                          onClick={() => {
-                            console.log("Partial mode:", partialMode);
-                            console.log("Partial included components:", partialIncludedComponents);
-                            console.log("Quoted system:", quotedSystem);
-                            generateQuote(quotedSystem ?? selectedSystemDetails);
-                          }}
+                          onClick={() => generateQuote(quotedSystem ?? selectedSystemDetails)}
                           className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                         >
                           Generate Quote <ExternalLink className="w-4 h-4" />
