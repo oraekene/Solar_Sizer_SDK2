@@ -71,7 +71,7 @@ import {
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
-import { sizeWiring, normalizeWiringSpecs } from "./utils/wiringSizer";
+import { sizeWiring, normalizeWiringSpecs, specNumber } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
 import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
@@ -802,12 +802,18 @@ export default function App() {
     // v2 key: v1 only ever held the small default seed, before wiring was editable.
     const saved = localStorage.getItem("ss_wiring_v2");
     const data: WiringItem[] = saved ? JSON.parse(saved) : DEFAULT_WIRING;
-    return data.map((item, idx) => ({
-      ...item,
-      id: item.id || `w-legacy-${idx}`,
-      // Seeds used to store title-case spec keys, which blanked the edit form.
-      specs: normalizeWiringSpecs(item.specs ?? {}),
-    }));
+    const seeds = new Map(DEFAULT_WIRING.map((item) => [item.id, item]));
+    return data.map((item, idx) => {
+      const id = item.id || `w-legacy-${idx}`;
+      return {
+        ...item,
+        id,
+        // Saved items predate tooltips, so fall back to the seed copy by id.
+        tooltip: item.tooltip ?? seeds.get(id)?.tooltip,
+        // Seeds used to store title-case spec keys, which blanked the edit form.
+        specs: normalizeWiringSpecs(item.specs ?? {}),
+      };
+    });
   });
 
   // Track which nice-to-have wiring items are selected
@@ -824,6 +830,7 @@ export default function App() {
   }>({ inverter: true, panels: true, batteries: true });
   // Track expanded state for Available Optional Items
   const [showOptionalItems, setShowOptionalItems] = useState(false);
+  const [optionalSearch, setOptionalSearch] = useState("");
 
   // Internal Logs State
   const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
@@ -2341,7 +2348,7 @@ export default function App() {
       ["Advice", finalAdvice],
       ["Inverter", inverterExcluded ? "Excluded (Partial Mode)" : (sys.inverter || "N/A")],
       ["Battery Bank", batteryExcluded ? "Excluded (Partial Mode)" : (sys.battery_config || "N/A")],
-      ["Solar Array", panelExcluded ? "Excluded (Partial Mode)" : `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
+      ["Solar Array", panelExcluded ? "Excluded (Partial Mode)" : `${sys.panel_config || "N/A"} (${Math.round(sys.array_size_w || sys.panel_w || 0)}W)`],
       ["Est. Daily Yield", `${(sys.daily_yield || 0).toFixed(0)}Wh`]
     ];
 
@@ -2523,6 +2530,43 @@ const calculateWirePrice = (item: WiringItem): number => {
 const liveWiringPrice = liveSizing
   ? Math.round(includedWiring.reduce((sum, w) => sum + calculateWirePrice(w), 0))
   : 0;
+
+  // Hide optional items whose rating cannot serve this system, so the list stays
+  // short as the catalogue grows. Unknown ratings stay visible.
+  const optionalIsCompatible = (item: WiringItem): boolean => {
+    if (!liveSizing) return true;
+    const volts = specNumber(item.specs?.voltage);
+    const amps = specNumber(item.specs?.current) || specNumber(item.specs?.amperage);
+    if (item.category === "cables") {
+      const gauge = specNumber(item.specs?.gauge);
+      return !gauge || gauge >= liveSizing.derived.cableGauge;
+    }
+    if (item.category === "dc_bus" || item.category === "breakers") {
+      const systemVdc =
+        selectedSystemDetails?.inverter_data?.system_vdc || selectedSystemDetails?.battery_data?.voltage || 48;
+      return (!volts || volts >= systemVdc) && (!amps || amps >= liveSizing.derived.dcAmps);
+    }
+    if (item.category === "mc4_connectors") {
+      return (!volts || volts >= liveSizing.derived.pvVoc) && (!amps || amps >= liveSizing.derived.pvAmps);
+    }
+    return true;
+  };
+
+  const optionalQuery = optionalSearch.trim().toLowerCase();
+  const optionalItems = wiring
+    .filter((w) => w.type === "nice-to-have" && !liveSizing?.includeIds.has(w.id) && optionalIsCompatible(w))
+    .filter((w) => {
+      if (!optionalQuery) return true;
+      return [w.name, w.description, w.tooltip, WIRING_CATEGORY_LABELS[w.category]?.label, ...Object.values(w.specs ?? {})]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(optionalQuery);
+    });
+
+  const optionalByCategory = (Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[])
+    .map((category) => [category, optionalItems.filter((w) => w.category === category)] as const)
+    .filter(([, items]) => items.length > 0);
 
   // In partial mode, subtract prices of unchecked main components
   const partialInverterPrice = partialMode && !partialIncludedComponents.inverter ? (selectedSystemDetails?.inverter_price || 0) : 0;
@@ -3187,7 +3231,7 @@ const liveWiringPrice = liveSizing
                                         <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
                                         <div>
                                           <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                          <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
+                                          <p className="text-xs text-stone-500">{Math.round(sys.array_size_w || 0)}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
                                         </div>
                                       </div>
                                     </div>
@@ -4406,7 +4450,7 @@ const liveWiringPrice = liveSizing
                               <Sun className="w-4 h-4 text-amber-500 mt-0.5" />
                               <div>
                                 <p className="text-sm font-semibold">{sys.panel_config}</p>
-                                <p className="text-xs text-stone-500">{sys.array_size_w}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
+                                <p className="text-xs text-stone-500">{Math.round(sys.array_size_w || 0)}W Array • {sys.daily_yield.toFixed(0)}Wh/day</p>
                               </div>
                             </div>
                           </div>
@@ -4730,7 +4774,7 @@ const liveWiringPrice = liveSizing
                           </label>
                         )}
                         <div className="mt-4 space-y-2 text-xs">
-                          <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w || 0}W</span></div>
+                          <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{Math.round(selectedSystemDetails.array_size_w || 0)}W</span></div>
                           <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{(selectedSystemDetails.daily_yield || 0).toFixed(0)}Wh</span></div>
                           <div className="flex justify-between pt-2 border-t border-stone-200">
                             <span className="text-amber-600 font-bold">Price</span>
@@ -4800,9 +4844,11 @@ const liveWiringPrice = liveSizing
                                     : (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
                                   const currentQty = wiringQuantities[item.id] ?? item.qty ?? 1;
                                   const itemPrice = calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override });
+                                  const tooltipText = item.tooltip ?? item.description;
                                   return (
                                     <div
                                       key={item.id}
+                                      title={tooltipText}
                                       className={`p-4 rounded-2xl border transition-all relative ${
                                         isIncluded 
                                           ? (isOptional 
@@ -4813,9 +4859,9 @@ const liveWiringPrice = liveSizing
                                     >
                                       {/* Tooltip on hover - wrapper for group hover */}
                                       <div className="relative group">
-                                        {item.tooltip && (
+                                        {tooltipText && (
                                           <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                            {item.tooltip}
+                                            {tooltipText}
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
                                           </div>
                                         )}
@@ -4922,77 +4968,97 @@ const liveWiringPrice = liveSizing
                         </p>
 
                         {/* Available Optional Items - not yet selected */}
-                        {!partialMode && (
-                          <div className="mt-6 pt-6 border-t border-stone-200">
-                            <button
-                              type="button"
-                              onClick={() => setShowOptionalItems(!showOptionalItems)}
-                              className="w-full flex items-center justify-between gap-2 p-2 rounded-xl hover:bg-stone-100 transition-colors"
-                            >
-                              <h5 className="font-bold text-stone-700 flex items-center gap-2">
-                                <PlusCircle className="w-5 h-5 text-amber-600" />
-                                Available Optional Items
-                              </h5>
-                              <ChevronDown className={`w-5 h-5 text-stone-500 transition-transform ${showOptionalItems ? "rotate-180" : ""}`} />
-                            </button>
-                            {showOptionalItems && (
-                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <p className="text-xs text-stone-500 col-span-full">
-                                  Click to add optional items to your quote. Hover for description.
-                                </p>
-                                {wiring
-                                  .filter(w => w.type === "nice-to-have" && !liveSizing?.includeIds.has(w.id))
-                                  .map(item => (
-                                    <div
-                                      key={item.id}
-                                      className="p-4 rounded-2xl border bg-amber-50 border-amber-100 transition-all relative group cursor-pointer hover:bg-amber-100"
-                                    >
-                                      {item.tooltip && (
+                        <div className="mt-6 pt-6 border-t border-stone-200">
+                          <button
+                            type="button"
+                            onClick={() => setShowOptionalItems(!showOptionalItems)}
+                            className="w-full flex items-center justify-between gap-2 p-2 rounded-xl hover:bg-stone-100 transition-colors"
+                          >
+                            <h5 className="font-bold text-stone-700 flex items-center gap-2">
+                              <PlusCircle className="w-5 h-5 text-amber-600" />
+                              Available Optional Items
+                            </h5>
+                            <ChevronDown className={`w-5 h-5 text-stone-500 transition-transform ${showOptionalItems ? "rotate-180" : ""}`} />
+                          </button>
+                          {showOptionalItems && (
+                            <div className="mt-3 space-y-3">
+                              <p className="text-xs text-stone-500">
+                                Only optional items that fit this system are listed. Hover a card to read what it does.
+                              </p>
+                              <input
+                                type="search"
+                                value={optionalSearch}
+                                onChange={(e) => setOptionalSearch(e.target.value)}
+                                placeholder="Search optional items by name or spec..."
+                                className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              />
+                              {optionalByCategory.length === 0 && (
+                                <p className="text-sm text-stone-500 px-1">No compatible optional items match your search.</p>
+                              )}
+                              {optionalByCategory.map(([category, items], index) => (
+                                <details
+                                  key={category}
+                                  open={index === 0 || optionalQuery !== ""}
+                                  className="rounded-2xl border border-stone-200 bg-stone-50/60"
+                                >
+                                  <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-2">
+                                    <span className="font-bold text-sm text-stone-700">{WIRING_CATEGORY_LABELS[category].label}</span>
+                                    <span className="text-xs text-stone-500">{items.length} item{items.length === 1 ? "" : "s"}</span>
+                                  </summary>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 pt-0">
+                                    {items.map(item => (
+                                      <div
+                                        key={item.id}
+                                        title={item.tooltip ?? item.description}
+                                        className="p-4 rounded-2xl border bg-amber-50 border-amber-100 transition-all relative group cursor-pointer hover:bg-amber-100"
+                                      >
                                         <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                          {item.tooltip}
+                                          {item.tooltip ?? item.description}
                                           <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
                                         </div>
-                                      )}
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-bold text-stone-900 break-words">{item.name}</p>
-                                          <p className="text-xs text-stone-500">
-                                            {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
-                                          </p>
-                                        </div>
-                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">
-                                          Optional
-                                        </span>
-                                      </div>
-                                      <div className="space-y-1 text-xs text-stone-500 mb-3">
-                                        {Object.entries(item.specs || {}).map(([key, value]) => (
-                                          <div key={key} className="flex items-center justify-between gap-4">
-                                            <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                            <span className="font-semibold text-stone-700">{String(value)}</span>
+                                        <div className="flex items-center justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-stone-900 break-words">{item.name}</p>
+                                            <p className="text-xs text-stone-500">
+                                              {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                            </p>
                                           </div>
-                                        ))}
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">
+                                            Optional
+                                          </span>
+                                        </div>
+                                        <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                          {Object.entries(item.specs || {}).map(([key, value]) => (
+                                            <div key={key} className="flex items-center justify-between gap-4">
+                                              <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                              <span className="font-semibold text-stone-700">{String(value)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                          <span className="font-bold text-emerald-600">₦{item.price.toLocaleString()}</span>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedNiceToHaveIds(prev => new Set([...prev, item.id]));
+                                              // Initialize quantity
+                                              setWiringQuantities(prev => ({ ...prev, [item.id]: item.qty ?? 1 }));
+                                            }}
+                                            className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 transition"
+                                          >
+                                            Add
+                                          </button>
+                                        </div>
                                       </div>
-                                      <div className="flex items-center justify-between">
-                                        <span className="font-bold text-emerald-600">₦{item.price.toLocaleString()}</span>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setSelectedNiceToHaveIds(prev => new Set([...prev, item.id]));
-                                            // Initialize quantity
-                                            setWiringQuantities(prev => ({ ...prev, [item.id]: item.qty ?? 1 }));
-                                          }}
-                                          className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 transition"
-                                        >
-                                          Add
-                                        </button>
-                                      </div>
-                                    </div>
-                                  ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                    ))}
+                                  </div>
+                                </details>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
                       </div>
                     )}
 

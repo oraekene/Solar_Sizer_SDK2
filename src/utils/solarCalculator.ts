@@ -736,10 +736,11 @@ export function buildCombinations(
             battery_price: totalBatteryPrice,
             panel_config: `${totalPanels}x ${panel.name}`,
             panel_price: totalPanelPrice,
-            array_size_w: arrayWattsActual,
+            // Round here so fractional panel derating never reaches the UI.
+            array_size_w: Math.round(arrayWattsActual),
             battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
             total_price: totalSystemPrice,
-            daily_yield: dailyYield,
+            daily_yield: Math.round(dailyYield),
             deficit: Math.max(0, effectiveDeficitWh),
             status,
             advice,
