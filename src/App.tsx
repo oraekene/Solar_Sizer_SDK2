@@ -67,10 +67,11 @@ import {
   PDFSettings,
   WiringItem,
   WiringCategory,
-  TimeRange
+  TimeRange,
+  ChargeController
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
+import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
 import { sizeWiring, normalizeWiringSpecs, specNumber } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
@@ -202,7 +203,7 @@ const FUEL_PRICES = {
   Diesel: 1400,
 };
 
-type HardwareType = "inverter" | "panel" | "battery" | "powerstation" | "wiring";
+type HardwareType = "inverter" | "panel" | "battery" | "powerstation" | "chargeController" | "wiring";
 
 const itemData = (item: any, fallbackType?: HardwareType) => {
   if (!item) return null;
@@ -270,6 +271,7 @@ const HardwareCard = ({
 const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
+      const isAllInOne = cd.kit_type === "powerstation" || cd.all_in_one === true;
       return {
         ...cd,
         // DB-enriched products often omit these; the details modal calls toFixed on them.
@@ -282,6 +284,7 @@ const buildProductDetails = (product: Product): SystemCombination => {
         product_name: product.name,
         product_description: product.description,
         component_specs: cd.component_specs ?? [],
+        all_in_one: isAllInOne,
       };
     }
 
@@ -798,6 +801,11 @@ export default function App() {
     const data: Powerstation[] = saved ? JSON.parse(saved) : (typeof POWERSTATIONS !== 'undefined' ? POWERSTATIONS : []);
     return data.map((item, idx) => ({ ...item, id: item.id || `ps-legacy-${idx}` }));
   });
+  const [chargeControllers, setChargeControllers] = useState<ChargeController[]>(() => {
+    const saved = localStorage.getItem("ss_charge_controllers");
+    const data: ChargeController[] = saved ? JSON.parse(saved) : (typeof CHARGE_CONTROLLERS !== 'undefined' ? CHARGE_CONTROLLERS : []);
+    return data.map((item, idx) => ({ ...item, id: item.id || `cc-legacy-${idx}` }));
+  });
   const [wiring, setWiring] = useState<WiringItem[]>(() => {
     // v2 key: v1 only ever held the small default seed, before wiring was editable.
     const saved = localStorage.getItem("ss_wiring_v2");
@@ -1085,7 +1093,7 @@ export default function App() {
 
   const results = useMemo(() => {
     if (devices.length === 0) return null;
-    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations, wiring }, batteryPreference, tolerance, products, margins, showHighRisk, Array.from(selectedNiceToHaveIds));
+    const res = buildCombinations(region, devices, { inverters, panels, batteries, powerstations, chargeControllers, wiring }, batteryPreference, tolerance, products, margins, showHighRisk, Array.from(selectedNiceToHaveIds));
     return res;
   }, [region, devices, inverters, panels, batteries, powerstations, wiring, batteryPreference, tolerance, products, margins, showHighRisk, selectedNiceToHaveIds]);
 
@@ -1137,11 +1145,12 @@ export default function App() {
     safeLocalStorageSet("ss_panels", panels);
     safeLocalStorageSet("ss_batteries", batteries);
     safeLocalStorageSet("ss_powerstations", powerstations);
+    safeLocalStorageSet("ss_charge_controllers", chargeControllers);
     safeLocalStorageSet("ss_wiring_v2", wiring);
     safeLocalStorageSet("ss_profiles", profiles);
     safeLocalStorageSet("ss_margins", margins);
     safeLocalStorageSet("ss_pdf_settings", pdfSettings);
-  }, [inverters, panels, batteries, powerstations, wiring, profiles, margins, pdfSettings]);
+  }, [inverters, panels, batteries, powerstations, chargeControllers, wiring, profiles, margins, pdfSettings]);
 
   const saveProfile = async () => {
     if (!profileName.trim()) return;
@@ -2055,6 +2064,7 @@ export default function App() {
     if (type === "panel") setPanels(panels.filter(p => p.id !== id));
     if (type === "battery") setBatteries(batteries.filter(b => b.id !== id));
     if (type === "powerstation") setPowerstations(powerstations.filter(ps => ps.id !== id));
+    if (type === "chargeController") setChargeControllers(chargeControllers.filter(cc => cc.id !== id));
     if (type === "wiring") setWiring(wiring.filter(w => w.id !== id));
   };
 
@@ -2125,6 +2135,7 @@ export default function App() {
     if (type === "panel") setPanels([...panels, newItem]);
     if (type === "battery") setBatteries([...batteries, newItem]);
     if (type === "powerstation") setPowerstations([...powerstations, newItem]);
+    if (type === "chargeController") setChargeControllers([...chargeControllers, newItem]);
     if (type === "wiring") setWiring([...wiring, newItem]);
   };
 
@@ -2484,6 +2495,7 @@ export default function App() {
           arrayWatts: selectedSystemDetails?.array_size_w || 0,
           batteryWh: selectedSystemDetails?.battery_total_wh || 0,
           maxAcW: selectedSystemDetails?.inverter_w,
+          all_in_one: selectedSystemDetails?.all_in_one,
         },
         Array.from(selectedNiceToHaveIds)
       )
@@ -4016,6 +4028,28 @@ const liveWiringPrice = liveSizing
                 ))}
               </HardwareRow>
 
+              <HardwareRow title="Charge Controllers" icon={<Cpu className="w-5 h-5 text-cyan-600" />}>
+                {chargeControllers.map((cc) => (
+                  <HardwareCard
+                    key={cc.id}
+                    name={cc.name}
+                    isDeveloper={isDeveloper}
+                    onDuplicate={() => duplicateHardware("chargeController", cc)}
+                    onEdit={() => startEditing("chargeController", cc)}
+                    onDelete={() => deleteHardware("chargeController", cc.id)}
+                  >
+                    <div className="grid grid-cols-2 gap-2 text-xs text-stone-500">
+                      <span className="font-bold text-stone-700">{cc.type.toUpperCase()}</span>
+                      <span>Bat: {cc.battery_voltage}V</span>
+                      <span>Max PV: {cc.max_pv_w}W</span>
+                      <span>Max Voc: {cc.max_voc}V</span>
+                      <span>Max Amps: {cc.max_amps}A</span>
+                      <span className="col-span-2 font-bold text-emerald-600 mt-1">₦{cc.price.toLocaleString()}</span>
+                    </div>
+                  </HardwareCard>
+                ))}
+              </HardwareRow>
+
               {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => {
                 const items = wiring.filter((w) => w.category === category);
                 return (
@@ -5287,6 +5321,27 @@ const liveWiringPrice = liveSizing
                         sdk.saveHardware({ id: data.id, type: "powerstation", data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
                       }
                     }
+                  } else if (showAddHardware === "chargeController") {
+                    const data: ChargeController = {
+                      id: editingHardware?.id || crypto.randomUUID(),
+                      ...commonData,
+                      type: fd.get("type") as "pwm" | "mppt",
+                      max_pv_w: Number(fd.get("max_pv_w")),
+                      max_voc: Number(fd.get("max_voc")),
+                      max_amps: Number(fd.get("max_amps")),
+                      battery_voltage: Number(fd.get("battery_voltage")),
+                    };
+                    if (editingHardware) {
+                      setChargeControllers(chargeControllers.map(c => c.id === editingHardware.id ? data : c));
+                    } else {
+                      setChargeControllers([...chargeControllers, data]);
+                    }
+                    if (isDeveloper) {
+                      const adminKey = sessionStorage.getItem("ss_admin_key");
+                      if (adminKey) {
+                        sdk.saveHardware({ id: data.id, type: "chargeController", data, tags: data.tags, description: data.description }, adminKey).catch(console.error);
+                      }
+                    }
                   } else if (showAddHardware === "wiring") {
                     const category = fd.get("category") as WiringCategory;
                     const categoryFields = WIRING_SPEC_FIELDS[category] || [];
@@ -5414,6 +5469,15 @@ const liveWiringPrice = liveSizing
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as Powerstation)?.battery_voltage} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Capacity (Ah)</label><input name="capacity_ah" type="number" step="any" defaultValue={(currentItem as Powerstation)?.capacity_ah} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                             <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Min C-Rate</label><input name="min_c_rate" type="number" step="any" defaultValue={(currentItem as Powerstation)?.min_c_rate || 0.1} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                          </>
+                        )}
+                        {showAddHardware === "chargeController" && (
+                          <>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Type</label><select name="type" defaultValue={(currentItem as ChargeController)?.type || "mppt"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"><option value="pwm">PWM</option><option value="mppt">MPPT</option></select></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Voltage (V)</label><input name="battery_voltage" type="number" step="any" defaultValue={(currentItem as ChargeController)?.battery_voltage} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max PV (W)</label><input name="max_pv_w" type="number" step="any" defaultValue={(currentItem as ChargeController)?.max_pv_w} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Voc (V)</label><input name="max_voc" type="number" step="any" defaultValue={(currentItem as ChargeController)?.max_voc} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
+                            <div><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Max Amps (A)</label><input name="max_amps" type="number" step="any" defaultValue={(currentItem as ChargeController)?.max_amps} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
                           </>
                         )}
                         {showAddHardware === "wiring" && (

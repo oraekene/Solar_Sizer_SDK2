@@ -338,4 +338,9 @@ export const seedHardware = [
   { id: 'h_i_9', type: 'internet', tags: ['internet', 'tier-b'], description: 'Travel Router with Multi-WAN.', data: { name: 'GL.iNet Slate AX (GL-AXT1800)', default_watts: 10, price: 75000 } },
   { id: 'h_i_10', type: 'internet', tags: ['internet', 'tier-b'], description: 'Budget Multi-WAN Load Balancer.', data: { name: 'Cudy WR2100', default_watts: 10, price: 35000 } },
   { id: 'h_i_11', type: 'internet', tags: ['internet', 'tier-c'], description: 'Hardware Bonding Router.', data: { name: 'Pepwave MAX BR1 Mini', default_watts: 15, price: 350000 } },
+  { id: 'h_cc_1', type: 'chargeController', tags: ['mppt', '12v'], description: '40A MPPT controller for 12V systems.', data: { name: 'EPEVER Tracer 40A MPPT', type: 'mppt', max_pv_w: 520, max_voc: 100, max_amps: 40, battery_voltage: 12, price: 45000 } },
+  { id: 'h_cc_2', type: 'chargeController', tags: ['mppt', '24v'], description: '60A MPPT controller for 24V systems.', data: { name: 'EPEVER Tracer 60A MPPT', type: 'mppt', max_pv_w: 780, max_voc: 150, max_amps: 60, battery_voltage: 24, price: 75000 } },
+  { id: 'h_cc_3', type: 'chargeController', tags: ['mppt', '12v'], description: '50A MPPT with Bluetooth.', data: { name: 'Victron SmartSolar MPPT 100/50', type: 'mppt', max_pv_w: 700, max_voc: 100, max_amps: 50, battery_voltage: 12, price: 120000 } },
+  { id: 'h_cc_4', type: 'chargeController', tags: ['mppt', '48v'], description: '70A MPPT for 48V systems.', data: { name: 'Victron SmartSolar MPPT 150/70', type: 'mppt', max_pv_w: 1000, max_voc: 150, max_amps: 70, battery_voltage: 48, price: 180000 } },
+  { id: 'h_cc_5', type: 'chargeController', tags: ['pwm', '12v'], description: '20A PWM controller for small 12V systems.', data: { name: 'EPEVER LS2024B 20A PWM', type: 'pwm', max_pv_w: 260, max_voc: 50, max_amps: 20, battery_voltage: 12, price: 12000 } },
 ];

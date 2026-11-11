@@ -1,4 +1,4 @@
-import { Battery, DeviceCategory, Inverter, Panel, Powerstation, Region, WiringItem, WiringCategory } from "./types";
+import { Battery, DeviceCategory, Inverter, Panel, Powerstation, ChargeController, Region, WiringItem, WiringCategory } from "./types";
 
 export const LOCATION_PSH: Record<Region, number> = {
   SE_SS: 2.2,
@@ -141,6 +141,64 @@ export const POWERSTATIONS: Powerstation[] = [
     tags: ["pro", "high-capacity"],
     battery_type: "lithium",
     inverter_type: "pure-sine"
+  }
+];
+
+export const CHARGE_CONTROLLERS: ChargeController[] = [
+  {
+    id: "cc-1",
+    name: "EPEVER Tracer 40A MPPT",
+    type: "mppt",
+    max_pv_w: 520,
+    max_voc: 100,
+    max_amps: 40,
+    battery_voltage: 12,
+    price: 45000,
+    description: "40A MPPT controller for 12V systems. Max 520W PV input."
+  },
+  {
+    id: "cc-2",
+    name: "EPEVER Tracer 60A MPPT",
+    type: "mppt",
+    max_pv_w: 780,
+    max_voc: 150,
+    max_amps: 60,
+    battery_voltage: 24,
+    price: 75000,
+    description: "60A MPPT controller for 24V systems. Max 780W PV input."
+  },
+  {
+    id: "cc-3",
+    name: "Victron SmartSolar MPPT 100/50",
+    type: "mppt",
+    max_pv_w: 700,
+    max_voc: 100,
+    max_amps: 50,
+    battery_voltage: 12,
+    price: 120000,
+    description: "50A MPPT with Bluetooth. Max 700W @ 12V, 1400W @ 24V."
+  },
+  {
+    id: "cc-4",
+    name: "Victron SmartSolar MPPT 150/70",
+    type: "mppt",
+    max_pv_w: 1000,
+    max_voc: 150,
+    max_amps: 70,
+    battery_voltage: 48,
+    price: 180000,
+    description: "70A MPPT for 48V systems. Max 3400W PV input."
+  },
+  {
+    id: "cc-5",
+    name: "EPEVER LS2024B 20A PWM",
+    type: "pwm",
+    max_pv_w: 260,
+    max_voc: 50,
+    max_amps: 20,
+    battery_voltage: 12,
+    price: 12000,
+    description: "20A PWM controller for small 12V systems."
   }
 ];
 

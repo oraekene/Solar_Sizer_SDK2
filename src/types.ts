@@ -86,6 +86,19 @@ export interface Powerstation {
   description?: string;
 }
 
+export interface ChargeController {
+  id: string;
+  name: string;
+  type: 'pwm' | 'mppt';
+  max_pv_w: number;
+  max_voc: number;
+  max_amps: number;
+  battery_voltage: number; // 12, 24, 48
+  price: number;
+  description?: string;
+  tags?: string[];
+}
+
 export type WiringCategory = 
   | 'cables' 
   | 'breakers' 
@@ -162,6 +175,8 @@ export interface SystemCombination {
   panel_w?: number;
   kit_type?: 'solar' | 'internet' | 'powerstation';
   cc_type?: 'pwm' | 'mppt';
+  /** When true, the battery and inverter are pre-coupled (powerstation or all-in-one kit). Skips battery-to-inverter cables and DC breakers. */
+  all_in_one?: boolean;
   component_specs?: KitComponentSpec[];
   product_name?: string;
   product_description?: string;

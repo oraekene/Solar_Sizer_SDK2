@@ -65,6 +65,8 @@ export interface WiringSizingInput {
   batteryWh: number;
   systemVdc?: number;
   maxAcW?: number;
+  /** Skip battery-to-inverter cables and DC breakers (powerstation or coupled kit). */
+  all_in_one?: boolean;
 }
 
 export interface WiringSizing {
@@ -115,9 +117,12 @@ export const sizeWiring = (
   const pvAmps = panel ? panel.isc * parallelStrings * 1.25 : 0;
   const pvVoc = panel ? panel.voc * seriesCount : 0;
 
+  // All-in-one (powerstation / coupled kit): no battery-to-inverter cables or DC breakers.
+  const isAllInOne = input.all_in_one === true;
+
   // Cable groups are sized against the current they actually carry.
   const cableTarget: Record<string, number> = {
-    Copper: dcAmps,
+    Copper: isAllInOne ? 0 : dcAmps,
     "PV Wire": pvAmps,
     "Twin & Earth": acAmps,
   };
@@ -137,6 +142,9 @@ export const sizeWiring = (
     }
 
     for (const [group, candidates] of groups) {
+      // All-in-one: skip Copper (battery-to-inverter cables) and breakers entirely.
+      if (isAllInOne && (group === "Copper" || group === "breakers")) continue;
+
       const target =
         group === "Copper" || group === "breakers"
           ? dcAmps

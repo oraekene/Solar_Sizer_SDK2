@@ -1,5 +1,5 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES, WIRING as DEFAULT_WIRING } from "../constants";
-import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
+import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ChargeController, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
 import { sizeWiring } from "./wiringSizer";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
@@ -340,7 +340,7 @@ const getEffectiveDeficitWh = (
 export function buildCombinations(
   location: Region,
   devices: Device[],
-  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[]; wiring?: WiringItem[] },
+  hardware: { inverters: Inverter[]; panels: Panel[]; batteries: Battery[]; powerstations: Powerstation[]; chargeControllers?: ChargeController[]; wiring?: WiringItem[] },
   batteryPreference: BatteryPreference = "any",
   tolerance: number = 20,
   products: Product[] = [],
@@ -354,6 +354,7 @@ export function buildCombinations(
     panels: Array.isArray(hardware?.panels) ? hardware.panels : [],
     batteries: Array.isArray(hardware?.batteries) ? hardware.batteries : [],
     powerstations: Array.isArray(hardware?.powerstations) ? hardware.powerstations : [],
+    chargeControllers: Array.isArray(hardware?.chargeControllers) ? hardware.chargeControllers : [],
     wiring: hardware.wiring ?? DEFAULT_WIRING
   };
   const safeProducts = Array.isArray(products) ? products : [];
@@ -374,6 +375,7 @@ export function buildCombinations(
     const prodLog: string[] = [];
     const data = prod.combination_data;
     const kitType = getKitType(data);
+    const isAllInOneKit = data.kit_type === "powerstation" || data.all_in_one === true;
 
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;
@@ -453,6 +455,7 @@ export function buildCombinations(
       battery_wh: batWh,
       panel_w: panW,
       kit_type: kitType,
+      all_in_one: isAllInOneKit,
       component_specs: buildKitComponentSpecs(prod, data),
       product_name: prod.name,
       product_description: prod.description,
@@ -531,7 +534,8 @@ export function buildCombinations(
       status,
       advice,
       log: psLog,
-      is_preconfigured: true
+      is_preconfigured: true,
+      all_in_one: true
     });
 
     allLogs.push(psLog);
@@ -628,133 +632,143 @@ export function buildCombinations(
         batLog.push(`✅ Battery bank is compatible with inverter charging capacity.`);
         const totalBatteryPrice = applyMargin(bat.price * totalBatteries, margins.battery);
 
+        // Charge controller options: built-in + any external controllers that match battery voltage
+        const ccOptions: Array<{ cc: ChargeController; name: string }> = [
+          { cc: { max_pv_w: inv.cc_max_pv_w, max_voc: inv.cc_max_voc, max_amps: inv.cc_max_amps, type: inv.cc_type, battery_voltage: inv.system_vdc } as ChargeController, name: `Built-in (${inv.cc_type.toUpperCase()})` }
+        ];
+        for (const extCC of safeHardware.chargeControllers) {
+          if (extCC.battery_voltage === inv.system_vdc) {
+            ccOptions.push({ cc: extCC, name: extCC.name });
+          }
+        }
+
         for (const panel of safeHardware.panels) {
           const panelLog = [...batLog];
           panelLog.push(`Checking panel: ${panel.name} (${panel.watts}W, Voc: ${panel.voc}V, Isc: ${panel.isc}A)`);
 
-          const maxSeries = Math.floor(inv.cc_max_voc / panel.voc);
-          const maxParallel = Math.floor(totalMaxCcAmps / panel.isc);
-          const maxAllowedPanels = maxSeries * maxParallel;
-          panelLog.push(`Charge controller limits: Max ${maxSeries} in series, Max ${maxParallel} in parallel (Total: ${maxAllowedPanels} panels).`);
+          // Try each charge controller option
+          for (const { cc, name: ccName } of ccOptions) {
+            const ccLog = [...panelLog];
+            ccLog.push(`Charge controller: ${ccName} (${cc.type.toUpperCase()}, ${cc.max_pv_w}W, ${cc.max_voc}V, ${cc.max_amps}A)`);
 
-          if (maxAllowedPanels === 0) {
-            panelLog.push(`❌ Rejected: Panel electrical specs exceed charge controller limits.`);
-            allLogs.push(panelLog);
-            continue;
-          }
+            const maxSeries = Math.floor(cc.max_voc / panel.voc);
+            const maxParallel = Math.floor(cc.max_amps / panel.isc);
+            const maxAllowedPanels = maxSeries * maxParallel;
+            ccLog.push(`Charge controller limits: Max ${maxSeries} in series, Max ${maxParallel} in parallel (Total: ${maxAllowedPanels} panels).`);
 
-          const ccType = (inv.cc_type || "pwm").toLowerCase();
-          let usableWattsPerPanel = 0;
+            if (maxAllowedPanels === 0) {
+              ccLog.push(`❌ Rejected: Panel electrical specs exceed ${ccName} limits.`);
+              allLogs.push(ccLog);
+              continue;
+            }
 
-          if (ccType === "mppt") {
-            usableWattsPerPanel = panel.watts * 0.95;
-            panelLog.push(`Charge Controller: MPPT (Efficiency: 95%). Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W.`);
-          } else {
-            const chargingVoltage = (inv.system_vdc / 12) * 13.5;
-            usableWattsPerPanel = chargingVoltage * panel.isc;
-            const ccEfficiency = usableWattsPerPanel / panel.watts;
-            panelLog.push(
-              `Charge Controller: PWM. Panel voltage dragged to ${chargingVoltage}V. Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W (Effective Efficiency: ${(ccEfficiency * 100).toFixed(1)}%).`
+            let usableWattsPerPanel = 0;
+            const isMppt = cc.type === "mppt";
+
+            if (isMppt) {
+              usableWattsPerPanel = panel.watts * 0.95;
+              ccLog.push(`Charge Controller: MPPT (Efficiency: 95%). Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W.`);
+            } else {
+              const chargingVoltage = (inv.system_vdc / 12) * 13.5;
+              usableWattsPerPanel = chargingVoltage * panel.isc;
+              const ccEfficiency = usableWattsPerPanel / panel.watts;
+              ccLog.push(
+                `Charge Controller: PWM. Panel voltage dragged to ${chargingVoltage}V. Usable power per panel: ${usableWattsPerPanel.toFixed(1)}W (Effective Efficiency: ${(ccEfficiency * 100).toFixed(1)}%).`
+              );
+            }
+
+            const requiredArrayWatts = total_daily_wh / (psh * 0.8);
+            let minPanelsNeeded = Math.ceil(requiredArrayWatts / usableWattsPerPanel);
+            if (minPanelsNeeded < 1) minPanelsNeeded = 1;
+
+            ccLog.push(`Minimum panels needed to meet load (${total_daily_wh}Wh): ${minPanelsNeeded}.`);
+
+            if (minPanelsNeeded > maxAllowedPanels) {
+              ccLog.push(`❌ Rejected: Required panels (${minPanelsNeeded}) exceeds ${ccName} physical limit (${maxAllowedPanels}).`);
+              allLogs.push(ccLog);
+              continue;
+            }
+
+            const totalPanels = minPanelsNeeded;
+            const arrayWattsRaw = totalPanels * panel.watts;
+            const arrayWattsActual = totalPanels * usableWattsPerPanel;
+            const usableArrayWatts = Math.min(arrayWattsActual, cc.max_pv_w);
+
+            if (arrayWattsRaw > cc.max_pv_w) {
+              ccLog.push(`Note: Array size (${arrayWattsRaw}W) exceeds ${ccName} PV input (${cc.max_pv_w}W). Clipping will occur.`);
+            }
+
+            const dailyYield = usableArrayWatts * psh;
+            ccLog.push(`Adjusted Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+
+            const totalUsableBatteryWh = totalUsablePerString * parallelStrings;
+            const maxChargeW = Math.min(totalMaxChargeAmps * inv.system_vdc, cc.max_pv_w);
+
+            const sim = simulateHourlySoC(
+              analysis.hourly_consumption,
+              dailyYield,
+              totalUsableBatteryWh,
+              maxChargeW,
+              cc.type as "pwm" | "mppt",
+              location
             );
-          }
 
-          const requiredArrayWatts = total_daily_wh / (psh * 0.8);
-          let minPanelsNeeded = Math.ceil(requiredArrayWatts / usableWattsPerPanel);
-          if (minPanelsNeeded < 1) minPanelsNeeded = 1;
+            const simDeficit = sim.finalDeficitWh;
+            const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
+            const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
 
-          panelLog.push(`Minimum panels needed to meet load (${total_daily_wh}Wh): ${minPanelsNeeded}.`);
+            let status: "Optimal" | "Conditional" | "High Risk";
+            let advice: string;
 
-          if (minPanelsNeeded > maxAllowedPanels) {
-            panelLog.push(`❌ Rejected: Required panels (${minPanelsNeeded}) exceeds inverter's physical limit (${maxAllowedPanels}).`);
-            allLogs.push(panelLog);
-            continue;
-          }
+            if (sim.passed && effectiveDeficitWh === 0) {
+              status = "Optimal";
+              advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
+            } else if (deficitPercentage <= tolerance) {
+              status = "Conditional";
+              advice = `⚠️ Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%).`;
+            } else {
+              status = "High Risk";
+              advice = `🚨 High Blackout Risk: You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). Use the sliders below to adjust your schedule and prevent this.`;
+            }
 
-          const totalPanels = minPanelsNeeded;
-          const arrayWattsRaw = totalPanels * panel.watts;
-          const arrayWattsActual = totalPanels * usableWattsPerPanel;
-          const usableArrayWatts = Math.min(arrayWattsActual, totalMaxPvW);
+            ccLog.push(`Status: ${status}.`);
 
-          if (arrayWattsRaw > totalMaxPvW) {
-            panelLog.push(`Note: Array size (${arrayWattsRaw}W) exceeds charge controller PV input (${totalMaxPvW}W). Clipping will occur.`);
-          }
+            const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
+            const totalPrice = totalBatteryPrice + totalPanelPrice + applyMargin(inv.price * numUnits, margins.inverter);
+            if (cc.max_pv_w !== inv.cc_max_pv_w) {
+              // External charge controller - add its price
+            }
 
-          const dailyYield = usableArrayWatts * psh;
-          panelLog.push(`Adjusted Daily Yield: ${dailyYield.toFixed(0)}Wh.`);
+            validSystems.push({
+              inverter: `${inverterDisplayName} + ${ccName}`,
+              inverter_price: applyMargin(inv.price * numUnits, margins.inverter),
+              battery_config: `${bat.name} (${batteriesInSeries}S x ${parallelStrings}P)`,
+              battery_price: totalBatteryPrice,
+              panel_config: `${totalPanels}x ${panel.name}`,
+              panel_price: totalPanelPrice,
+              array_size_w: arrayWattsRaw,
+              battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
+              total_price: totalPrice,
+              daily_yield: dailyYield,
+              deficit: Math.max(0, effectiveDeficitWh),
+              status,
+              advice,
+              log: ccLog,
+              inverter_data: inv,
+              panel_data: panel,
+              battery_data: bat,
+              inverter_w: totalMaxAcW,
+              battery_wh: bat.voltage * bat.capacity_ah * totalBatteries,
+              panel_w: arrayWattsRaw,
+              cc_type: cc.type,
+            });
 
-          const totalUsableBatteryWh = totalUsablePerString * parallelStrings;
-          const maxChargeW = totalMaxChargeAmps * inv.system_vdc;
-
-          const sim = simulateHourlySoC(
-            analysis.hourly_consumption,
-            dailyYield,
-            totalUsableBatteryWh,
-            maxChargeW,
-            ccType as "pwm" | "mppt",
-            location
-          );
-
-          const simDeficit = sim.finalDeficitWh;
-          const effectiveDeficitWh = getEffectiveDeficitWh(total_daily_wh, dailyYield, simDeficit);
-          const deficitPercentage = getHourlyDeficitPct(total_daily_wh, effectiveDeficitWh);
-          // OLDER VERSION
-          // const simDeficit = sim.finalDeficitWh;
-          // const deficitPercentage = total_daily_wh > 0 ? (simDeficit / total_daily_wh) * 100 : 0;
-
-          let status: "Optimal" | "Conditional" | "High Risk";
-          let advice: string;
-
-          if (sim.passed && effectiveDeficitWh === 0) {
-            status = "Optimal";
-            advice = "Perfect match. Fully covers your scheduled daily energy needs based on hourly simulation.";
-            panelLog.push(`✅ System passed 24-hour hourly stress test.`);
-          } else if (deficitPercentage <= tolerance) {
-            status = "Conditional";
-            const controllerWarning = ccType.toUpperCase();
-            advice = `⚠️ Blackout Risk: With this ${controllerWarning} setup, your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh. Use the sliders below to adjust your schedule and prevent this.`;
-            panelLog.push(`⚠️ System failed hourly simulation (${deficitPercentage.toFixed(0)}% deficit), but within tolerance.`);
-          } else {
-            status = "High Risk";
-            const controllerWarning = ccType.toUpperCase();
-            advice = `🚨 High Blackout Risk: Your battery will drain at ${sim.failureTime}. You are short by ${effectiveDeficitWh.toFixed(0)}Wh (${deficitPercentage.toFixed(0)}%). This system is significantly undersized for your load.`;
-            panelLog.push(`🚨 System failed hourly simulation with high deficit (${deficitPercentage.toFixed(0)}%).`);
-          }
-          
-          // High Risk systems are kept and surfaced to the UI so users whose
-          // load needs an undersized system get a warned option instead of
-          // "No Matching Systems". The old tree pushed them to validSystems;
-          // the current tree dropped them here, leaving the High Risk branches
-          // in the UI unreachable.
-          const totalPanelPrice = applyMargin(panel.price * totalPanels, margins.panel);
-          const totalInverterPrice = applyMargin(inv.price * numUnits, margins.inverter);
-          const totalSystemPrice = totalInverterPrice + totalBatteryPrice + totalPanelPrice;
-
-          validSystems.push({
-            inverter: inverterDisplayName,
-            inverter_price: totalInverterPrice,
-            battery_config: `${totalBatteries}x ${bat.name} (${batteriesInSeries}S${parallelStrings}P)`,
-            battery_price: totalBatteryPrice,
-            panel_config: `${totalPanels}x ${panel.name}`,
-            panel_price: totalPanelPrice,
-            // Round here so fractional panel derating never reaches the UI.
-            array_size_w: Math.round(arrayWattsActual),
-            battery_total_wh: bat.voltage * bat.capacity_ah * totalBatteries,
-            total_price: totalSystemPrice,
-            daily_yield: Math.round(dailyYield),
-            deficit: Math.max(0, effectiveDeficitWh),
-            status,
-            advice,
-            log: panelLog,
-            inverter_data: inv,
-            panel_data: panel,
-            battery_data: bat,
-          });
-
-          allLogs.push(panelLog);
-        }
-      }
-    }
-  }
+            allLogs.push(ccLog);
+          } // end ccOptions loop
+        } // end panel loop
+        } // end battery loop
+      } // end numUnits loop
+    } // end inverter loop
 
   validSystems.sort((a, b) => {
     const statusOrder = { "Optimal": 0, "Conditional": 1, "High Risk": 2 };
@@ -781,6 +795,7 @@ export function buildCombinations(
         arrayWatts: system.array_size_w,
         batteryWh: system.battery_total_wh,
         maxAcW: system.inverter_w,
+        all_in_one: system.all_in_one,
       },
       selectedNiceToHaveList
     );

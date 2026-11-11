@@ -1,0 +1,7 @@
+-- Charge controller hardware entries (idempotent).
+INSERT OR IGNORE INTO hardware (id, user_id, type, data, tags, description) VALUES
+  ('h_cc_1', 'system', 'chargeController', '{"name":"EPEVER Tracer 40A MPPT","type":"mppt","max_pv_w":520,"max_voc":100,"max_amps":40,"battery_voltage":12,"price":45000}', '["mppt","12v"]', '40A MPPT controller for 12V systems.'),
+  ('h_cc_2', 'system', 'chargeController', '{"name":"EPEVER Tracer 60A MPPT","type":"mppt","max_pv_w":780,"max_voc":150,"max_amps":60,"battery_voltage":24,"price":75000}', '["mppt","24v"]', '60A MPPT controller for 24V systems.'),
+  ('h_cc_3', 'system', 'chargeController', '{"name":"Victron SmartSolar MPPT 100/50","type":"mppt","max_pv_w":700,"max_voc":100,"max_amps":50,"battery_voltage":12,"price":120000}', '["mppt","12v"]', '50A MPPT with Bluetooth.'),
+  ('h_cc_4', 'system', 'chargeController', '{"name":"Victron SmartSolar MPPT 150/70","type":"mppt","max_pv_w":1000,"max_voc":150,"max_amps":70,"battery_voltage":48,"price":180000}', '["mppt","48v"]', '70A MPPT for 48V systems.'),
+  ('h_cc_5', 'system', 'chargeController', '{"name":"EPEVER LS2024B 20A PWM","type":"pwm","max_pv_w":260,"max_voc":50,"max_amps":20,"battery_voltage":12,"price":12000}', '["pwm","12v"]', '20A PWM controller for small 12V systems.');
