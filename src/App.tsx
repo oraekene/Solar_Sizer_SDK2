@@ -2724,9 +2724,22 @@ const liveWiringPrice = liveSizing
               </div>
 
               <div className="pt-6 border-t border-stone-100">
-                <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center gap-2 mb-4 relative group">
                   <BatteryIcon className="w-5 h-5 text-emerald-600" />
                   <h2 className="font-semibold text-lg">Battery Preference</h2>
+                  <span
+                    tabIndex={0}
+                    className="p-0.5 text-stone-400 hover:text-emerald-600 cursor-help rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    title="Lithium is 80-100% usable and lasts 3000+ cycles. Lead acid is only 50% usable; deeper discharge causes sulfation and shortens life."
+                  >
+                    <Info className="w-4 h-4" />
+                  </span>
+                  <div className="absolute z-30 top-full left-0 mt-2 w-80 bg-stone-900 text-white text-xs leading-relaxed px-3 py-2.5 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">
+                    <p className="font-bold mb-1">Lithium (LiFePO4)</p>
+                    <p>80–100% of capacity is usable, 3,000+ cycles, lighter, with a BMS that protects the cells.</p>
+                    <p className="font-bold mt-2 mb-1">Lead acid</p>
+                    <p>Only 50% is usable. Each deeper discharge causes sulfation and shortens life, so size the bank for at least twice the usable Wh you need. Cheaper upfront, but heavier, needs ventilation, and lasts 300–500 cycles. Use it only for shallow daily cycling and tight budgets.</p>
+                  </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   {(["any", "lithium", "lead-acid"] as BatteryPreference[]).map((pref) => (
@@ -2754,7 +2767,7 @@ const liveWiringPrice = liveSizing
                   <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">{tolerance}%</span>
                 </div>
                 <p className="text-xs text-stone-500 mb-4 leading-relaxed">
-                  Adjust how much energy deficit (shortage) you're willing to accept before a system is marked as "High Risk".
+                  Adjust how much energy deficit (shortage) you're willing to accept before a system is marked as "Undersized".
                 </p>
                 <input 
                   type="range" 
@@ -2773,14 +2786,14 @@ const liveWiringPrice = liveSizing
               </div>
             </section>
 
-            {/* High Risk Toggle */}
+            {/* Undersized Systems Toggle */}
             <section className="bg-white p-6 rounded-2xl shadow-sm border border-stone-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-red-500" />
                   <div>
-                    <h2 className="font-semibold text-lg">Show High Risk Systems</h2>
-                    <p className="text-xs text-stone-500 mt-0.5">Include significantly undersized options that carry blackout warnings</p>
+                    <h2 className="font-semibold text-lg">Show Undersized Systems</h2>
+                    <p className="text-xs text-stone-500 mt-0.5">Include systems that fall significantly short of your load and carry blackout warnings</p>
                   </div>
                 </div>
                 <button
@@ -2804,7 +2817,9 @@ const liveWiringPrice = liveSizing
                   <div className="mb-4">
                     <label className="block text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5">Quick Add from Database</label>
                     <div className="flex flex-wrap gap-2">
-                      {masterDevices.map(md => (
+                      {masterDevices
+                        .filter(md => md.category !== "internet" && !md.tags.includes("internet"))
+                        .map(md => (
                         <button
                           key={md.id}
                           onClick={() => setNewDevice({
@@ -3174,6 +3189,10 @@ const liveWiringPrice = liveSizing
                         const totalPages = Math.ceil(finalDisplay.length / itemsPerPage);
                         const startIndex = (currentPage - 1) * itemsPerPage;
                         const paginatedItems = finalDisplay.slice(startIndex, startIndex + itemsPerPage);
+                        const pageWindowSize = 5;
+                        const pageWindowStart = Math.max(1, Math.min(currentPage - Math.floor(pageWindowSize / 2), totalPages - pageWindowSize + 1));
+                        const pageWindowEnd = Math.min(totalPages, pageWindowStart + pageWindowSize - 1);
+                        const visiblePages = Array.from({ length: pageWindowEnd - pageWindowStart + 1 }, (_, i) => pageWindowStart + i);
 
                         return (
                           <>
@@ -3189,7 +3208,7 @@ const liveWiringPrice = liveSizing
                               >
                                 {startIndex + idx < cheapestOfEach.length && (
                                   <div className="absolute top-0 right-0 bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-bl-xl">
-                                    {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "High Risk Entry"}
+                                    {sys.status === "Optimal" ? "Perfect Match" : sys.status === "Conditional" ? "Budget Option" : "Undersized Entry"}
                                   </div>
                                 )}
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -3207,7 +3226,7 @@ const liveWiringPrice = liveSizing
                                             </span>
                                           ) : sys.status === "High Risk" ? (
                                             <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                              <AlertCircle className="w-3 h-3" /> High Risk
+                                              <AlertCircle className="w-3 h-3" /> Undersized
                                             </span>
                                           ) : (
                                             <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
@@ -3304,20 +3323,32 @@ const liveWiringPrice = liveSizing
 
                             {/* Pagination Controls */}
                             {totalPages > 1 && (
-                              <div className="flex items-center justify-center gap-4 pt-8">
-                                <button
-                                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                  disabled={currentPage === 1}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
-                                >
-                                  <ChevronLeft className="w-5 h-5" />
-                                </button>
-                                <div className="flex items-center gap-2">
-                                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                              <div className="flex flex-col items-center gap-2 pt-8">
+                                <div className="flex items-center justify-center gap-2 max-w-full overflow-x-auto">
+                                  <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all shrink-0"
+                                    title="Previous page"
+                                  >
+                                    <ChevronLeft className="w-5 h-5" />
+                                  </button>
+                                  {pageWindowStart > 1 && (
+                                    <>
+                                      <button
+                                        onClick={() => setCurrentPage(1)}
+                                        className="w-10 h-10 rounded-xl font-bold text-sm bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 transition-all shrink-0"
+                                      >
+                                        1
+                                      </button>
+                                      {pageWindowStart > 2 && <span className="px-1 text-stone-400">…</span>}
+                                    </>
+                                  )}
+                                  {visiblePages.map(page => (
                                     <button
                                       key={page}
                                       onClick={() => setCurrentPage(page)}
-                                      className={`w-10 h-10 rounded-xl font-bold text-sm transition-all ${
+                                      className={`w-10 h-10 rounded-xl font-bold text-sm transition-all shrink-0 ${
                                         currentPage === page 
                                         ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' 
                                         : 'bg-white border border-stone-200 text-stone-600 hover:bg-stone-50'
@@ -3326,14 +3357,27 @@ const liveWiringPrice = liveSizing
                                       {page}
                                     </button>
                                   ))}
+                                  {pageWindowEnd < totalPages && (
+                                    <>
+                                      {pageWindowEnd < totalPages - 1 && <span className="px-1 text-stone-400">…</span>}
+                                      <button
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className="w-10 h-10 rounded-xl font-bold text-sm bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 transition-all shrink-0"
+                                      >
+                                        {totalPages}
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all shrink-0"
+                                    title="Next page"
+                                  >
+                                    <ChevronRight className="w-5 h-5" />
+                                  </button>
                                 </div>
-                                <button
-                                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                  disabled={currentPage === totalPages}
-                                  className="p-2 bg-white border border-stone-200 rounded-xl disabled:opacity-50 hover:bg-stone-50 transition-all"
-                                >
-                                  <ChevronRight className="w-5 h-5" />
-                                </button>
+                                <p className="text-xs font-semibold text-stone-500">Page {currentPage} of {totalPages}</p>
                               </div>
                             )}
                           </>
@@ -4426,7 +4470,7 @@ const liveWiringPrice = liveSizing
                                   </span>
                                 ) : sys.status === "High Risk" ? (
                                   <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
-                                    <AlertCircle className="w-3 h-3" /> High Risk
+                                    <AlertCircle className="w-3 h-3" /> Undersized
                                   </span>
                                 ) : (
                                   <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold uppercase rounded-full flex items-center gap-1">
@@ -4659,7 +4703,7 @@ const liveWiringPrice = liveSizing
                       {selectedSystemDetails.status === "Optimal"
                         ? "Perfect Match"
                         : selectedSystemDetails.status === "High Risk"
-                        ? "High Risk Configuration"
+                        ? "Undersized Configuration"
                         : "Conditional Recommendation"}
                     </h4>
                     <p className="text-sm text-stone-600 mt-1">{selectedSystemDetails.advice}</p>
