@@ -224,6 +224,9 @@ export interface SavedResult {
   system_data?: SystemCombination;
   is_comparison?: boolean;
   has_generator?: boolean;
+  has_grid?: boolean;
+  grid_per_kwh?: number;
+  grid_kwh_override?: number | null;
 }
 
 export interface Product {

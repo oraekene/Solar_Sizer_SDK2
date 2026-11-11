@@ -150,6 +150,11 @@ interface GeneratorProfile {
   lifespan_mo: number;
 }
 
+interface GridProfile {
+  per_kwh_cost: number;
+  daily_kwh: number;
+}
+
 const GENERATOR_PROFILES: GeneratorProfile[] = [
   {
     name: "Small Petrol (I Better Pass My Neighbor)",
@@ -236,7 +241,7 @@ const HardwareRow = ({ title, icon, action, children }: { title: string; icon: R
       </h3>
       {action}
     </div>
-    <div className="flex gap-4 overflow-x-auto pb-3">{children}</div>
+    <div className="flex flex-wrap gap-4">{children}</div>
   </section>
 );
 
@@ -390,31 +395,55 @@ const computeGeneratorCosts = (
   return { initialCost, monthlyFuel, monthlyTotal, fiveYearTotal, fuelPrice };
 };
 
-function ComparisonModal({ 
-  systems, 
-  analysis, 
-  hasGenerator: initialHasGenerator, 
-  setHasGenerator: onHasGeneratorChange, 
+function ComparisonModal({
+  systems,
+  analysis,
+  hasGenerator: initialHasGenerator,
+  setHasGenerator: onHasGeneratorChange,
+  hasGrid: initialHasGrid,
+  setHasGrid: onHasGridChange,
+  gridPerKwh: initialGridPerKwh,
+  setGridPerKwh: onGridPerKwhChange,
+  gridKwhOverride: initialGridKwhOverride,
+  setGridKwhOverride: onGridKwhOverrideChange,
   exportComparisonToPDF,
   onSave,
-  onClose 
-}: { 
-  systems: SystemCombination[]; 
+  onClose
+}: {
+  systems: SystemCombination[];
   analysis: LoadAnalysis;
   hasGenerator: boolean;
   setHasGenerator: (val: boolean) => void;
-  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null, savedAnalysis?: LoadAnalysis) => void;
+  hasGrid: boolean;
+  setHasGrid: (val: boolean) => void;
+  gridPerKwh: number;
+  setGridPerKwh: (val: number) => void;
+  gridKwhOverride: number | null;
+  setGridKwhOverride: (val: number | null) => void;
+  exportComparisonToPDF: (profileName: string, systems: SystemCombination[], hasGen: boolean, genHours: number, fuelPriceOverride: number | null, hasGridFlag: boolean, gridPerKwh: number, gridKwhOverride: number | null, savedAnalysis?: LoadAnalysis) => void;
   onSave?: () => void;
-  onClose: () => void 
+  onClose: () => void
 }) {
   const [hasGenerator, setHasGenerator] = useState(initialHasGenerator);
   const [genHours, setGenHours] = useState(6);
   const [fuelPriceOverride, setFuelPriceOverride] = useState<number | null>(null);
+  const [hasGrid, setHasGrid] = useState(initialHasGrid);
+  const [gridPerKwh, setGridPerKwh] = useState(initialGridPerKwh);
+  const [gridKwhOverride, setGridKwhOverride] = useState(initialGridKwhOverride);
 
   // Sync with parent if needed (for live comparisons)
   useEffect(() => {
     onHasGeneratorChange(hasGenerator);
   }, [hasGenerator, onHasGeneratorChange]);
+  useEffect(() => {
+    onHasGridChange(hasGrid);
+  }, [hasGrid, onHasGridChange]);
+  useEffect(() => {
+    onGridPerKwhChange(gridPerKwh);
+  }, [gridPerKwh, onGridPerKwhChange]);
+  useEffect(() => {
+    onGridKwhOverrideChange(gridKwhOverride);
+  }, [gridKwhOverride, onGridKwhOverrideChange]);
 
   // Generator Selection Logic
   const peakWatts = analysis.max_surge;
@@ -428,8 +457,15 @@ function ComparisonModal({
     computeGeneratorCosts(selectedGen, hasGenerator, genHours, fuelPriceOverride, defaultFuelPrice);
   const maintenance = selectedGen.maintenance_mo;
 
+  // Grid power cost maths
+  const gridDailyKwh = gridKwhOverride ?? (analysis.total_daily_wh / 1000);
+  const gridMonthlyKwh = gridDailyKwh * 30;
+  const gridMonthlyCost = gridDailyKwh * gridPerKwh * 30;
+  const gridFiveYearCost = gridMonthlyCost * 60;
+  const gridAmortizedMonthly = gridMonthlyCost;
+
   const exportToPDF = () => {
-    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, hasGenerator, genHours, fuelPriceOverride, analysis);
+    exportComparisonToPDF(`Solar vs. Generator Comparison`, systems, hasGenerator, genHours, fuelPriceOverride, hasGrid, gridPerKwh, gridKwhOverride, analysis);
   };
 
   return (
@@ -450,31 +486,66 @@ function ComparisonModal({
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-stone-200 shadow-sm">
                 <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">I already own this generator</span>
-                <button 
+                <button
                   onClick={() => setHasGenerator(!hasGenerator)}
                   className={`w-12 h-6 rounded-full transition-all relative ${hasGenerator ? 'bg-emerald-600' : 'bg-stone-200'}`}
                 >
                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${hasGenerator ? 'left-7' : 'left-1'}`} />
                 </button>
               </div>
+              <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-stone-200 shadow-sm">
+                <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">Show Grid Power column</span>
+                <button
+                  onClick={() => setHasGrid(!hasGrid)}
+                  className={`w-12 h-6 rounded-full transition-all relative ${hasGrid ? 'bg-emerald-600' : 'bg-stone-200'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${hasGrid ? 'left-7' : 'left-1'}`} />
+                </button>
+              </div>
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
                   <span className="text-[10px] font-bold text-stone-400 uppercase">Hrs/Day</span>
-                  <input 
-                    type="number" 
-                    min="1" 
-                    max="24" 
-                    value={genHours} 
+                  <input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={genHours}
                     onChange={(e) => setGenHours(Number(e.target.value))}
                     className="w-12 text-xs font-bold text-stone-700 outline-none"
                   />
                 </div>
                 <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
                   <span className="text-[10px] font-bold text-stone-400 uppercase">₦/L</span>
-                  <input 
-                    type="number" 
-                    value={fuelPrice} 
+                  <input
+                    type="number"
+                    value={fuelPrice}
                     onChange={(e) => setFuelPriceOverride(Number(e.target.value))}
+                    className="w-20 text-xs font-bold text-stone-700 outline-none"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-stone-400 uppercase">₦/kWh</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={gridPerKwh}
+                    onChange={(e) => setGridPerKwh(Number(e.target.value))}
+                    className="w-20 text-xs font-bold text-stone-700 outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-stone-200 shadow-sm">
+                  <span className="text-[10px] font-bold text-stone-400 uppercase">kWh/Day</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={gridKwhOverride ?? gridDailyKwh}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setGridKwhOverride(v === gridDailyKwh ? null : v);
+                    }}
                     className="w-20 text-xs font-bold text-stone-700 outline-none"
                   />
                 </div>
@@ -518,6 +589,12 @@ function ComparisonModal({
                     Generator
                     <div className="text-[10px] font-bold text-red-600 uppercase mt-1">{selectedGen.capacity_va >= 1000 ? (selectedGen.capacity_va/1000).toFixed(1) + 'kVA' : selectedGen.capacity_va + 'VA'}</div>
                   </th>
+                  {hasGrid && (
+                    <th className="text-center p-4 bg-amber-50 border-b border-amber-100 text-sm font-black text-amber-900 rounded-tr-2xl">
+                      Grid Power
+                      <div className="text-[10px] font-bold text-amber-600 uppercase mt-1">{gridPerKwh} ₦/kWh</div>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -533,6 +610,9 @@ function ComparisonModal({
                       `₦${initialCost.toLocaleString()}`
                     )}
                   </td>
+                  {hasGrid && (
+                    <td className="p-4 text-center font-black text-amber-600">N/A <span className="text-[10px] opacity-60">(Grid Tie)</span></td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Monthly Running Cost</td>
@@ -540,6 +620,9 @@ function ComparisonModal({
                     <td key={getSystemKey(s, i)} className="p-4 text-center font-medium text-emerald-600">₦0 <span className="text-[10px] opacity-60">(Free Sun)</span></td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{monthlyTotal.toLocaleString()}</td>
+                  {hasGrid && (
+                    <td className="p-4 text-center font-black text-amber-600">₦{gridMonthlyCost.toLocaleString()}</td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50">
                   <td className="p-4 font-bold text-stone-600 text-sm">5-Year Total Cost</td>
@@ -547,6 +630,9 @@ function ComparisonModal({
                     <td key={getSystemKey(s, i)} className="p-4 text-center font-black text-stone-900">₦{s.total_price.toLocaleString()}</td>
                   ))}
                   <td className="p-4 text-center font-black text-red-600">₦{fiveYearTotal.toLocaleString()}</td>
+                  {hasGrid && (
+                    <td className="p-4 text-center font-black text-amber-600">₦{gridFiveYearCost.toLocaleString()}</td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Amortized Monthly Cost</td>
@@ -566,6 +652,12 @@ function ComparisonModal({
                     <div className="font-black text-red-600 text-sm">₦{((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
                     <div className="text-[10px] text-red-400 font-bold uppercase">{selectedGen.lifespan_mo / 12}yr Lifespan</div>
                   </td>
+                  {hasGrid && (
+                    <td className="p-4 text-center">
+                      <div className="font-black text-amber-600 text-sm">₦{gridAmortizedMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                      <div className="text-[10px] text-amber-400 font-bold uppercase">Per Month</div>
+                    </td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Fuel Type</td>
@@ -573,6 +665,9 @@ function ComparisonModal({
                     <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-bold text-red-600">{selectedGen.fuel_type}</td>
+                  {hasGrid && (
+                    <td className="p-4 text-center text-sm font-bold text-amber-600">Grid Tie</td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50">
                   <td className="p-4 font-bold text-stone-600 text-sm">Fuel Consumption</td>
@@ -580,6 +675,9 @@ function ComparisonModal({
                     <td key={getSystemKey(s, i)} className="p-4 text-center text-sm font-medium text-stone-400">N/A</td>
                   ))}
                   <td className="p-4 text-center text-sm font-medium">{selectedGen.fuel_consumption_l_hr} L/hr</td>
+                  {hasGrid && (
+                    <td className="p-4 text-center text-sm font-medium">{gridDailyKwh.toFixed(1)} kWh/day</td>
+                  )}
                 </tr>
                 <tr className="border-b border-stone-50 bg-stone-50/30">
                   <td className="p-4 font-bold text-stone-600 text-sm">Reliability</td>
@@ -587,6 +685,9 @@ function ComparisonModal({
                     <td key={getSystemKey(s, i)} className="p-4 text-center text-xs font-medium text-emerald-600">Silent, Automatic</td>
                   ))}
                   <td className="p-4 text-center text-xs font-medium text-red-600">Noisy, Fumes, Manual Start</td>
+                  {hasGrid && (
+                    <td className="p-4 text-center text-xs font-medium text-amber-600">Always On, Metered</td>
+                  )}
                 </tr>
               </tbody>
             </table>
@@ -622,6 +723,25 @@ function ComparisonModal({
                   </li>
                 </ul>
               </div>
+              {hasGrid && (
+                <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100">
+                  <h4 className="text-xs font-black text-amber-400 uppercase tracking-widest mb-4">Grid Power Profile</h4>
+                  <ul className="space-y-3">
+                    <li className="flex gap-2 text-sm text-amber-700 font-medium">
+                      <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      Cost: ₦{gridPerKwh}/kWh, {gridDailyKwh.toFixed(1)} kWh/day
+                    </li>
+                    <li className="flex gap-2 text-sm text-amber-700 font-medium">
+                      <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      Monthly Bill: ₦{gridMonthlyCost.toLocaleString()}
+                    </li>
+                    <li className="flex gap-2 text-sm text-amber-700 font-medium">
+                      <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      Always On, metered, no fuel logistics
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -964,11 +1084,39 @@ export default function App() {
   const [hasGenerator, setHasGenerator] = useState(() => {
     return localStorage.getItem("ss_has_generator") === "true";
   });
+  const [hasGrid, setHasGrid] = useState(() => {
+    return localStorage.getItem("ss_has_grid") === "true";
+  });
+  const [gridPerKwh, setGridPerKwh] = useState(() => {
+    const saved = localStorage.getItem("ss_grid_per_kwh");
+    return saved ? Number(saved) : 12;
+  });
+  const [gridKwhOverride, setGridKwhOverride] = useState<number | null>(() => {
+    const saved = localStorage.getItem("ss_grid_kwh_override");
+    return saved ? Number(saved) : null;
+  });
 
   useEffect(() => {
     localStorage.setItem("ss_has_generator", String(hasGenerator));
     storeSet("ss_has_generator", hasGenerator).catch(() => {});
   }, [hasGenerator]);
+  useEffect(() => {
+    localStorage.setItem("ss_has_grid", String(hasGrid));
+    storeSet("ss_has_grid", hasGrid).catch(() => {});
+  }, [hasGrid]);
+  useEffect(() => {
+    localStorage.setItem("ss_grid_per_kwh", String(gridPerKwh));
+    storeSet("ss_grid_per_kwh", gridPerKwh).catch(() => {});
+  }, [gridPerKwh]);
+  useEffect(() => {
+    if (gridKwhOverride === null) {
+      localStorage.removeItem("ss_grid_kwh_override");
+      storeRemove("ss_grid_kwh_override").catch(() => {});
+    } else {
+      localStorage.setItem("ss_grid_kwh_override", String(gridKwhOverride));
+      storeSet("ss_grid_kwh_override", gridKwhOverride).catch(() => {});
+    }
+  }, [gridKwhOverride]);
 
   const [selectedForComparison, setSelectedForComparison] = useState<SystemCombination[]>([]);
   const [showComparison, setShowComparison] = useState(false);
@@ -1254,6 +1402,9 @@ export default function App() {
       devices: [...devices],
       is_comparison: true,
       has_generator: hasGenerator,
+      has_grid: hasGrid,
+      grid_per_kwh: gridPerKwh,
+      grid_kwh_override: gridKwhOverride,
       created_at: new Date().toISOString(),
     };
 
@@ -1291,11 +1442,14 @@ export default function App() {
   };
 
   const exportComparisonToPDF = (
-    profileName: string, 
-    systems: SystemCombination[], 
-    hasGen: boolean = false, 
-    genHours: number = 6, 
+    profileName: string,
+    systems: SystemCombination[],
+    hasGen: boolean = false,
+    genHours: number = 6,
     fuelPriceOverride: number | null = null,
+    hasGridFlag: boolean = false,
+    gridPerKwh: number = 12,
+    gridKwhOverride: number | null = null,
     savedAnalysis?: LoadAnalysis
   ) => {
     const doc = new jsPDF('l', 'mm', 'a4');
@@ -1321,15 +1475,20 @@ export default function App() {
 
     const headers = ["Feature", ...systems.map((s, i) => s.inverter || `Option ${i+1}`)];
     if (hasGen) headers.push("Generator");
+    if (hasGridFlag) headers.push("Grid Power");
+
+    const gridDailyKwh = gridKwhOverride ?? (activeAnalysis ? activeAnalysis.total_daily_wh / 1000 : 0);
+    const gridMonthlyCost = gridDailyKwh * gridPerKwh * 30;
+    const gridFiveYearCost = gridMonthlyCost * 60;
 
     const rows = [
-      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${initialCost.toLocaleString()}`] : [])],
-      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), ...(hasGen ? [`N${monthlyTotal.toLocaleString()}`] : [])],
-      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${fiveYearTotal.toLocaleString()}`] : [])],
-      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), ...(hasGen ? [`N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`] : [])],
-      ["Fuel Type", ...systems.map(_ => "N/A"), ...(hasGen ? [selectedGen.fuel_type] : [])],
-      ["Fuel Consumption", ...systems.map(_ => "N/A"), ...(hasGen ? [`${selectedGen.fuel_consumption_l_hr} L/hr`] : [])],
-      ["Reliability", ...systems.map(_ => "Silent, Automatic"), ...(hasGen ? ["Noisy, Fumes, Manual"] : [])],
+      ["Initial Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${initialCost.toLocaleString()}`] : []), ...(hasGridFlag ? ["N/A (Grid Tie)"] : [])],
+      ["Monthly Running Cost", ...systems.map(_ => "N0 (Solar)"), ...(hasGen ? [`N${monthlyTotal.toLocaleString()}`] : []), ...(hasGridFlag ? [`N${gridMonthlyCost.toLocaleString()}`] : [])],
+      ["5-Year Total Cost", ...systems.map(s => `N${s.total_price.toLocaleString()}`), ...(hasGen ? [`N${fiveYearTotal.toLocaleString()}`] : []), ...(hasGridFlag ? [`N${gridFiveYearCost.toLocaleString()}`] : [])],
+      ["Amortized Monthly", ...systems.map(s => `N${(s.total_price/300).toLocaleString(undefined, {maximumFractionDigits: 0})} (25yr)`), ...(hasGen ? [`N${((initialCost / selectedGen.lifespan_mo) + monthlyTotal).toLocaleString(undefined, {maximumFractionDigits: 0})} (${selectedGen.lifespan_mo/12}yr)`] : []), ...(hasGridFlag ? [`N${gridMonthlyCost.toLocaleString(undefined, {maximumFractionDigits: 0})}`] : [])],
+      ["Fuel Type", ...systems.map(_ => "N/A"), ...(hasGen ? [selectedGen.fuel_type] : []), ...(hasGridFlag ? ["Grid Tie"] : [])],
+      ["Fuel Consumption", ...systems.map(_ => "N/A"), ...(hasGen ? [`${selectedGen.fuel_consumption_l_hr} L/hr`] : []), ...(hasGridFlag ? [`${gridDailyKwh.toFixed(1)} kWh/day`] : [])],
+      ["Reliability", ...systems.map(_ => "Silent, Automatic"), ...(hasGen ? ["Noisy, Fumes, Manual"] : []), ...(hasGridFlag ? ["Always On, Metered"] : [])],
     ];
 
     autoTable(doc, {
@@ -2611,24 +2770,36 @@ const liveWiringPrice = liveSizing
       {/* Comparison Modal - Moved higher in DOM and ensured fixed positioning */}
       <AnimatePresence>
         {showComparison && results && (
-          <ComparisonModal 
-            systems={selectedForComparison} 
+          <ComparisonModal
+            systems={selectedForComparison}
             analysis={results.analysis}
             hasGenerator={hasGenerator}
             setHasGenerator={setHasGenerator}
+            hasGrid={hasGrid}
+            setHasGrid={setHasGrid}
+            gridPerKwh={gridPerKwh}
+            setGridPerKwh={setGridPerKwh}
+            gridKwhOverride={gridKwhOverride}
+            setGridKwhOverride={setGridKwhOverride}
             exportComparisonToPDF={exportComparisonToPDF}
             onSave={saveComparison}
-            onClose={() => setShowComparison(false)} 
+            onClose={() => setShowComparison(false)}
           />
         )}
         {selectedSavedComparison && (
-          <ComparisonModal 
-            systems={selectedSavedComparison.systems!} 
+          <ComparisonModal
+            systems={selectedSavedComparison.systems!}
             analysis={selectedSavedComparison.analysis!}
             hasGenerator={selectedSavedComparison.has_generator || false}
-            setHasGenerator={() => {}} 
+            setHasGenerator={() => {}}
+            hasGrid={selectedSavedComparison.has_grid || false}
+            setHasGrid={() => {}}
+            gridPerKwh={selectedSavedComparison.grid_per_kwh || 12}
+            setGridPerKwh={() => {}}
+            gridKwhOverride={selectedSavedComparison.grid_kwh_override ?? null}
+            setGridKwhOverride={() => {}}
             exportComparisonToPDF={exportComparisonToPDF}
-            onClose={() => setSelectedSavedComparison(null)} 
+            onClose={() => setSelectedSavedComparison(null)}
           />
         )}
       </AnimatePresence>
@@ -3704,7 +3875,7 @@ const liveWiringPrice = liveSizing
                 <h2 className="text-2xl font-bold">Hardware Database</h2>
                 <p className="text-stone-500">Manage the components used in calculations.</p>
               </div>
-              <div className="flex gap-2 items-center">
+              <div className="flex flex-wrap gap-2 items-center">
                 <div className="flex items-center gap-1">
                   <label className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200 cursor-pointer">
                     <Upload className="w-4 h-4" /> Import JSON
@@ -4430,7 +4601,7 @@ const liveWiringPrice = liveSizing
                           <button 
                             onClick={() => {
                               if (isComparison) {
-                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator, 6, null, r.analysis);
+                                exportComparisonToPDF(r.profile_name, r.systems!, r.has_generator, 6, null, r.has_grid || false, r.grid_per_kwh || 12, r.grid_kwh_override ?? null, r.analysis);
                               } else if (isAnalysis) {
                                 exportResultsToPDF({ analysis: r.analysis!, systems: r.systems! }, r.devices);
                               } else {
