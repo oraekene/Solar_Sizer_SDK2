@@ -2290,9 +2290,9 @@ export default function App() {
     const panelLabel = (isPartialMode && sys.partial_included.panels === false) ? "Solar PV Array (Excluded)" : "Solar PV Array";
 
     const costs = [
-      ["1", inverterLabel, getUnits(sys.inverter), inverterPrice > 0 ? `N${inverterPrice.toLocaleString()}` : "Excluded"],
-      ["2", batteryLabel, getUnits(sys.battery_config), batteryPrice > 0 ? `N${batteryPrice.toLocaleString()}` : "Excluded"],
-      ["3", panelLabel, getUnits(sys.panel_config), panelPrice > 0 ? `N${panelPrice.toLocaleString()}` : "Excluded"],
+      ["1", inverterLabel, getUnits(sys.inverter), (isPartialMode && sys.partial_included.inverter === false) ? "Excluded" : `N${inverterPrice.toLocaleString()}`],
+      ["2", batteryLabel, getUnits(sys.battery_config), (isPartialMode && sys.partial_included.batteries === false) ? "Excluded" : `N${batteryPrice.toLocaleString()}`],
+      ["3", panelLabel, getUnits(sys.panel_config), (isPartialMode && sys.partial_included.panels === false) ? "Excluded" : `N${panelPrice.toLocaleString()}`],
     ];
 
     // Add individual wiring items
@@ -4669,9 +4669,11 @@ const liveWiringPrice = liveSizing
                           <div className="flex justify-between pt-2 border-t border-stone-200">
                             <span className="text-amber-600 font-bold">Price</span>
                             <span className="font-bold">
-                              {selectedSystemDetails.panel_price > 0
-                                ? `₦${selectedSystemDetails.panel_price.toLocaleString()}`
-                                : "Included"}
+                              {partialMode && !partialIncludedComponents.panels
+                                ? "Excluded"
+                                : selectedSystemDetails.panel_price > 0
+                                  ? `₦${selectedSystemDetails.panel_price.toLocaleString()}`
+                                  : "Included"}
                             </span>
                           </div>
                         </div>
@@ -4939,7 +4941,12 @@ const liveWiringPrice = liveSizing
                       </div>
                       <div className="flex flex-wrap items-center gap-3">
                         <button
-                          onClick={() => generateQuote(quotedSystem ?? selectedSystemDetails)}
+                          onClick={() => {
+                            console.log("Partial mode:", partialMode);
+                            console.log("Partial included components:", partialIncludedComponents);
+                            console.log("Quoted system:", quotedSystem);
+                            generateQuote(quotedSystem ?? selectedSystemDetails);
+                          }}
                           className="bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2"
                         >
                           Generate Quote <ExternalLink className="w-4 h-4" />
