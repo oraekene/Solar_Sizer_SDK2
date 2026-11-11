@@ -69,7 +69,7 @@ import {
   WiringCategory,
   TimeRange
 } from "./types";
-import { buildCombinations, calculateUserNeeds } from "./utils/solarCalculator";
+import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
 import { sizeWiring, normalizeWiringSpecs } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
@@ -2278,34 +2278,46 @@ export default function App() {
     doc.setTextColor(0);
     doc.text("ITEMIZED COST BREAKDOWN", 20, 60);
 
+    // Bundle-priced kits may arrive without a component split.
+    sys = withPrices(sys);
+
     // Check if partial mode with exclusions
-    const isPartialMode = sys.partial_included && (sys.partial_included.inverter === false || sys.partial_included.panels === false || sys.partial_included.batteries === false);
-    
-    const inverterPrice = (isPartialMode && sys.partial_included.inverter === false) ? 0 : safePrice(sys.inverter_price);
-    const batteryPrice = (isPartialMode && sys.partial_included.batteries === false) ? 0 : safePrice(sys.battery_price);
-    const panelPrice = (isPartialMode && sys.partial_included.panels === false) ? 0 : safePrice(sys.panel_price);
-    
-    const inverterLabel = (isPartialMode && sys.partial_included.inverter === false) ? "Inverter Unit (Excluded)" : "Inverter Unit";
-    const batteryLabel = (isPartialMode && sys.partial_included.batteries === false) ? "Battery Storage Bank (Excluded)" : "Battery Storage Bank";
-    const panelLabel = (isPartialMode && sys.partial_included.panels === false) ? "Solar PV Array (Excluded)" : "Solar PV Array";
+    const isPartialMode = !!sys.partial_included && (sys.partial_included.inverter === false || sys.partial_included.panels === false || sys.partial_included.batteries === false);
+    const inverterExcluded = isPartialMode && sys.partial_included!.inverter === false;
+    const batteryExcluded = isPartialMode && sys.partial_included!.batteries === false;
+    const panelExcluded = isPartialMode && sys.partial_included!.panels === false;
+
+    const inverterPrice = inverterExcluded ? 0 : safePrice(sys.inverter_price);
+    const batteryPrice = batteryExcluded ? 0 : safePrice(sys.battery_price);
+    const panelPrice = panelExcluded ? 0 : safePrice(sys.panel_price);
+
+    const inverterLabel = inverterExcluded ? "Inverter Unit (Excluded)" : "Inverter Unit";
+    const batteryLabel = batteryExcluded ? "Battery Storage Bank (Excluded)" : "Battery Storage Bank";
+    const panelLabel = panelExcluded ? "Solar PV Array (Excluded)" : "Solar PV Array";
+
+    const money = (value: number) => value > 0 ? `N${Math.round(value).toLocaleString()}` : "Included";
 
     const costs = [
-      ["1", inverterLabel, getUnits(sys.inverter), (isPartialMode && sys.partial_included.inverter === false) ? "Excluded" : `N${inverterPrice.toLocaleString()}`],
-      ["2", batteryLabel, getUnits(sys.battery_config), (isPartialMode && sys.partial_included.batteries === false) ? "Excluded" : `N${batteryPrice.toLocaleString()}`],
-      ["3", panelLabel, getUnits(sys.panel_config), (isPartialMode && sys.partial_included.panels === false) ? "Excluded" : `N${panelPrice.toLocaleString()}`],
+      ["1", inverterLabel, getUnits(sys.inverter), inverterExcluded ? "Excluded" : money(inverterPrice)],
+      ["2", batteryLabel, getUnits(sys.battery_config), batteryExcluded ? "Excluded" : money(batteryPrice)],
+      ["3", panelLabel, getUnits(sys.panel_config), panelExcluded ? "Excluded" : money(panelPrice)],
     ];
 
-    // Add individual wiring items
+    // Add individual wiring items, using the same qty/length pricing as the modal.
     if (sys.wiring_items && sys.wiring_items.length > 0) {
-      sys.wiring_items.forEach((w, idx) => {
-        const qty = w.qty || 1;
-        const itemPrice = qty > 1 ? w.price * qty : w.price;
+      let row = 0;
+      for (const w of sys.wiring_items) {
+        const qty = w.qty ?? 1;
+        if (qty <= 0) continue;
+        row += 1;
+        const length = w.length_override ?? (typeof w.specs?.length === "number" ? w.specs.length : undefined);
+        const units = length ? `${qty} x ${length}m` : `${qty}`;
         const label = `${w.name}${w.type === "nice-to-have" ? " (Optional)" : ""}`;
-        costs.push([`4.${idx + 1}`, label, `${qty} x`, `N${safePrice(itemPrice).toLocaleString()}`]);
-      });
+        costs.push([`4.${row}`, label, units, money(calculateWirePrice(w))]);
+      }
     }
 
-    costs.push(["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]);
+    costs.push(["", "TOTAL INVESTMENT", "", `N${Math.round(safePrice(sys.total_price)).toLocaleString()}`]);
 
     autoTable(doc, {
       startY: 65,
@@ -2313,7 +2325,7 @@ export default function App() {
       body: costs,
       theme: "grid",
       headStyles: { fillColor: [16, 185, 129] },
-      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${(safePrice(sys.total_price) * 1.075).toLocaleString()}`]],
+      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${Math.round(safePrice(sys.total_price) * 1.075).toLocaleString()}`]],
       footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
     });
 
@@ -2327,9 +2339,9 @@ export default function App() {
     const specs = [
       ["Status", sys.status || "N/A"],
       ["Advice", finalAdvice],
-      ["Inverter", (isPartialMode && sys.partial_included.inverter === false) ? "Excluded (Partial Mode)" : (sys.inverter || "N/A")],
-      ["Battery Bank", (isPartialMode && sys.partial_included.batteries === false) ? "Excluded (Partial Mode)" : (sys.battery_config || "N/A")],
-      ["Solar Array", (isPartialMode && sys.partial_included.panels === false) ? "Excluded (Partial Mode)" : `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
+      ["Inverter", inverterExcluded ? "Excluded (Partial Mode)" : (sys.inverter || "N/A")],
+      ["Battery Bank", batteryExcluded ? "Excluded (Partial Mode)" : (sys.battery_config || "N/A")],
+      ["Solar Array", panelExcluded ? "Excluded (Partial Mode)" : `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
       ["Est. Daily Yield", `${(sys.daily_yield || 0).toFixed(0)}Wh`]
     ];
 
@@ -2350,14 +2362,12 @@ export default function App() {
     doc.setFontSize(10);
     doc.setTextColor(60);
     const guide = [
-      ...(sys.wiring_items ?? []).map(w => {
-        const qty = w.qty || 1;
-        const priceDisplay = qty > 1 
-          ? `${w.name} (x${qty}) - N${safePrice(w.price * qty).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
-          : `${w.name} - N${safePrice(w.price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`;
+      ...(sys.wiring_items ?? []).filter(w => (w.qty ?? 1) > 0).map(w => {
+        const qty = w.qty ?? 1;
+        const price = calculateWirePrice(w);
         return [
           WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category,
-          priceDisplay
+          `${w.name}${qty > 1 ? ` (x${qty})` : ""} - N${Math.round(price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
         ];
       }),
       ...(sys.wiring_notes ?? []).map(note => ["Sizing", note]),
@@ -2429,6 +2439,35 @@ export default function App() {
     }
   }, [selectedSystemDetails?.product_id, selectedSystemDetails?.inverter, selectedSystemDetails?.battery_config, selectedSystemDetails?.panel_config]);
 
+  // Bundle-priced kits carry no per-component split, so fill one in from the
+  // catalog; without it partial mode cannot subtract anything from the total.
+  const withPrices = (system: SystemCombination): SystemCombination => {
+    const declared =
+      safeNumber(system.inverter_price) +
+      safeNumber(system.battery_price) +
+      safeNumber(system.panel_price);
+    const total = safeNumber(system.total_price);
+    if (declared > 0 || total <= 0) return system;
+
+    const split = estimateBundleSplit(
+      Math.max(0, total - safeNumber(system.wiring_price)),
+      system.panel_w ?? system.array_size_w,
+      system.battery_wh ?? system.battery_total_wh,
+      { panels, batteries },
+      margins
+    );
+
+    return split.inverter_price + split.battery_price + split.panel_price > 0
+      ? { ...system, ...split }
+      : system;
+  };
+
+  useEffect(() => {
+    if (!selectedSystemDetails) return;
+    const priced = withPrices(selectedSystemDetails);
+    if (priced !== selectedSystemDetails) setSelectedSystemDetails(priced);
+  }, [selectedSystemDetails, panels, batteries, margins]);
+
   const liveSizing = hasWiring
     ? sizeWiring(
         {
@@ -2442,6 +2481,22 @@ export default function App() {
         Array.from(selectedNiceToHaveIds)
       )
     : null;
+
+  // Required items always start at 1 so a saved 0 cannot hide them.
+  useEffect(() => {
+    if (!selectedSystemDetails || !liveSizing) return;
+    const defaults: Record<string, number> = {};
+    for (const id of liveSizing.includeIds) {
+      const item = wiring.find((w) => w.id === id);
+      if (item?.type === "mandatory" && wiringQuantities[id] === undefined) {
+        defaults[id] = Math.max(1, item.qty ?? 1);
+      }
+    }
+    if (Object.keys(defaults).length > 0) {
+      setWiringQuantities((prev) => ({ ...prev, ...defaults }));
+    }
+  }, [selectedSystemDetails, liveSizing, wiring, wiringQuantities]);
+
   // Get wire items with dynamic quantities from state
   const includedWiring = liveSizing 
     ? wiring
@@ -2450,8 +2505,8 @@ export default function App() {
           ...w,
           qty: wiringQuantities[w.id] ?? w.qty ?? 1
         }))
-        // In partial mode, exclude items with qty=0 (user unchecked them)
-        .filter(w => !partialMode || (w.qty !== undefined && w.qty > 0))
+        // A zero quantity excludes the item in every mode, not only partial mode.
+        .filter(w => (w.qty ?? 1) > 0)
     : [];
 
 /** Calculate wire price accounting for qty and length override. */
@@ -4767,7 +4822,7 @@ const liveWiringPrice = liveSizing
                                         
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
-                                            <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                                            <p className="font-bold text-stone-900 break-words">{item.name}</p>
                                             <p className="text-xs text-stone-500">
                                               {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
                                             </p>
@@ -4900,7 +4955,7 @@ const liveWiringPrice = liveSizing
                                       )}
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="flex-1 min-w-0">
-                                          <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                                          <p className="font-bold text-stone-900 break-words">{item.name}</p>
                                           <p className="text-xs text-stone-500">
                                             {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
                                           </p>

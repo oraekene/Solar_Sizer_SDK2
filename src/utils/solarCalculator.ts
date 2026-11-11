@@ -284,6 +284,50 @@ const buildKitComponentSpecs = (prod: Product, data: SystemCombination): KitComp
   ];
 };
 
+/**
+ * Bundled kits ("powerstation + panel" combos) often carry one package price
+ * with no per-component split. Without a split, excluding a component in
+ * partial mode cannot change the total, so approximate the split from catalog
+ * hardware prices: nearest panel by watts and nearest battery by nominal Wh,
+ * with the rest assigned to the inverter (which holds the built-in battery).
+ * shortcut: nearest-match split, replace when products store component prices.
+ */
+export function estimateBundleSplit(
+  bundlePrice: number,
+  panelWatts: number | undefined,
+  batteryWh: number | undefined,
+  hardware: { panels: Panel[]; batteries: Battery[] },
+  margins: ProfitMargins
+): { inverter_price: number; battery_price: number; panel_price: number } {
+  const applyMargin = (price: number, marginPercent: number) => price * (1 + marginPercent / 100);
+
+  const nearest = <T,>(items: T[], target: number, value: (item: T) => number): T | undefined => {
+    if (target <= 0) return undefined;
+    return items
+      .map((item) => ({ item, value: value(item) }))
+      .filter((entry) => entry.value > 0 && Math.abs(entry.value - target) / target <= 0.15)
+      .sort((a, b) => Math.abs(a.value - target) - Math.abs(b.value - target))[0]?.item;
+  };
+
+  const panelMatch = nearest(hardware.panels, panelWatts ?? 0, (panel) => panel.watts);
+  const batteryMatch = nearest(
+    hardware.batteries,
+    batteryWh ?? 0,
+    (battery) => battery.voltage * battery.capacity_ah
+  );
+
+  let panelPrice = panelMatch ? applyMargin(panelMatch.price, margins.panel) : 0;
+  let batteryPrice = batteryMatch ? applyMargin(batteryMatch.price, margins.battery) : 0;
+
+  if (panelPrice + batteryPrice > bundlePrice) {
+    panelPrice = bundlePrice;
+    batteryPrice = 0;
+  }
+
+  const inverterPrice = Math.max(0, bundlePrice - panelPrice - batteryPrice);
+  return { inverter_price: inverterPrice, battery_price: batteryPrice, panel_price: panelPrice };
+}
+
 const getEffectiveDeficitWh = (
   totalDailyWh: number,
   dailyYieldWh: number,
