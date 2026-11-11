@@ -2293,11 +2293,19 @@ export default function App() {
       ["1", inverterLabel, getUnits(sys.inverter), inverterPrice > 0 ? `N${inverterPrice.toLocaleString()}` : "Excluded"],
       ["2", batteryLabel, getUnits(sys.battery_config), batteryPrice > 0 ? `N${batteryPrice.toLocaleString()}` : "Excluded"],
       ["3", panelLabel, getUnits(sys.panel_config), panelPrice > 0 ? `N${panelPrice.toLocaleString()}` : "Excluded"],
-      ...(sys.wiring_items && sys.wiring_items.length > 0
-        ? [["4", "Wiring & Installation", `${sys.wiring_items.length} items`, `N${safePrice(sys.wiring_price).toLocaleString()}`]]
-        : []),
-      ["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]
     ];
+
+    // Add individual wiring items
+    if (sys.wiring_items && sys.wiring_items.length > 0) {
+      sys.wiring_items.forEach((w, idx) => {
+        const qty = w.qty || 1;
+        const itemPrice = qty > 1 ? w.price * qty : w.price;
+        const label = `${w.name}${w.type === "nice-to-have" ? " (Optional)" : ""}`;
+        costs.push([`4.${idx + 1}`, label, `${qty} x`, `N${safePrice(itemPrice).toLocaleString()}`]);
+      });
+    }
+
+    costs.push(["", "TOTAL INVESTMENT", "", `N${safePrice(sys.total_price).toLocaleString()}`]);
 
     autoTable(doc, {
       startY: 65,
@@ -2463,14 +2471,14 @@ const liveWiringPrice = liveSizing
       - partialBatteryPrice
       - partialPanelPrice
     : 0;
-  const quotedSystem = selectedSystemDetails && hasWiring
+  const quotedSystem = selectedSystemDetails
     ? {
         ...selectedSystemDetails,
-        wiring_items: includedWiring,
-        wiring_price: liveWiringPrice,
-        wiring_notes: liveSizing?.notes,
+        wiring_items: hasWiring ? includedWiring : (selectedSystemDetails.wiring_items || []),
+        wiring_price: hasWiring ? liveWiringPrice : (selectedSystemDetails.wiring_price || 0),
+        wiring_notes: hasWiring ? liveSizing?.notes : (selectedSystemDetails.wiring_notes || []),
         total_price: liveSystemTotal,
-        selected_nice_to_have: Array.from(selectedNiceToHaveIds),
+        selected_nice_to_have: hasWiring ? Array.from(selectedNiceToHaveIds) : (selectedSystemDetails.selected_nice_to_have || []),
         // Track which main components are included for PDF/quote
         partial_included: partialMode ? partialIncludedComponents : undefined,
       }
