@@ -2418,6 +2418,17 @@ export default function App() {
     !!selectedSystemDetails &&
     selectedSystemDetails.kit_type !== "internet" &&
     (Array.isArray(selectedSystemDetails.wiring_items) || !!selectedSystemDetails.product_id);
+
+  // Reset partial mode state when a new system is selected
+  useEffect(() => {
+    if (selectedSystemDetails) {
+      setPartialMode(false);
+      setPartialIncludedComponents({ inverter: true, panels: true, batteries: true });
+      setWiringQuantities({});
+      setSelectedNiceToHaveIds(new Set());
+    }
+  }, [selectedSystemDetails?.id, selectedSystemDetails?.product_id]);
+
   const liveSizing = hasWiring
     ? sizeWiring(
         {
