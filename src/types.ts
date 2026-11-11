@@ -104,6 +104,8 @@ export interface WiringItem {
   category: WiringCategory;
   type: 'mandatory' | 'nice-to-have';
   description: string;
+  /** Short help text shown on hover in the System Details modal. */
+  tooltip?: string;
   price: number;
   /** Number of physical units. Default 1. For cables, also affects price. */
   qty?: number;

@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Info,
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   ListIcon,
   X,
@@ -811,6 +812,8 @@ export default function App() {
   const [selectedNiceToHaveIds, setSelectedNiceToHaveIds] = useState<Set<string>>(new Set());
   // Track quantity for each wiring item (by id)
   const [wiringQuantities, setWiringQuantities] = useState<Record<string, number>>({});
+  // Partial/Upgrade mode: allows toggling required components
+  const [partialMode, setPartialMode] = useState(false);
 
   // Internal Logs State
   const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
@@ -2394,10 +2397,16 @@ export default function App() {
       )
     : null;
   // Get wire items with dynamic quantities from state
-const includedWiring = liveSizing ? wiring.filter((w) => liveSizing.includeIds.has(w.id)).map(w => ({
-  ...w,
-  qty: wiringQuantities[w.id] || w.qty || 1
-})) : [];
+  const includedWiring = liveSizing 
+    ? wiring
+        .filter((w) => liveSizing.includeIds.has(w.id))
+        .map(w => ({
+          ...w,
+          qty: wiringQuantities[w.id] || w.qty || 1
+        }))
+        // In partial mode, exclude items with qty=0 (user unchecked them)
+        .filter(w => !partialMode || (w.qty && w.qty > 0))
+    : [];
 
 /** Calculate wire price accounting for qty and length override. */
 const calculateWirePrice = (item: WiringItem): number => {
@@ -4585,10 +4594,35 @@ const liveWiringPrice = liveSizing
                           </h4>
                           <span className="text-sm font-bold text-emerald-600">₦{liveWiringPrice.toLocaleString()}</span>
                         </div>
-                        <p className="text-xs text-stone-500">
-                          Required cables are sized automatically for your system. 
-                          Adjust quantities or add optional items below.
-                        </p>
+                        
+                        {/* Partial/Upgrade Mode Toggle */}
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={partialMode}
+                              onChange={(e) => setPartialMode(e.target.checked)}
+                              className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-sm font-medium text-stone-700">Partial / Upgrade Mode</span>
+                          </label>
+                          <span className="text-xs text-stone-500">Toggle to pick individual components (disable auto-sizing)</span>
+                        </div>
+
+                        {partialMode ? (
+                          <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-xl border border-amber-100 flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 shrink-0" />
+                            <span>
+                              <strong>Auto-sizing disabled.</strong> Cable gauges won't update for your system. 
+                              Specify your own lengths. This quote is for components only — not a complete installed system.
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-stone-500">
+                            Required cables are sized automatically for your system. 
+                            Adjust quantities or add optional items below.
+                          </p>
+                        )}
 
                         <div className="space-y-3">
                           {/* Selected (sized and optional) wiring items */}
@@ -4600,12 +4634,14 @@ const liveWiringPrice = liveSizing
                                 .map((item) => {
                                   if (!item) return null;
                                   const isOptional = item.type === "nice-to-have";
-                                  const isIncluded = (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
+                                  const isIncluded = partialMode 
+                                    ? (wiringQuantities[item.id] && wiringQuantities[item.id] > 0) || !isOptional
+                                    : (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
                                   const currentQty = wiringQuantities[item.id] || item.qty || 1;
                                   return (
                                     <div
                                       key={item.id}
-                                      className={`p-4 rounded-2xl border transition-all ${
+                                      className={`p-4 rounded-2xl border transition-all relative group ${
                                         isIncluded 
                                           ? (isOptional 
                                             ? "bg-amber-50 border-amber-100" 
@@ -4613,14 +4649,22 @@ const liveWiringPrice = liveSizing
                                           : "bg-white border-dashed border-stone-200 opacity-50"
                                       }`}
                                     >
+                                      {/* Tooltip on hover */}
+                                      {item.tooltip && (
+                                        <div className="absolute -top-10 left-0 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-normal pointer-events-none">
+                                          {item.tooltip}
+                                          <div className="absolute bottom-1 left-4 w-0 h-0 border-4 border-transparent border-t-stone-900" />
+                                        </div>
+                                      )}
+                                      
                                       <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                          <p className="font-bold text-stone-900">{item.name}</p>
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-bold text-stone-900 truncate">{item.name}</p>
                                           <p className="text-xs text-stone-500">
                                             {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
                                           </p>
                                         </div>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
                                           isOptional 
                                             ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
                                             : "bg-emerald-100 text-emerald-700"
@@ -4641,22 +4685,32 @@ const liveWiringPrice = liveSizing
                                       <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
                                         <span className="font-bold text-emerald-600">₦{calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override }).toLocaleString()}</span>
                                         <div className="flex items-center gap-4">
-                                          {/* Checkbox for optional items */}
-                                          {isOptional ? (
+                                          {/* Checkbox for all items in partial mode, optional items only in normal mode */}
+                                          {(partialMode || isOptional) ? (
                                             <label className="flex items-center gap-2 cursor-pointer">
                                               <input
                                                 type="checkbox"
                                                 checked={isIncluded}
                                                 onChange={(e) => {
                                                   e.stopPropagation();
-                                                  const next = new Set(selectedNiceToHaveIds);
-                                                  if (e.target.checked) next.add(item.id);
-                                                  else next.delete(item.id);
-                                                  setSelectedNiceToHaveIds(next);
+                                                  if (partialMode) {
+                                                    // In partial mode, toggle inclusion via quantity (0 = excluded)
+                                                    const qty = e.target.checked ? (currentQty || 1) : 0;
+                                                    setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                    setWiring(prev => prev.map(w => 
+                                                      w.id === item.id ? { ...w, qty } : w
+                                                    ));
+                                                  } else {
+                                                    // Normal mode: only for optional items
+                                                    const next = new Set(selectedNiceToHaveIds);
+                                                    if (e.target.checked) next.add(item.id);
+                                                    else next.delete(item.id);
+                                                    setSelectedNiceToHaveIds(next);
+                                                  }
                                                 }}
-                                                className="w-4 h-4 rounded border-stone-300 text-amber-600 focus:ring-amber-500"
+                                                className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
                                               />
-                                              <span className="text-xs font-bold text-stone-600">Include</span>
+                                              <span className="text-xs font-bold text-stone-600">{partialMode ? "Include" : "Include"}</span>
                                             </label>
                                           ) : (
                                             <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
@@ -4668,12 +4722,12 @@ const liveWiringPrice = liveSizing
                                             <span className="text-xs text-stone-500">Qty:</span>
                                             <input
                                               type="number"
-                                              min="1"
+                                              min={partialMode ? "0" : "1"}
                                               max="100"
-                                              value={currentQty}
+                                              value={isIncluded ? currentQty : 0}
                                               onChange={(e) => {
                                                 e.stopPropagation();
-                                                const qty = Math.max(1, parseInt(e.target.value) || 1);
+                                                const qty = Math.max(partialMode ? 0 : 1, parseInt(e.target.value) || (partialMode ? 0 : 1));
                                                 setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
                                                 // Also persist to wiring state for localStorage
                                                 setWiring(prev => prev.map(w => 
@@ -4683,6 +4737,7 @@ const liveWiringPrice = liveSizing
                                                 ));
                                               }}
                                               className="w-16 px-2 py-1 text-sm border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                              disabled={!isIncluded}
                                             />
                                           </div>
                                         </div>
@@ -4697,6 +4752,7 @@ const liveWiringPrice = liveSizing
 
                         <p className="text-xs text-stone-500 mt-2">
                           * Only the correctly sized cable gauge is included. Different gauges serve different current requirements.
+                          {partialMode && " In partial mode, cable sizing is disabled — verify gauge matches your system."}
                         </p>
                       </div>
                     )}
