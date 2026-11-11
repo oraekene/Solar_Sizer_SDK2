@@ -241,7 +241,7 @@ const HardwareRow = ({ title, icon, action, children }: { title: string; icon: R
       </h3>
       {action}
     </div>
-    <div className="flex flex-wrap gap-4">{children}</div>
+    <div className="flex flex-nowrap overflow-x-auto gap-4 pb-3">{children}</div>
   </section>
 );
 
@@ -3915,6 +3915,9 @@ const liveWiringPrice = liveSizing
                 </button>
                 <button onClick={() => setShowAddHardware("powerstation")} className="bg-stone-900 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-800 transition-all">
                   <Plus className="w-4 h-4" /> Add Powerstation
+                </button>
+                <button onClick={() => setShowAddHardware("chargeController")} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-cyan-700 transition-all">
+                  <Plus className="w-4 h-4" /> Add Charge Controller
                 </button>
                 {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => {
                   const colors: Record<WiringCategory, string> = {
