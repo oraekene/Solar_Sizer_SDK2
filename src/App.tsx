@@ -2754,9 +2754,11 @@ const liveWiringPrice = liveSizing
     if (systemVdc > 0 && cc.battery_voltage !== systemVdc) return false;
     // A PWM external controller cannot be paired with an MPPT hybrid inverter.
     if (inv.cc_type === "mppt" && cc.type !== "mppt") return false;
-    // External CC must be at least as capable as the inverter's built-in CC.
-    if (inv.cc_max_voc > 0 && cc.max_voc < inv.cc_max_voc) return false;
-    if (inv.cc_max_amps > 0 && cc.max_amps < inv.cc_max_amps) return false;
+    // External CC must be rated for the actual PV string, not just the inverter's
+    // built-in CC limits. Derived Voc/amps come from sizeWiring and reflect the
+    // panel model in this system.
+    if (liveSizing.derived.pvVoc > 0 && cc.max_voc < liveSizing.derived.pvVoc) return false;
+    if (liveSizing.derived.pvAmps > 0 && cc.max_amps < liveSizing.derived.pvAmps) return false;
     return true;
   };
 
