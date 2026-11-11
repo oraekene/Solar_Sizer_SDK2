@@ -1303,6 +1303,23 @@ export default function App() {
     safeLocalStorageSet("ss_pdf_settings", pdfSettings);
   }, [inverters, panels, batteries, powerstations, chargeControllers, wiring, profiles, margins, pdfSettings]);
 
+  // Persist selected charge controllers globally (survives page refresh)
+  useEffect(() => {
+    if (!persistMountedRef.current) return;
+    safeLocalStorageSet("ss_selected_charge_controllers", Array.from(selectedChargeControllerIds));
+  }, [selectedChargeControllerIds]);
+
+  // Restore selected charge controllers from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("ss_selected_charge_controllers");
+    if (saved) {
+      try {
+        const ids = JSON.parse(saved);
+        if (Array.isArray(ids)) setSelectedChargeControllerIds(new Set(ids));
+      } catch {}
+    }
+  }, []);
+
   const saveProfile = async () => {
     if (!profileName.trim()) return;
     
@@ -2648,6 +2665,13 @@ export default function App() {
     if (priced !== selectedSystemDetails) setSelectedSystemDetails(priced);
   }, [selectedSystemDetails, panels, batteries, margins]);
 
+  // Restore per-system charge controller selection when system changes
+  useEffect(() => {
+    if (selectedSystemDetails?.selected_charge_controllers) {
+      setSelectedChargeControllerIds(new Set(selectedSystemDetails.selected_charge_controllers));
+    }
+  }, [selectedSystemDetails?.inverter, selectedSystemDetails?.battery_config, selectedSystemDetails?.panel_config]);
+
   const liveSizing = hasWiring
     ? sizeWiring(
         {
@@ -2764,7 +2788,7 @@ const liveWiringPrice = liveSizing
 
   const ccQuery = optionalSearch.trim().toLowerCase();
   const optionalChargeControllers = chargeControllers
-    .filter((cc) => !selectedChargeControllerIds.has(cc.id) && ccIsCompatible(cc))
+    .filter((cc) => ccIsCompatible(cc))
     .filter((cc) => {
       if (!ccQuery) return true;
       return [cc.name, cc.description, cc.type, String(cc.battery_voltage), String(cc.max_voc), String(cc.max_amps), String(cc.max_pv_w)]
@@ -2795,6 +2819,7 @@ const liveWiringPrice = liveSizing
         wiring_notes: hasWiring ? liveSizing?.notes : (selectedSystemDetails.wiring_notes || []),
         total_price: liveSystemTotal,
         selected_nice_to_have: hasWiring ? Array.from(selectedNiceToHaveIds) : (selectedSystemDetails.selected_nice_to_have || []),
+        selected_charge_controllers: Array.from(selectedChargeControllerIds),
         // Track which main components are included for PDF/quote
         partial_included: partialMode ? partialIncludedComponents : undefined,
       }
@@ -5421,45 +5446,53 @@ const liveWiringPrice = liveSizing
                               <span className="text-xs text-stone-500">{optionalChargeControllers.length} item{optionalChargeControllers.length === 1 ? "" : "s"}</span>
                             </summary>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 pt-0">
-                              {optionalChargeControllers.map(cc => (
-                                <div
-                                  key={cc.id}
-                                  title={cc.description ?? cc.name}
-                                  className="p-4 rounded-2xl border bg-cyan-50 border-cyan-100 transition-all relative group cursor-pointer hover:bg-cyan-100"
-                                >
-                                  <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                    {cc.description ?? cc.name}
-                                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                  </div>
-                                  <div className="flex items-center justify-between gap-3">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-bold text-stone-900 break-words">{cc.name}</p>
-                                      <p className="text-xs text-stone-500">{cc.battery_voltage}V {cc.type.toUpperCase()}</p>
+                              {optionalChargeControllers.map(cc => {
+                                const isSelected = selectedChargeControllerIds.has(cc.id);
+                                return (
+                                  <div
+                                    key={cc.id}
+                                    title={cc.description ?? cc.name}
+                                    className={`p-4 rounded-2xl border transition-all relative group ${isSelected ? "bg-cyan-100 border-cyan-300" : "bg-cyan-50 border-cyan-100 hover:bg-cyan-100"}`}
+                                  >
+                                    <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                      {cc.description ?? cc.name}
+                                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
                                     </div>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 shrink-0">
-                                      Optional
-                                    </span>
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-bold text-stone-900 break-words">{cc.name}</p>
+                                        <p className="text-xs text-stone-500">{cc.battery_voltage}V {cc.type.toUpperCase()}</p>
+                                      </div>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 shrink-0">
+                                        Optional
+                                      </span>
+                                    </div>
+                                    <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                      <div className="flex items-center justify-between gap-4"><span>Max PV</span><span className="font-semibold text-stone-700">{cc.max_pv_w}W</span></div>
+                                      <div className="flex items-center justify-between gap-4"><span>Max Voc</span><span className="font-semibold text-stone-700">{cc.max_voc}V</span></div>
+                                      <div className="flex items-center justify-between gap-4"><span>Max amps</span><span className="font-semibold text-stone-700">{cc.max_amps}A</span></div>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-bold text-emerald-600">₦{cc.price.toLocaleString()}</span>
+                                      <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={(e) => {
+                                            e.stopPropagation();
+                                            const next = new Set(selectedChargeControllerIds);
+                                            if (e.target.checked) next.add(cc.id);
+                                            else next.delete(cc.id);
+                                            setSelectedChargeControllerIds(next);
+                                          }}
+                                          className="w-4 h-4 rounded border-stone-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span className="text-xs font-bold text-stone-600">{isSelected ? "Added" : "Add"}</span>
+                                      </label>
+                                    </div>
                                   </div>
-                                  <div className="space-y-1 text-xs text-stone-500 mb-3">
-                                    <div className="flex items-center justify-between gap-4"><span>Max PV</span><span className="font-semibold text-stone-700">{cc.max_pv_w}W</span></div>
-                                    <div className="flex items-center justify-between gap-4"><span>Max Voc</span><span className="font-semibold text-stone-700">{cc.max_voc}V</span></div>
-                                    <div className="flex items-center justify-between gap-4"><span>Max amps</span><span className="font-semibold text-stone-700">{cc.max_amps}A</span></div>
-                                  </div>
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-bold text-emerald-600">₦{cc.price.toLocaleString()}</span>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedChargeControllerIds(prev => new Set([...prev, cc.id]));
-                                      }}
-                                      className="bg-cyan-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-cyan-700 transition"
-                                    >
-                                      Add
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </details>
                         )}

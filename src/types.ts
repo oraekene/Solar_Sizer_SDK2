@@ -184,6 +184,7 @@ export interface SystemCombination {
   wiring_price?: number;
   wiring_notes?: string[];
   selected_nice_to_have?: string[];
+  selected_charge_controllers?: string[];
   partial_included?: { inverter: boolean; panels: boolean; batteries: boolean };
 }
 
