@@ -13,6 +13,7 @@ import {
   Calculator, 
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Info,
   AlertCircle,
   AlertTriangle,
@@ -32,6 +33,7 @@ import {
   Wifi,
   Percent,
   UserCircle,
+  PlusCircle,
   Save,
   FolderOpen,
   Copy,
@@ -812,8 +814,16 @@ export default function App() {
   const [selectedNiceToHaveIds, setSelectedNiceToHaveIds] = useState<Set<string>>(new Set());
   // Track quantity for each wiring item (by id)
   const [wiringQuantities, setWiringQuantities] = useState<Record<string, number>>({});
-  // Partial/Upgrade mode: allows toggling required components
+  // Partial/Upgrade mode: allows toggling ALL components (inverters, panels, batteries, wiring)
   const [partialMode, setPartialMode] = useState(false);
+  // Track which main components are included in partial mode
+  const [partialIncludedComponents, setPartialIncludedComponents] = useState<{
+    inverter: boolean;
+    panels: boolean;
+    batteries: boolean;
+  }>({ inverter: true, panels: true, batteries: true });
+  // Track expanded state for Available Optional Items
+  const [showOptionalItems, setShowOptionalItems] = useState(false);
 
   // Internal Logs State
   const [internalLogs, setInternalLogs] = useState<CalculationAttempt[]>(() => {
@@ -2268,10 +2278,21 @@ export default function App() {
     doc.setTextColor(0);
     doc.text("ITEMIZED COST BREAKDOWN", 20, 60);
 
+    // Check if partial mode with exclusions
+    const isPartialMode = sys.partial_included && (sys.partial_included.inverter === false || sys.partial_included.panels === false || sys.partial_included.batteries === false);
+    
+    const inverterPrice = (isPartialMode && sys.partial_included.inverter === false) ? 0 : safePrice(sys.inverter_price);
+    const batteryPrice = (isPartialMode && sys.partial_included.batteries === false) ? 0 : safePrice(sys.battery_price);
+    const panelPrice = (isPartialMode && sys.partial_included.panels === false) ? 0 : safePrice(sys.panel_price);
+    
+    const inverterLabel = (isPartialMode && sys.partial_included.inverter === false) ? "Inverter Unit (Excluded)" : "Inverter Unit";
+    const batteryLabel = (isPartialMode && sys.partial_included.batteries === false) ? "Battery Storage Bank (Excluded)" : "Battery Storage Bank";
+    const panelLabel = (isPartialMode && sys.partial_included.panels === false) ? "Solar PV Array (Excluded)" : "Solar PV Array";
+
     const costs = [
-      ["1", "Inverter Unit", getUnits(sys.inverter), `N${safePrice(sys.inverter_price).toLocaleString()}`],
-      ["2", "Battery Storage Bank", getUnits(sys.battery_config), `N${safePrice(sys.battery_price).toLocaleString()}`],
-      ["3", "Solar PV Array", getUnits(sys.panel_config), `N${safePrice(sys.panel_price).toLocaleString()}`],
+      ["1", inverterLabel, getUnits(sys.inverter), inverterPrice > 0 ? `N${inverterPrice.toLocaleString()}` : "Excluded"],
+      ["2", batteryLabel, getUnits(sys.battery_config), batteryPrice > 0 ? `N${batteryPrice.toLocaleString()}` : "Excluded"],
+      ["3", panelLabel, getUnits(sys.panel_config), panelPrice > 0 ? `N${panelPrice.toLocaleString()}` : "Excluded"],
       ...(sys.wiring_items && sys.wiring_items.length > 0
         ? [["4", "Wiring & Installation", `${sys.wiring_items.length} items`, `N${safePrice(sys.wiring_price).toLocaleString()}`]]
         : []),
@@ -2298,9 +2319,9 @@ export default function App() {
     const specs = [
       ["Status", sys.status || "N/A"],
       ["Advice", finalAdvice],
-      ["Inverter", sys.inverter || "N/A"],
-      ["Battery Bank", sys.battery_config || "N/A"],
-      ["Solar Array", `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
+      ["Inverter", (isPartialMode && sys.partial_included.inverter === false) ? "Excluded (Partial Mode)" : (sys.inverter || "N/A")],
+      ["Battery Bank", (isPartialMode && sys.partial_included.batteries === false) ? "Excluded (Partial Mode)" : (sys.battery_config || "N/A")],
+      ["Solar Array", (isPartialMode && sys.partial_included.panels === false) ? "Excluded (Partial Mode)" : `${sys.panel_config || "N/A"} (${sys.array_size_w || sys.panel_w || 0}W)`],
       ["Est. Daily Yield", `${(sys.daily_yield || 0).toFixed(0)}Wh`]
     ];
 
@@ -2321,10 +2342,16 @@ export default function App() {
     doc.setFontSize(10);
     doc.setTextColor(60);
     const guide = [
-      ...(sys.wiring_items ?? []).map(w => [
-        WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category,
-        `${w.name} - N${safePrice(w.price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
-      ]),
+      ...(sys.wiring_items ?? []).map(w => {
+        const qty = w.qty || 1;
+        const priceDisplay = qty > 1 
+          ? `${w.name} (x${qty}) - N${safePrice(w.price * qty).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`
+          : `${w.name} - N${safePrice(w.price).toLocaleString()}${w.type === "nice-to-have" ? " (optional)" : ""}`;
+        return [
+          WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category,
+          priceDisplay
+        ];
+      }),
       ...(sys.wiring_notes ?? []).map(note => ["Sizing", note]),
       ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`]
     ];
@@ -2402,15 +2429,15 @@ export default function App() {
         .filter((w) => liveSizing.includeIds.has(w.id))
         .map(w => ({
           ...w,
-          qty: wiringQuantities[w.id] || w.qty || 1
+          qty: wiringQuantities[w.id] ?? w.qty ?? 1
         }))
         // In partial mode, exclude items with qty=0 (user unchecked them)
-        .filter(w => !partialMode || (w.qty && w.qty > 0))
+        .filter(w => !partialMode || (w.qty !== undefined && w.qty > 0))
     : [];
 
 /** Calculate wire price accounting for qty and length override. */
 const calculateWirePrice = (item: WiringItem): number => {
-  const qty = item.qty || 1;
+  const qty = item.qty ?? 1;
   // Get base length from specs, default to 1 (full price)
   const specLength = typeof item.specs?.length === "number" ? item.specs.length : 1;
   const overrideLength = item.length_override || specLength;
@@ -2422,8 +2449,19 @@ const calculateWirePrice = (item: WiringItem): number => {
 const liveWiringPrice = liveSizing
   ? Math.round(includedWiring.reduce((sum, w) => sum + calculateWirePrice(w), 0))
   : 0;
+
+  // In partial mode, subtract prices of unchecked main components
+  const partialInverterPrice = partialMode && !partialIncludedComponents.inverter ? (selectedSystemDetails?.inverter_price || 0) : 0;
+  const partialBatteryPrice = partialMode && !partialIncludedComponents.batteries ? (selectedSystemDetails?.battery_price || 0) : 0;
+  const partialPanelPrice = partialMode && !partialIncludedComponents.panels ? (selectedSystemDetails?.panel_price || 0) : 0;
+
   const liveSystemTotal = selectedSystemDetails
-    ? (selectedSystemDetails.total_price || 0) - (hasWiring ? selectedSystemDetails.wiring_price || 0 : 0) + liveWiringPrice
+    ? (selectedSystemDetails.total_price || 0) 
+      - (hasWiring ? selectedSystemDetails.wiring_price || 0 : 0) 
+      + liveWiringPrice
+      - partialInverterPrice
+      - partialBatteryPrice
+      - partialPanelPrice
     : 0;
   const quotedSystem = selectedSystemDetails && hasWiring
     ? {
@@ -2433,6 +2471,8 @@ const liveWiringPrice = liveSizing
         wiring_notes: liveSizing?.notes,
         total_price: liveSystemTotal,
         selected_nice_to_have: Array.from(selectedNiceToHaveIds),
+        // Track which main components are included for PDF/quote
+        partial_included: partialMode ? partialIncludedComponents : undefined,
       }
     : selectedSystemDetails;
 
@@ -4525,28 +4565,56 @@ const liveWiringPrice = liveSizing
                   />
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
+                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${ partialMode && !partialIncludedComponents.inverter ? "opacity-40 border-dashed border-stone-300 bg-white" : "" }`}>
                         <Cpu className="w-8 h-8 text-emerald-600 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.inverter}</h3>
                         <p className="text-sm text-stone-500">Central Power Unit</p>
+                        {partialMode && (
+                          <label className="flex items-center gap-2 cursor-pointer mt-2 shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={partialIncludedComponents.inverter}
+                              onChange={(e) => setPartialIncludedComponents(prev => ({ ...prev, inverter: e.target.checked }))}
+                              className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-stone-600">Include</span>
+                          </label>
+                        )}
                         <div className="mt-4 space-y-2 text-xs">
                           <div className="flex justify-between"><span>AC Output</span><span className="font-bold">Pure Sine Wave</span></div>
                           <div className="flex justify-between"><span>Efficiency</span><span className="font-bold">~93%</span></div>
                           <div className="flex justify-between pt-2 border-t border-stone-200">
                             <span className="text-emerald-600 font-bold">Price</span>
                             <span className="font-bold">
-                              {selectedSystemDetails.inverter_price > 0
-                                ? `₦${selectedSystemDetails.inverter_price.toLocaleString()}`
-                                : "Included"}
+                              {partialMode && !partialIncludedComponents.inverter
+                                ? "Excluded"
+                                : selectedSystemDetails.inverter_price > 0
+                                  ? `₦${selectedSystemDetails.inverter_price.toLocaleString()}`
+                                  : "Included"}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
+                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                        partialMode && !partialIncludedComponents.batteries 
+                          ? "opacity-40 border-dashed border-stone-300 bg-white" 
+                          : ""
+                      }`}>
                         <BatteryIcon className="w-8 h-8 text-blue-600 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.battery_config}</h3>
                         <p className="text-sm text-stone-500">Energy Storage Bank</p>
+                        {partialMode && (
+                          <label className="flex items-center gap-2 cursor-pointer mt-2 shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={partialIncludedComponents.batteries}
+                              onChange={(e) => setPartialIncludedComponents(prev => ({ ...prev, batteries: e.target.checked }))}
+                              className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-stone-600">Include</span>
+                          </label>
+                        )}
                         <div className="mt-4 space-y-2 text-xs">
                           <div className="flex justify-between"><span>Wiring</span><span className="font-bold">Series-Parallel</span></div>
                           <div className="flex justify-between">
@@ -4558,18 +4626,35 @@ const liveWiringPrice = liveSizing
                           <div className="flex justify-between pt-2 border-t border-stone-200">
                             <span className="text-blue-600 font-bold">Price</span>
                             <span className="font-bold">
-                              {selectedSystemDetails.battery_price > 0
-                                ? `₦${selectedSystemDetails.battery_price.toLocaleString()}`
-                                : "Included"}
+                              {partialMode && !partialIncludedComponents.batteries
+                                ? "Excluded"
+                                : selectedSystemDetails.battery_price > 0
+                                  ? `₦${selectedSystemDetails.battery_price.toLocaleString()}`
+                                  : "Included"}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="p-6 bg-stone-50 rounded-2xl border border-stone-100">
+                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                        partialMode && !partialIncludedComponents.panels 
+                          ? "opacity-40 border-dashed border-stone-300 bg-white" 
+                          : ""
+                      }`}>
                         <Sun className="w-8 h-8 text-amber-500 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.panel_config}</h3>
                         <p className="text-sm text-stone-500">Photovoltaic Array</p>
+                        {partialMode && (
+                          <label className="flex items-center gap-2 cursor-pointer mt-2 shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={partialIncludedComponents.panels}
+                              onChange={(e) => setPartialIncludedComponents(prev => ({ ...prev, panels: e.target.checked }))}
+                              className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span className="text-xs font-bold text-stone-600">Include</span>
+                          </label>
+                        )}
                         <div className="mt-4 space-y-2 text-xs">
                           <div className="flex justify-between"><span>Peak Power</span><span className="font-bold">{selectedSystemDetails.array_size_w || 0}W</span></div>
                           <div className="flex justify-between"><span>Daily Yield</span><span className="font-bold">{(selectedSystemDetails.daily_yield || 0).toFixed(0)}Wh</span></div>
@@ -4624,7 +4709,7 @@ const liveWiringPrice = liveSizing
                           </p>
                         )}
 
-                        <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                           {/* Selected (sized and optional) wiring items */}
                           {liveSizing.includeIds.size > 0 && (
                             <>
@@ -4635,13 +4720,14 @@ const liveWiringPrice = liveSizing
                                   if (!item) return null;
                                   const isOptional = item.type === "nice-to-have";
                                   const isIncluded = partialMode 
-                                    ? (wiringQuantities[item.id] && wiringQuantities[item.id] > 0) || !isOptional
+                                    ? (wiringQuantities[item.id] !== undefined ? wiringQuantities[item.id] : (item.qty ?? 1)) > 0
                                     : (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
-                                  const currentQty = wiringQuantities[item.id] || item.qty || 1;
+                                  const currentQty = wiringQuantities[item.id] ?? item.qty ?? 1;
+                                  const itemPrice = calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override });
                                   return (
                                     <div
                                       key={item.id}
-                                      className={`p-4 rounded-2xl border transition-all relative group ${
+                                      className={`p-4 rounded-2xl border transition-all relative ${
                                         isIncluded 
                                           ? (isOptional 
                                             ? "bg-amber-50 border-amber-100" 
@@ -4649,96 +4735,100 @@ const liveWiringPrice = liveSizing
                                           : "bg-white border-dashed border-stone-200 opacity-50"
                                       }`}
                                     >
-                                      {/* Tooltip on hover */}
-                                      {item.tooltip && (
-                                        <div className="absolute -top-10 left-0 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-normal pointer-events-none">
-                                          {item.tooltip}
-                                          <div className="absolute bottom-1 left-4 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                        </div>
-                                      )}
-                                      
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="font-bold text-stone-900 truncate">{item.name}</p>
-                                          <p className="text-xs text-stone-500">
-                                            {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
-                                          </p>
-                                        </div>
-                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                                          isOptional 
-                                            ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
-                                            : "bg-emerald-100 text-emerald-700"
-                                        }`}>
-                                          {isOptional ? "Optional" : "Required"}
-                                        </span>
-                                      </div>
-
-                                      <div className="space-y-1 text-xs text-stone-500 mb-3">
-                                        {Object.entries(item.specs || {}).map(([key, value]) => (
-                                          <div key={key} className="flex items-center justify-between gap-4">
-                                            <span className="capitalize">{key.replace(/_/g, " ")}</span>
-                                            <span className="font-semibold text-stone-700">{String(value)}</span>
+                                      {/* Tooltip on hover - wrapper for group hover */}
+                                      <div className="relative group">
+                                        {item.tooltip && (
+                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                            {item.tooltip}
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
                                           </div>
-                                        ))}
-                                      </div>
+                                        )}
+                                        
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                                            <p className="text-xs text-stone-500">
+                                              {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                            </p>
+                                          </div>
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                            isOptional 
+                                              ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
+                                              : "bg-emerald-100 text-emerald-700"
+                                          }`}>
+                                            {isOptional ? "Optional" : "Required"}
+                                          </span>
+                                        </div>
 
-                                      <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
-                                        <span className="font-bold text-emerald-600">₦{calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override }).toLocaleString()}</span>
-                                        <div className="flex items-center gap-4">
-                                          {/* Checkbox for all items in partial mode, optional items only in normal mode */}
-                                          {(partialMode || isOptional) ? (
-                                            <label className="flex items-center gap-2 cursor-pointer">
+                                        <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                          {Object.entries(item.specs || {}).map(([key, value]) => (
+                                            <div key={key} className="flex items-center justify-between gap-4">
+                                              <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                              <span className="font-semibold text-stone-700">{String(value)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
+                                          <span className="font-bold text-emerald-600">₦{itemPrice.toLocaleString()}</span>
+                                          <div className="flex items-center gap-4">
+                                            {/* Checkbox for all items in partial mode, optional items only in normal mode */}
+                                            {(partialMode || isOptional) ? (
+                                              <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={isIncluded}
+                                                  onChange={(e) => {
+                                                    e.stopPropagation();
+                                                    if (partialMode) {
+                                                      // In partial mode, toggle inclusion via quantity (0 = excluded)
+                                                      const qty = e.target.checked ? (currentQty || 1) : 0;
+                                                      setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                      setWiring(prev => prev.map(w => 
+                                                        w.id === item.id ? { ...w, qty } : w
+                                                      ));
+                                                    } else {
+                                                      // Normal mode: only for optional items
+                                                      const next = new Set(selectedNiceToHaveIds);
+                                                      if (e.target.checked) next.add(item.id);
+                                                      else next.delete(item.id);
+                                                      setSelectedNiceToHaveIds(next);
+                                                    }
+                                                  }}
+                                                  className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                                />
+                                                <span className="text-xs font-bold text-stone-600">{partialMode ? "Include" : "Include"}</span>
+                                              </label>
+                                            ) : (
+                                              <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
+                                                <CheckCircle2 className="w-3 h-3" /> Required
+                                              </span>
+                                            )}
+                                            {/* Quantity control for all items */}
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs text-stone-500">Qty:</span>
                                               <input
-                                                type="checkbox"
-                                                checked={isIncluded}
+                                                type="number"
+                                                min={partialMode ? "0" : "1"}
+                                                max="100"
+                                                value={isIncluded ? currentQty : 0}
                                                 onChange={(e) => {
                                                   e.stopPropagation();
-                                                  if (partialMode) {
-                                                    // In partial mode, toggle inclusion via quantity (0 = excluded)
-                                                    const qty = e.target.checked ? (currentQty || 1) : 0;
-                                                    setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
-                                                    setWiring(prev => prev.map(w => 
-                                                      w.id === item.id ? { ...w, qty } : w
-                                                    ));
-                                                  } else {
-                                                    // Normal mode: only for optional items
-                                                    const next = new Set(selectedNiceToHaveIds);
-                                                    if (e.target.checked) next.add(item.id);
-                                                    else next.delete(item.id);
-                                                    setSelectedNiceToHaveIds(next);
-                                                  }
+                                                  const parsed = parseInt(e.target.value);
+                                                  const fallback = partialMode ? 0 : 1;
+                                                  const qty = Math.max(fallback, Number.isNaN(parsed) ? fallback : parsed);
+                                                  setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                  // Also persist to wiring state for localStorage
+                                                  setWiring(prev => prev.map(w => 
+                                                    w.id === item.id 
+                                                      ? { ...w, qty } 
+                                                      : w
+                                                  ));
                                                 }}
-                                                className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                                className="w-16 px-2 py-1 text-sm border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                                disabled={!isIncluded}
                                               />
-                                              <span className="text-xs font-bold text-stone-600">{partialMode ? "Include" : "Include"}</span>
-                                            </label>
-                                          ) : (
-                                            <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
-                                              <CheckCircle2 className="w-3 h-3" /> Required
-                                            </span>
-                                          )}
-                                          {/* Quantity control for all items */}
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-xs text-stone-500">Qty:</span>
-                                            <input
-                                              type="number"
-                                              min={partialMode ? "0" : "1"}
-                                              max="100"
-                                              value={isIncluded ? currentQty : 0}
-                                              onChange={(e) => {
-                                                e.stopPropagation();
-                                                const qty = Math.max(partialMode ? 0 : 1, parseInt(e.target.value) || (partialMode ? 0 : 1));
-                                                setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
-                                                // Also persist to wiring state for localStorage
-                                                setWiring(prev => prev.map(w => 
-                                                  w.id === item.id 
-                                                    ? { ...w, qty } 
-                                                    : w
-                                                ));
-                                              }}
-                                              className="w-16 px-2 py-1 text-sm border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
-                                              disabled={!isIncluded}
-                                            />
+                                            </div>
                                           </div>
                                         </div>
                                       </div>
@@ -4754,6 +4844,79 @@ const liveWiringPrice = liveSizing
                           * Only the correctly sized cable gauge is included. Different gauges serve different current requirements.
                           {partialMode && " In partial mode, cable sizing is disabled — verify gauge matches your system."}
                         </p>
+
+                        {/* Available Optional Items - not yet selected */}
+                        {!partialMode && (
+                          <div className="mt-6 pt-6 border-t border-stone-200">
+                            <button
+                              type="button"
+                              onClick={() => setShowOptionalItems(!showOptionalItems)}
+                              className="w-full flex items-center justify-between gap-2 p-2 rounded-xl hover:bg-stone-100 transition-colors"
+                            >
+                              <h5 className="font-bold text-stone-700 flex items-center gap-2">
+                                <PlusCircle className="w-5 h-5 text-amber-600" />
+                                Available Optional Items
+                              </h5>
+                              <ChevronDown className={`w-5 h-5 text-stone-500 transition-transform ${showOptionalItems ? "rotate-180" : ""}`} />
+                            </button>
+                            {showOptionalItems && (
+                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <p className="text-xs text-stone-500 col-span-full">
+                                  Click to add optional items to your quote. Hover for description.
+                                </p>
+                                {wiring
+                                  .filter(w => w.type === "nice-to-have" && !liveSizing?.includeIds.has(w.id))
+                                  .map(item => (
+                                    <div
+                                      key={item.id}
+                                      className="p-4 rounded-2xl border bg-amber-50 border-amber-100 transition-all relative group cursor-pointer hover:bg-amber-100"
+                                    >
+                                      {item.tooltip && (
+                                        <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                          {item.tooltip}
+                                          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
+                                        </div>
+                                      )}
+                                      <div className="flex items-center justify-between gap-3">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                                          <p className="text-xs text-stone-500">
+                                            {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                          </p>
+                                        </div>
+                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">
+                                          Optional
+                                        </span>
+                                      </div>
+                                      <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                        {Object.entries(item.specs || {}).map(([key, value]) => (
+                                          <div key={key} className="flex items-center justify-between gap-4">
+                                            <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                            <span className="font-semibold text-stone-700">{String(value)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <div className="flex items-center justify-between">
+                                        <span className="font-bold text-emerald-600">₦{item.price.toLocaleString()}</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedNiceToHaveIds(prev => new Set([...prev, item.id]));
+                                            // Initialize quantity
+                                            setWiringQuantities(prev => ({ ...prev, [item.id]: item.qty ?? 1 }));
+                                          }}
+                                          className="bg-amber-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-amber-700 transition"
+                                        >
+                                          Add
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
 
