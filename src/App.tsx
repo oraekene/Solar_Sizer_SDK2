@@ -946,6 +946,9 @@ export default function App() {
 
   // Track which nice-to-have wiring items are selected
   const [selectedNiceToHaveIds, setSelectedNiceToHaveIds] = useState<Set<string>>(new Set());
+  // Track which charge controllers are selected as optional add-ons (cosmetic only —
+  // they are never passed to sizeWiring, so they never affect the calc or the quote).
+  const [selectedChargeControllerIds, setSelectedChargeControllerIds] = useState<Set<string>>(new Set());
   // Track quantity for each wiring item (by id)
   const [wiringQuantities, setWiringQuantities] = useState<Record<string, number>>({});
   // Partial/Upgrade mode: allows toggling ALL components (inverters, panels, batteries, wiring)
@@ -2738,6 +2741,36 @@ const liveWiringPrice = liveSizing
   const optionalByCategory = (Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[])
     .map((category) => [category, optionalItems.filter((w) => w.category === category)] as const)
     .filter(([, items]) => items.length > 0);
+
+  // Charge controllers are catalog-only optional add-ons: they are filtered for
+  // display against the selected inverter but never passed to sizeWiring, so they
+  // cannot change the calc, the wiring, or the quote price.
+  const ccIsCompatible = (cc: ChargeController): boolean => {
+    if (!liveSizing) return true;
+    const inv = selectedSystemDetails?.inverter_data;
+    if (!inv) return true;
+    const systemVdc = inv.system_vdc || selectedSystemDetails?.battery_data?.voltage || 0;
+    // Voltage must match the inverter's DC bus.
+    if (systemVdc > 0 && cc.battery_voltage !== systemVdc) return false;
+    // A PWM external controller cannot be paired with an MPPT hybrid inverter.
+    if (inv.cc_type === "mppt" && cc.type !== "mppt") return false;
+    // External CC must be at least as capable as the inverter's built-in CC.
+    if (inv.cc_max_voc > 0 && cc.max_voc < inv.cc_max_voc) return false;
+    if (inv.cc_max_amps > 0 && cc.max_amps < inv.cc_max_amps) return false;
+    return true;
+  };
+
+  const ccQuery = optionalSearch.trim().toLowerCase();
+  const optionalChargeControllers = chargeControllers
+    .filter((cc) => !selectedChargeControllerIds.has(cc.id) && ccIsCompatible(cc))
+    .filter((cc) => {
+      if (!ccQuery) return true;
+      return [cc.name, cc.description, cc.type, String(cc.battery_voltage), String(cc.max_voc), String(cc.max_amps), String(cc.max_pv_w)]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(ccQuery);
+    });
 
   // In partial mode, subtract prices of unchecked main components
   const partialInverterPrice = partialMode && !partialIncludedComponents.inverter ? (selectedSystemDetails?.inverter_price || 0) : 0;
@@ -5212,7 +5245,69 @@ const liveWiringPrice = liveSizing
                               }
                             </>
                           )}
-                        </div>
+
+                          {/* Selected charge controllers (cosmetic add-ons, not sized) */}
+                          {selectedChargeControllerIds.size > 0 && (
+                            <>
+                              {Array.from(selectedChargeControllerIds)
+                                .map(id => chargeControllers.find(cc => cc.id === id))
+                                .filter(Boolean)
+                                .map((cc) => {
+                                  if (!cc) return null;
+                                  return (
+                                    <div
+                                      key={cc.id}
+                                      title={cc.description ?? cc.name}
+                                      className="p-4 rounded-2xl border bg-cyan-50 border-cyan-100 transition-all relative group"
+                                    >
+                                      <div className="relative group">
+                                        {(cc.description ?? cc.name) && (
+                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                            {cc.description ?? cc.name}
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
+                                          </div>
+                                        )}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-stone-900 break-words">{cc.name}</p>
+                                            <p className="text-xs text-stone-500">Charge Controller</p>
+                                          </div>
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 shrink-0">
+                                            Optional
+                                          </span>
+                                        </div>
+                                        <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                          <div className="flex items-center justify-between gap-4"><span className="capitalize">Type</span><span className="font-semibold text-stone-700 uppercase">{cc.type}</span></div>
+                                          <div className="flex items-center justify-between gap-4"><span>Battery voltage</span><span className="font-semibold text-stone-700">{cc.battery_voltage}V</span></div>
+                                          <div className="flex items-center justify-between gap-4"><span>Max PV</span><span className="font-semibold text-stone-700">{cc.max_pv_w}W</span></div>
+                                          <div className="flex items-center justify-between gap-4"><span>Max Voc</span><span className="font-semibold text-stone-700">{cc.max_voc}V</span></div>
+                                          <div className="flex items-center justify-between gap-4"><span>Max amps</span><span className="font-semibold text-stone-700">{cc.max_amps}A</span></div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
+                                          <span className="font-bold text-emerald-600">₦{cc.price.toLocaleString()}</span>
+                                          <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={true}
+                                              onChange={(e) => {
+                                                e.stopPropagation();
+                                                const next = new Set(selectedChargeControllerIds);
+                                                if (e.target.checked) next.add(cc.id);
+                                                else next.delete(cc.id);
+                                                setSelectedChargeControllerIds(next);
+                                              }}
+                                              className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                            />
+                                            <span className="text-xs font-bold text-stone-600">Include</span>
+                                          </label>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </>
+                            )}
+                          </div>
 
                         <p className="text-xs text-stone-500 mt-2">
                           * Only the correctly sized cable gauge is included. Different gauges serve different current requirements.
@@ -5311,6 +5406,61 @@ const liveWiringPrice = liveSizing
                           )}
                         </div>
 
+                        {/* Available Charge Controllers — catalog-only add-ons, never sized */}
+                        {optionalChargeControllers.length > 0 && (
+                          <details
+                            open={ccQuery !== ""}
+                            className="rounded-2xl border border-cyan-200 bg-cyan-50/60"
+                          >
+                            <summary className="cursor-pointer select-none px-4 py-3 flex items-center justify-between gap-2">
+                              <span className="font-bold text-sm text-stone-700 flex items-center gap-2">
+                                <Cpu className="w-4 h-4 text-cyan-600" /> Charge Controllers
+                              </span>
+                              <span className="text-xs text-stone-500">{optionalChargeControllers.length} item{optionalChargeControllers.length === 1 ? "" : "s"}</span>
+                            </summary>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 pt-0">
+                              {optionalChargeControllers.map(cc => (
+                                <div
+                                  key={cc.id}
+                                  title={cc.description ?? cc.name}
+                                  className="p-4 rounded-2xl border bg-cyan-50 border-cyan-100 transition-all relative group cursor-pointer hover:bg-cyan-100"
+                                >
+                                  <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                    {cc.description ?? cc.name}
+                                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
+                                  </div>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-bold text-stone-900 break-words">{cc.name}</p>
+                                      <p className="text-xs text-stone-500">{cc.battery_voltage}V {cc.type.toUpperCase()}</p>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-700 shrink-0">
+                                      Optional
+                                    </span>
+                                  </div>
+                                  <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                    <div className="flex items-center justify-between gap-4"><span>Max PV</span><span className="font-semibold text-stone-700">{cc.max_pv_w}W</span></div>
+                                    <div className="flex items-center justify-between gap-4"><span>Max Voc</span><span className="font-semibold text-stone-700">{cc.max_voc}V</span></div>
+                                    <div className="flex items-center justify-between gap-4"><span>Max amps</span><span className="font-semibold text-stone-700">{cc.max_amps}A</span></div>
+                                  </div>
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-emerald-600">₦{cc.price.toLocaleString()}</span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedChargeControllerIds(prev => new Set([...prev, cc.id]));
+                                      }}
+                                      className="bg-cyan-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-cyan-700 transition"
+                                    >
+                                      Add
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
                       </div>
                     )}
 
