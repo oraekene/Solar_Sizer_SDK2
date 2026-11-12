@@ -51,6 +51,9 @@ export const flattenSpec = (key: string, value: unknown, indent = 0): string[] =
   return [`${pad}${key}: ${v}`];
 };
 
+/** Categories that only exist to connect a PV array to the rest of the system. */
+export const PV_ONLY_CATEGORIES: WiringCategory[] = ["mc4_connectors"];
+
 /** Category to the spec key that decides which sibling is the right size. */
 const SIZED_SPEC: Partial<Record<WiringCategory, string>> = {
   cables: "gauge",
@@ -116,6 +119,7 @@ export const sizeWiring = (
 
   const pvAmps = panel ? panel.isc * parallelStrings * 1.25 : 0;
   const pvVoc = panel ? panel.voc * seriesCount : 0;
+  const hasPv = !!panel && arrayWatts > 0;
 
   // All-in-one (powerstation / coupled kit): no battery-to-inverter cables or DC breakers.
   const isAllInOne = input.all_in_one === true;
@@ -142,6 +146,8 @@ export const sizeWiring = (
     }
 
     for (const [group, candidates] of groups) {
+      // No PV array: skip PV cable and any PV-only accessory categories.
+      if (!hasPv && (group === "PV Wire" || PV_ONLY_CATEGORIES.includes(category))) continue;
       // All-in-one: skip Copper (battery-to-inverter cables) and breakers entirely.
       if (isAllInOne && (group === "Copper" || group === "breakers")) continue;
 
@@ -173,6 +179,7 @@ export const sizeWiring = (
     }
 
     const specKey = SIZED_SPEC[item.category];
+    if (!hasPv && PV_ONLY_CATEGORIES.includes(item.category)) continue;
     if (!specKey || specNumber(item.specs[specKey]) <= 0) {
       includeIds.add(item.id);
       continue;

@@ -62,6 +62,7 @@ import {
   SavedResult,
   MasterDevice,
   Product,
+  ProductType,
   Powerstation,
   ProfitMargins,
   PDFSettings,
@@ -73,7 +74,7 @@ import {
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
-import { sizeWiring, normalizeWiringSpecs, specNumber } from "./utils/wiringSizer";
+import { sizeWiring, normalizeWiringSpecs, specNumber, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
 import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
@@ -211,6 +212,33 @@ const FUEL_PRICES = {
 
 type HardwareType = "inverter" | "panel" | "battery" | "powerstation" | "chargeController" | "wiring";
 
+/** What the admin is building in the product editor. */
+type ProductDraft = {
+  mode: "promote" | "manual";
+  id: string;
+  name: string;
+  description: string;
+  price: string;
+  product_type: ProductType;
+  kit_type: "solar" | "internet" | "powerstation";
+  tags: string;
+  shape: "single" | "setup" | "kit";
+  single_role: "inverter" | "battery" | "panel" | "network";
+  single_name: string;
+  single_watts: string;
+  single_price: string;
+  inverter: string;
+  inverter_w: string;
+  inverter_price: string;
+  battery_config: string;
+  battery_wh: string;
+  battery_price: string;
+  panel_config: string;
+  panel_w: string;
+  panel_price: string;
+  sourceSystem?: SystemCombination;
+};
+
 const itemData = (item: any, fallbackType?: HardwareType) => {
   if (!item) return null;
 
@@ -274,6 +302,74 @@ const HardwareCard = ({
   </div>
 );
 
+const DEFAULT_PDF_SETTINGS: PDFSettings = {
+  quoteTitle: "SOLARSIZER PRO QUOTE",
+  quotePrefix: "QT",
+  footerLine1: "Thank you for choosing SolarSizer Pro!",
+  footerLine2: "This quote is valid for 14 days.",
+  vatPercent: 7.5,
+};
+
+/** Older saved settings and server rows have no vatPercent, so fill the gap. */
+const normalizePdfSettings = (saved: Partial<PDFSettings> | null | undefined): PDFSettings => {
+  const merged = { ...DEFAULT_PDF_SETTINGS, ...(saved ?? {}) };
+  const vat = Number(merged.vatPercent);
+  return { ...merged, vatPercent: Number.isFinite(vat) ? vat : DEFAULT_PDF_SETTINGS.vatPercent };
+};
+
+/** Marketing suffixes differ between the powerstation seed and its catalog product. */
+const sourceKey = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/plug[\s-]*and[\s-]*play/g, "")
+    .replace(/power\s*(box|station)/g, "")
+    .replace(/\b(portable|solar generator|combo|kit)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+
+const powerstationAsProduct = (ps: Powerstation, price = ps.price, name = ps.name): Product => ({
+  id: ps.id,
+  name,
+  description: ps.description ?? `${ps.capacity_wh}Wh powerstation with ${ps.max_output_w}W output.`,
+  type: "standalone",
+  tags: [...(ps.tags ?? []), "powerstation"],
+  price,
+  product_type: "powerstation",
+  combination_data: {
+    inverter: name,
+    inverter_price: price,
+    inverter_w: ps.max_output_w,
+    battery_config: `${ps.capacity_wh}Wh integrated`,
+    battery_price: 0,
+    battery_wh: ps.capacity_wh,
+    battery_total_wh: ps.capacity_wh,
+    panel_config: "",
+    panel_price: 0,
+    panel_w: 0,
+    array_size_w: 0,
+    total_price: price,
+    daily_yield: 0,
+    deficit: 0,
+    status: "Optimal",
+    advice: ps.description ?? "",
+    log: [ps.description ?? ""],
+    kit_type: "powerstation",
+    all_in_one: true,
+    component_specs: [
+      {
+        role: "powerstation",
+        name,
+        quantity: 1,
+        specs: {
+          capacity_wh: ps.capacity_wh,
+          max_output_w: ps.max_output_w,
+          pv_input_w: ps.max_pv_input_w,
+          price,
+        },
+      },
+    ],
+  },
+});
+
 const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
@@ -296,13 +392,36 @@ const buildProductDetails = (product: Product): SystemCombination => {
 
     const isInternet = product.tags?.includes("internet") ?? false;
 
+    if (!isInternet) {
+      // Hardware-catalog powerstations arrive as flat products with no combination
+      // data. Reuse the seeded specs so the modal shows one unit, not fake parts.
+      const matched = POWERSTATIONS.find(
+        (ps) => ps.id === product.id || sourceKey(ps.name) === sourceKey(product.name)
+      );
+      if (matched) {
+        return {
+          ...powerstationAsProduct(matched, product.price, product.name).combination_data!,
+          product_id: product.id,
+          product_name: product.name,
+          product_description: product.description,
+          is_preconfigured: true,
+        };
+      }
+    }
+
+    // Standalone non-internet items (a single panel, battery, accessory) display
+    // only their own card; empty labels keep the modal from inventing the rest.
+    const isPanel = product.tags?.includes("panel") ?? false;
+    const isBattery = product.tags?.includes("battery") ?? false;
+    const role = isInternet ? "network" : isPanel ? "panel" : isBattery ? "battery" : "inverter";
+
     return {
-      inverter: product.name,
-      inverter_price: product.price,
-      battery_config: "N/A",
-      battery_price: 0,
-      panel_config: "N/A",
-      panel_price: 0,
+      inverter: role === "inverter" ? product.name : "",
+      inverter_price: role === "inverter" ? product.price : 0,
+      battery_config: role === "battery" ? product.name : "",
+      battery_price: role === "battery" ? product.price : 0,
+      panel_config: role === "panel" ? product.name : "",
+      panel_price: role === "panel" ? product.price : 0,
       array_size_w: 0,
       battery_total_wh: 0,
       total_price: product.price,
@@ -318,7 +437,7 @@ const buildProductDetails = (product: Product): SystemCombination => {
       kit_type: isInternet ? "internet" : "solar",
       component_specs: [
         {
-          role: isInternet ? "network" : "inverter",
+          role,
           name: product.name,
           quantity: 1,
           specs: {
@@ -384,7 +503,7 @@ const InternetDeviceModal = ({
     new Map(
       powerstations
         .filter((ps) => ps.max_output_w >= peakW)
-        .map((ps) => [ps.name, ps]),
+        .map((ps) => [sourceKey(ps.name), ps]),
     ).values(),
   ).sort((a, b) => a.price - b.price);
   const fullPowerstations = outputPowerstations.filter((ps) => ps.capacity_wh >= nightWh);
@@ -394,9 +513,10 @@ const InternetDeviceModal = ({
       products
         .filter((p) => {
           const cd = p.combination_data;
-          return !!cd && (cd.inverter_w ?? cd.array_size_w ?? 0) >= peakW;
+          // Internet kits are not solar sources, so they never lead this list.
+          return !!cd && !p.tags.includes("internet") && (cd.inverter_w ?? cd.array_size_w ?? 0) >= peakW;
         })
-        .map((p) => [p.name, p]),
+        .map((p) => [sourceKey(p.name), p]),
     ).values(),
   ).sort((a, b) => a.price - b.price);
   const fullProducts = outputProducts.filter((p) => {
@@ -405,8 +525,14 @@ const InternetDeviceModal = ({
   });
 
   const usingOutputOnly = fullPowerstations.length === 0 && fullProducts.length === 0;
-  const matchedPowerstations = (usingOutputOnly ? outputPowerstations : fullPowerstations).slice(0, 3);
-  const matchedProducts = (usingOutputOnly ? outputProducts : fullProducts).slice(0, 3);
+  const chosenPowerstations = usingOutputOnly ? outputPowerstations : fullPowerstations;
+  const chosenPowerstationsKeys = new Set(chosenPowerstations.map((ps) => sourceKey(ps.name)));
+  // The A300 exists both as a powerstation and as a catalog product. Keep the
+  // cheaper first entry and let the next product fill the row instead.
+  const matchedPowerstations = chosenPowerstations.slice(0, 3);
+  const matchedProducts = (usingOutputOnly ? outputProducts : fullProducts)
+    .filter((p) => !chosenPowerstationsKeys.has(sourceKey(p.name)))
+    .slice(0, 3);
 
   return (
     <motion.div
@@ -528,7 +654,15 @@ const InternetDeviceModal = ({
                       <p className="font-bold text-sm text-stone-900 break-words">{ps.name}</p>
                       <p className="text-xs text-stone-500">{ps.capacity_wh}Wh · {ps.max_output_w}W out · {ps.max_pv_input_w}W PV in</p>
                     </div>
-                    <span className="font-bold text-emerald-600 shrink-0">₦{ps.price.toLocaleString()}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-bold text-emerald-600">₦{ps.price.toLocaleString()}</span>
+                      <button
+                        onClick={() => onBuy(powerstationAsProduct(ps))}
+                        className="px-3 py-1.5 bg-emerald-600 text-white text-[11px] font-bold rounded-lg hover:bg-emerald-700 transition-all flex items-center gap-1"
+                      >
+                        <ShoppingCart className="w-3 h-3" /> Buy
+                      </button>
+                    </div>
                   </div>
                 ))}
                 {matchedProducts.map((p) => (
@@ -1080,7 +1214,7 @@ export default function App() {
     sdk.getDevices().then(setMasterDevices).catch(console.error);
     sdk.getProducts().then(setProducts).catch(console.error);
     sdk.getSettings("margins").then(m => m && setMargins(m)).catch(console.error);
-    sdk.getSettings("pdf_settings").then(p => p && setPdfSettings(p)).catch(console.error);
+    sdk.getSettings("pdf_settings").then(p => p && setPdfSettings(normalizePdfSettings(p))).catch(console.error);
     
     // Fetch global hardware
     sdk.getHardware().then(data => {
@@ -1195,12 +1329,7 @@ export default function App() {
   // PDF Quote Settings State
   const [pdfSettings, setPdfSettings] = useState<PDFSettings>(() => {
     const saved = localStorage.getItem("ss_pdf_settings");
-    return saved ? JSON.parse(saved) : {
-      quoteTitle: "SOLARSIZER PRO QUOTE",
-      quotePrefix: "QT",
-      footerLine1: "Thank you for choosing SolarSizer Pro!",
-      footerLine2: "This quote is valid for 14 days."
-    };
+    return saved ? normalizePdfSettings(JSON.parse(saved)) : DEFAULT_PDF_SETTINGS;
   });
 
   const [newDevice, setNewDevice] = useState<Omit<Partial<Device>, 'qty' | 'watts'> & { qty?: number | ""; watts?: number | "" }>({
@@ -1219,37 +1348,156 @@ export default function App() {
   const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [resultFilter, setResultFilter] = useState<"all" | "kits" | "powerstations">("all");
-  const saveAsProduct = async (system: SystemCombination) => {
+  const [productDraft, setProductDraft] = useState<ProductDraft | null>(null);
+
+  /** Turn a calculated system into a catalog product draft. */
+  const openPromoteEditor = (system: SystemCombination) => {
+    if (!sessionStorage.getItem("ss_admin_key")) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
+    setProductDraft({
+      mode: "promote",
+      id: Math.random().toString(36).substr(2, 9),
+      name: `${system.inverter} System`,
+      description: `Complete solar system with ${system.panel_config} and ${system.battery_config}.`,
+      price: String(system.total_price || 0),
+      product_type: "system",
+      kit_type: system.kit_type ?? "solar",
+      tags: "residential",
+      shape: "kit",
+      single_role: "inverter",
+      single_name: "",
+      single_watts: "",
+      single_price: "",
+      inverter: system.inverter ?? "",
+      inverter_w: String(system.inverter_w ?? ""),
+      inverter_price: String(system.inverter_price ?? ""),
+      battery_config: system.battery_config ?? "",
+      battery_wh: String(system.battery_wh ?? system.battery_total_wh ?? ""),
+      battery_price: String(system.battery_price ?? ""),
+      panel_config: system.panel_config ?? "",
+      panel_w: String(system.panel_w ?? ""),
+      panel_price: String(system.panel_price ?? ""),
+      sourceSystem: system,
+    });
+  };
+
+  /** Start an empty product draft so the admin can enter one by hand. */
+  const openManualProductEditor = () => {
+    if (!sessionStorage.getItem("ss_admin_key")) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
+    setProductDraft({
+      mode: "manual",
+      id: Math.random().toString(36).substr(2, 9),
+      name: "",
+      description: "",
+      price: "",
+      product_type: "system",
+      kit_type: "solar",
+      tags: "",
+      shape: "kit",
+      single_role: "inverter",
+      single_name: "",
+      single_watts: "",
+      single_price: "",
+      inverter: "",
+      inverter_w: "",
+      inverter_price: "",
+      battery_config: "",
+      battery_wh: "",
+      battery_price: "",
+      panel_config: "",
+      panel_w: "",
+      panel_price: "",
+    });
+  };
+
+  const saveProductDraft = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const draft = productDraft;
+    if (!draft) return;
     const adminKey = sessionStorage.getItem("ss_admin_key");
     if (!adminKey) {
       alert("Admin session expired. Visit ?admin=true to unlock again.");
       return;
     }
 
-    const name = prompt(
-      "Enter a name for this product combination:",
-      `${system.inverter} System`
-    );
-    if (!name) return;
+    const num = (value: string) => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const tags = draft.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    const price = num(draft.price);
 
-    const tagInput = prompt("Enter tags (comma separated):", "featured,residential");
-    const tags = tagInput
-      ? tagInput.split(",").map((t) => t.trim()).filter(Boolean)
-      : ["residential"];
+    let combination_data: SystemCombination | null = null;
+    let type: "standalone" | "combination" = "combination";
+
+    if (draft.mode === "promote" && draft.sourceSystem) {
+      combination_data = { ...draft.sourceSystem, total_price: price || draft.sourceSystem.total_price };
+    } else {
+      let inverter = "", inverterW = 0, inverterPrice = 0;
+      let battery = "", batteryWh = 0, batteryPrice = 0;
+      let panel = "", panelW = 0, panelPrice = 0;
+
+      if (draft.shape === "single") {
+        type = "standalone";
+        const name = draft.single_name;
+        const watts = num(draft.single_watts);
+        const singlePrice = num(draft.single_price);
+        if (draft.single_role === "inverter") { inverter = name; inverterW = watts; inverterPrice = singlePrice; }
+        else if (draft.single_role === "battery") { battery = name; batteryWh = watts; batteryPrice = singlePrice; }
+        else if (draft.single_role === "panel") { panel = name; panelW = watts; panelPrice = singlePrice; }
+        else { inverter = name; inverterW = watts; inverterPrice = singlePrice; }
+      } else {
+        inverter = draft.inverter; inverterW = num(draft.inverter_w); inverterPrice = num(draft.inverter_price);
+        battery = draft.battery_config; batteryWh = num(draft.battery_wh); batteryPrice = num(draft.battery_price);
+        if (draft.shape === "kit") {
+          panel = draft.panel_config; panelW = num(draft.panel_w); panelPrice = num(draft.panel_price);
+        }
+      }
+
+      const partsTotal = inverterPrice + batteryPrice + panelPrice;
+      combination_data = {
+        inverter,
+        inverter_price: inverterPrice,
+        inverter_w: inverterW,
+        battery_config: battery,
+        battery_price: batteryPrice,
+        battery_wh: batteryWh,
+        battery_total_wh: batteryWh,
+        panel_config: panel,
+        panel_price: panelPrice,
+        panel_w: panelW,
+        array_size_w: panelW,
+        total_price: price || partsTotal,
+        daily_yield: 0,
+        deficit: 0,
+        status: "Optimal",
+        advice: draft.description,
+        log: [draft.description],
+        kit_type: draft.kit_type,
+        is_preconfigured: true,
+      };
+    }
 
     const product = {
-      id: Math.random().toString(36).substr(2, 9),
-      name,
-      description: `Complete solar system with ${system.panel_config} and ${system.battery_config}.`,
-      type: "combination",
-      combination_data: system,
+      id: draft.id,
+      name: draft.name,
+      description: draft.description,
+      type,
+      combination_data,
       tags,
-      price: system.total_price,
+      price: price || combination_data?.total_price || 0,
+      product_type: draft.product_type,
     };
 
     try {
       await sdk.saveProduct(product, adminKey);
       alert("✅ Product saved successfully!");
+      setProductDraft(null);
       sdk.getProducts().then(setProducts);
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -1380,6 +1628,7 @@ export default function App() {
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
   const [masterDeviceClass, setMasterDeviceClass] = useState<string>("");
+  const [masterDeviceCategory, setMasterDeviceCategory] = useState<DeviceCategory>("electronics");
 
   const safeLocalStorageSet = (key: string, value: any) => {
     try {
@@ -2485,6 +2734,7 @@ export default function App() {
   const startEditingMasterDevice = (device: MasterDevice) => {
     setEditingMasterDevice(itemData(device) as MasterDevice);
     setMasterDeviceClass(device.specs?.device_class ?? "");
+    setMasterDeviceCategory(device.category ?? "electronics");
     setShowAddMasterDevice(true);
   };
 
@@ -2740,11 +2990,15 @@ export default function App() {
 
     const money = (value: number) => value > 0 ? `N${Math.round(value).toLocaleString()}` : "Included";
 
-    const costs = [
-      ["1", inverterLabel, getUnits(sys.inverter), inverterExcluded ? "Excluded" : money(inverterPrice)],
-      ["2", batteryLabel, getUnits(sys.battery_config), batteryExcluded ? "Excluded" : money(batteryPrice)],
-      ["3", panelLabel, getUnits(sys.panel_config), panelExcluded ? "Excluded" : money(panelPrice)],
-    ];
+    // Only list parts the product actually contains. A powerstation has no PV
+    // array, so a "Solar PV Array — Included" row would be a false promise.
+    const hasInverter = !!sys.inverter && sys.inverter !== "N/A";
+    const hasBattery = !!sys.battery_config && sys.battery_config !== "N/A";
+    const hasPanel = !!sys.panel_config && sys.panel_config !== "N/A";
+    const costs: (string | number)[][] = [];
+    if (hasInverter) costs.push(["1", inverterLabel, getUnits(sys.inverter), inverterExcluded ? "Excluded" : money(inverterPrice)]);
+    if (hasBattery) costs.push(["2", batteryLabel, getUnits(sys.battery_config), batteryExcluded ? "Excluded" : money(batteryPrice)]);
+    if (hasPanel) costs.push(["3", panelLabel, getUnits(sys.panel_config), panelExcluded ? "Excluded" : money(panelPrice)]);
 
     // Add individual wiring items, using the same qty/length pricing as the modal.
     if (sys.wiring_items && sys.wiring_items.length > 0) {
@@ -2760,15 +3014,27 @@ export default function App() {
       }
     }
 
+    // Optional charge controllers are quote lines too, priced as catalog items.
+    if (sys.selected_charge_controllers && sys.selected_charge_controllers.length > 0) {
+      let row = 0;
+      for (const id of sys.selected_charge_controllers) {
+        const cc = chargeControllers.find((item) => item.id === id);
+        if (!cc) continue;
+        row += 1;
+        costs.push([`5.${row}`, `Charge Controller — ${cc.name}`, "1", money(cc.price)]);
+      }
+    }
+
     costs.push(["", "TOTAL INVESTMENT", "", `N${Math.round(safePrice(sys.total_price)).toLocaleString()}`]);
 
+    const vatPercent = safeNumber(pdfSettings.vatPercent, 7.5);
     autoTable(doc, {
       startY: 65,
       head: [["#", "Component", "Units", "Price"]],
       body: costs,
       theme: "grid",
       headStyles: { fillColor: [16, 185, 129] },
-      foot: [["", "GRAND TOTAL (Inc. 7.5% VAT)", "", `N${Math.round(safePrice(sys.total_price) * 1.075).toLocaleString()}`]],
+      foot: [["", `GRAND TOTAL (Inc. ${vatPercent}% VAT)`, "", `N${Math.round(safePrice(sys.total_price) * (1 + vatPercent / 100)).toLocaleString()}`]],
       footStyles: { fillColor: [245, 245, 244], textColor: [0, 0, 0], fontStyle: "bold" }
     });
 
@@ -2797,13 +3063,7 @@ export default function App() {
     });
 
     // Installation Guide (Shifted under System Specifications)
-    const guideY = (doc as any).lastAutoTable.finalY + 15;
-    doc.setFontSize(14);
-    doc.setTextColor(0);
-    doc.text("WIRING & INSTALLATION GUIDE", 20, guideY);
-
-    doc.setFontSize(10);
-    doc.setTextColor(60);
+    const hasPvArray = (sys.array_size_w || 0) > 0 || (sys.panel_w || 0) > 0;
     const guide = [
       ...(sys.wiring_items ?? []).filter(w => (w.qty ?? 1) > 0).map(w => {
         const qty = w.qty ?? 1;
@@ -2814,16 +3074,27 @@ export default function App() {
         ];
       }),
       ...(sys.wiring_notes ?? []).map(note => ["Sizing", note]),
-      ["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`]
+      ...(hasPvArray ? [["PV String", `Connect panels in the specified series-parallel configuration to stay within the ${sys.inverter}'s MPPT window.`]] : []),
     ];
 
-    autoTable(doc, {
-      startY: guideY + 5,
-      body: guide,
-      theme: "plain",
-      styles: { cellPadding: 2, fontSize: 9 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
-    });
+    // A unit with no PV array has no wiring guide to print.
+    if (guide.length > 0) {
+      const guideY = (doc as any).lastAutoTable.finalY + 15;
+      doc.setFontSize(14);
+      doc.setTextColor(0);
+      doc.text("WIRING & INSTALLATION GUIDE", 20, guideY);
+
+      doc.setFontSize(10);
+      doc.setTextColor(60);
+
+      autoTable(doc, {
+        startY: guideY + 5,
+        body: guide,
+        theme: "plain",
+        styles: { cellPadding: 2, fontSize: 9 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 30 } }
+      });
+    }
 
     // Footer
     const footerY = (doc as any).lastAutoTable.finalY + 20;
@@ -2866,10 +3137,14 @@ export default function App() {
 
   // The details modal keeps a snapshot, so wiring is recomputed live from the
   // current selection. Products carry no wiring_items, so they get the same
-  // sized list the calculator uses; internet kits have no wiring at all.
+  // sized list the calculator uses; internet kits have no wiring at all, and a
+  // unit with no PV array (a powerstation, a lone battery) has no PV wiring.
+  const selectedArrayW =
+    selectedSystemDetails?.array_size_w || selectedSystemDetails?.panel_w || 0;
   const hasWiring =
     !!selectedSystemDetails &&
     selectedSystemDetails.kit_type !== "internet" &&
+    selectedArrayW > 0 &&
     (Array.isArray(selectedSystemDetails.wiring_items) || !!selectedSystemDetails.product_id);
 
   // Reset partial mode state when a new system is selected
@@ -2924,7 +3199,7 @@ export default function App() {
           items: wiring,
           inverter: selectedSystemDetails?.inverter_data,
           panel: selectedSystemDetails?.panel_data,
-          arrayWatts: selectedSystemDetails?.array_size_w || 0,
+          arrayWatts: selectedSystemDetails?.array_size_w || selectedSystemDetails?.panel_w || 0,
           batteryWh: selectedSystemDetails?.battery_total_wh || 0,
           maxAcW: selectedSystemDetails?.inverter_w,
           all_in_one: selectedSystemDetails?.all_in_one,
@@ -2999,6 +3274,7 @@ const liveWiringPrice = liveSizing
   const optionalQuery = optionalSearch.trim().toLowerCase();
   const optionalItems = wiring
     .filter((w) => w.type === "nice-to-have" && !liveSizing?.includeIds.has(w.id) && optionalIsCompatible(w))
+    .filter((w) => selectedArrayW > 0 || !PV_ONLY_CATEGORIES.includes(w.category))
     .filter((w) => {
       if (!optionalQuery) return true;
       return [w.name, w.description, w.tooltip, WIRING_CATEGORY_LABELS[w.category]?.label, ...Object.values(w.specs ?? {})]
@@ -3012,9 +3288,9 @@ const liveWiringPrice = liveSizing
     .map((category) => [category, optionalItems.filter((w) => w.category === category)] as const)
     .filter(([, items]) => items.length > 0);
 
-  // Charge controllers are catalog-only optional add-ons: they are filtered for
-  // display against the selected inverter but never passed to sizeWiring, so they
-  // cannot change the calc, the wiring, or the quote price.
+  // Charge controllers are catalog add-ons. They are filtered for display against
+  // the selected inverter and priced into the quote, but they never change the
+  // calculator's inverter, wiring sizing or panel/battery split.
   const ccIsCompatible = (cc: ChargeController): boolean => {
     if (!liveSizing) return true;
     const inv = selectedSystemDetails?.inverter_data;
@@ -3049,6 +3325,9 @@ const liveWiringPrice = liveSizing
   const partialBatteryPrice = partialMode && !partialIncludedComponents.batteries ? (selectedSystemDetails?.battery_price || 0) : 0;
   const partialPanelPrice = partialMode && !partialIncludedComponents.panels ? (selectedSystemDetails?.panel_price || 0) : 0;
 
+  const selectedChargeControllers = chargeControllers.filter((cc) => selectedChargeControllerIds.has(cc.id));
+  const chargeControllerPrice = selectedChargeControllers.reduce((sum, cc) => sum + (cc.price || 0), 0);
+
   const liveSystemTotal = selectedSystemDetails
     ? (selectedSystemDetails.total_price || 0) 
       - (hasWiring ? selectedSystemDetails.wiring_price || 0 : 0) 
@@ -3056,6 +3335,7 @@ const liveWiringPrice = liveSizing
       - partialInverterPrice
       - partialBatteryPrice
       - partialPanelPrice
+      + chargeControllerPrice
     : 0;
   const quotedSystem = selectedSystemDetails
     ? {
@@ -3815,7 +4095,7 @@ const liveWiringPrice = liveSizing
                                         </button>
                                         {isDeveloper && (
                                           <button 
-                                            onClick={() => saveAsProduct(sys)}
+                                            onClick={() => openPromoteEditor(sys)}
                                             className="p-2.5 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all flex items-center justify-center"
                                             title="Promote to Product"
                                           >
@@ -3977,6 +4257,12 @@ const liveWiringPrice = liveSizing
                     >
                       <Download className="w-3 h-3" /> Export
                     </button>
+                    <button 
+                      onClick={openManualProductEditor}
+                      className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-stone-900 text-white hover:bg-stone-800 transition-all flex items-center gap-2"
+                    >
+                      <Plus className="w-3 h-3" /> Add Product
+                    </button>
                   </>
                 )}
                 {PRODUCT_TYPE_FILTERS.map(tag => (
@@ -3998,6 +4284,9 @@ const liveWiringPrice = liveSizing
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {products
+                // Internet hardware lives in the Internet tab, so those cards
+                // must not leak into the catalog filters.
+                .filter(p => !(p.tags.includes('internet') && p.product_type !== 'system'))
                 .filter(p => selectedProductTag === 'all' || p.product_type === selectedProductTag)
                 .map(product => (
                 <motion.div
@@ -4155,9 +4444,10 @@ const liveWiringPrice = liveSizing
                   </motion.div>
                 ))}
 
-              {/* List Internet Products */}
+              {/* List Internet Products — only the bundled kits; the single
+                  internet devices above already cover the standalone hardware. */}
               {products
-                .filter(p => p.tags.includes('internet'))
+                .filter(p => p.tags.includes('internet') && p.product_type === 'system')
                 .map(product => (
                 <motion.div
                   key={product.id}
@@ -4258,6 +4548,9 @@ const liveWiringPrice = liveSizing
                 <button onClick={() => setShowAddHardware("chargeController")} className="bg-cyan-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-cyan-700 transition-all">
                   <Plus className="w-4 h-4" /> Add Charge Controller
                 </button>
+                <button onClick={() => { setEditingMasterDevice(null); setMasterDeviceClass(""); setMasterDeviceCategory("internet"); setShowAddMasterDevice(true); }} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all">
+                  <Plus className="w-4 h-4" /> Add Internet Device
+                </button>
                 {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => {
                   const colors: Record<WiringCategory, string> = {
                     cables: "text-white",
@@ -4334,6 +4627,15 @@ const liveWiringPrice = liveSizing
                     </div>
                   ))}
                 </div>
+                <div className="mt-3 rounded-xl bg-white border border-emerald-100 p-3 text-[11px] text-emerald-800/80 leading-relaxed">
+                  <p className="font-bold uppercase tracking-wider text-emerald-700 mb-1">Where the product margin applies</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>The headline price of every catalog product, so a recommended kit shows the marked-up total.</li>
+                    <li>The inverter, battery and panel prices inside a catalog product, so the itemized quote lines match that marked-up total.</li>
+                    <li>Wiring prices on every calculated system, in the results list, the details modal and the PDF quote.</li>
+                  </ul>
+                  <p className="mt-1 italic">The inverter, panel, battery and powerstation margins apply only to those single hardware parts. They are not used for catalog products or wiring.</p>
+                </div>
                 
                 {/* PDF Customization Panel */}
                 <div className="mt-8 pt-8 border-t border-emerald-100">
@@ -4364,6 +4666,17 @@ const liveWiringPrice = liveSizing
                       </div>
                     </div>
                     <div className="space-y-4">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">VAT Rate (%)</label>
+                        <input 
+                          type="number" 
+                          step="0.1" 
+                          value={pdfSettings.vatPercent}
+                          onChange={(e) => setPdfSettings((p) => ({ ...p, vatPercent: Number(e.target.value) || 0 }))}
+                          className="w-full px-4 py-2 bg-white border border-emerald-200 rounded-xl text-sm"
+                          placeholder="e.g. 7.5"
+                        />
+                      </div>
                       <div>
                         <label className="block text-[10px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Footer Message Line 1</label>
                         <input 
@@ -4414,7 +4727,9 @@ const liveWiringPrice = liveSizing
                   </div>
                 }
               >
-                {masterDevices.map((md) => (
+                {masterDevices
+                  .filter((md) => md.category !== "internet" && !md.tags.includes("internet"))
+                  .map((md) => (
                   <div key={md.id} className="w-[260px] shrink-0 bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
                     <div className="flex justify-between items-start mb-2">
                       <p className="font-bold text-sm">{md.name}</p>
@@ -4437,10 +4752,47 @@ const liveWiringPrice = liveSizing
                 ))}
                 {isDeveloper && (
                   <button 
-                    onClick={() => { setEditingMasterDevice(null); setMasterDeviceClass(""); setShowAddMasterDevice(true); }}
+                    onClick={() => { setEditingMasterDevice(null); setMasterDeviceClass(""); setMasterDeviceCategory("electronics"); setShowAddMasterDevice(true); }}
                     className="w-[260px] shrink-0 py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
                   >
                     + Add Master Device
+                  </button>
+                )}
+              </HardwareRow>
+
+              <HardwareRow
+                title="Internet Devices"
+                icon={<Wifi className="w-5 h-5 text-blue-600" />}
+              >
+                {masterDevices
+                  .filter((md) => md.category === "internet" || md.tags.includes("internet"))
+                  .map((md) => (
+                  <div key={md.id} className="w-[260px] shrink-0 bg-stone-50 p-4 rounded-xl border border-stone-200 shadow-sm group relative">
+                    <div className="flex justify-between items-start mb-2">
+                      <p className="font-bold text-sm">{md.name}</p>
+                      <div className={`flex gap-1 transition-opacity ${isDeveloper ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                        <button onClick={() => startEditingMasterDevice(md)} className="p-1 text-stone-400 hover:text-emerald-600 rounded" title="Edit"><Settings className="w-3 h-3" /></button>
+                        <button onClick={() => deleteMasterDevice(md.id)} className="p-1 text-stone-400 hover:text-red-600 rounded" title="Delete"><Trash2 className="w-3 h-3" /></button>
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {md.tags.map(tag => (
+                          <span key={`${md.id}-${tag}`} className="px-1.5 py-0.5 bg-white text-stone-400 text-[8px] font-black uppercase rounded border border-stone-200">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      {md.default_watts}W • {md.specs?.device_class ? INTERNET_DEVICE_CLASS_LABELS[md.specs.device_class] || md.specs.device_class : md.category}
+                    </div>
+                  </div>
+                ))}
+                {isDeveloper && (
+                  <button 
+                    onClick={() => { setEditingMasterDevice(null); setMasterDeviceClass(""); setMasterDeviceCategory("internet"); setShowAddMasterDevice(true); }}
+                    className="w-[260px] shrink-0 py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
+                  >
+                    + Add Internet Device
                   </button>
                 )}
               </HardwareRow>
@@ -5273,8 +5625,8 @@ const liveWiringPrice = liveSizing
                     onChange={(adj, def) => setAdjustedLoad({ devices: adj, deficit: def })}
                   />
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${ partialMode && !partialIncludedComponents.inverter ? "opacity-40 border-dashed border-stone-300 bg-white" : "" }`}>
+                  <div className="flex flex-col md:flex-row gap-6">
+                      <div className={`flex-1 min-w-0 p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${selectedSystemDetails.inverter ? "" : "hidden"} ${ partialMode && !partialIncludedComponents.inverter ? "opacity-40 border-dashed border-stone-300 bg-white" : "" }`}>
                         <Cpu className="w-8 h-8 text-emerald-600 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.inverter}</h3>
                         <p className="text-sm text-stone-500">Central Power Unit</p>
@@ -5305,7 +5657,9 @@ const liveWiringPrice = liveSizing
                         </div>
                       </div>
 
-                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                      <div className={`flex-1 min-w-0 p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                        selectedSystemDetails.battery_config ? "" : "hidden"
+                      } ${
                         partialMode && !partialIncludedComponents.batteries 
                           ? "opacity-40 border-dashed border-stone-300 bg-white" 
                           : ""
@@ -5345,7 +5699,9 @@ const liveWiringPrice = liveSizing
                         </div>
                       </div>
 
-                      <div className={`p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                      <div className={`flex-1 min-w-0 p-6 bg-stone-50 rounded-2xl border border-stone-100 transition-all ${
+                        selectedSystemDetails.panel_config ? "" : "hidden"
+                      } ${
                         partialMode && !partialIncludedComponents.panels 
                           ? "opacity-40 border-dashed border-stone-300 bg-white" 
                           : ""
@@ -5810,6 +6166,285 @@ const liveWiringPrice = liveSizing
         )}
       </AnimatePresence>
 
+      {/* Product Editor Modal */}
+      <AnimatePresence>
+        {productDraft && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white w-full max-w-lg max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-stone-100 flex items-center justify-between shrink-0">
+                <h2 className="font-bold text-xl">
+                  {productDraft.mode === "promote" ? "Promote to Product" : "Add Product"}
+                </h2>
+                <button onClick={() => setProductDraft(null)} className="p-2 hover:bg-stone-100 rounded-full"><X className="w-5 h-5" /></button>
+              </div>
+              <form className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0 pb-8" onSubmit={saveProductDraft}>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Product Name</label>
+                  <input
+                    name="name"
+                    required
+                    value={productDraft.name}
+                    onChange={(e) => setProductDraft({ ...productDraft, name: e.target.value })}
+                    className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    placeholder="e.g. 5kVA Home Solar Kit"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Description</label>
+                  <textarea
+                    rows={2}
+                    value={productDraft.description}
+                    onChange={(e) => setProductDraft({ ...productDraft, description: e.target.value })}
+                    className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    placeholder="Short line shown on the catalog card"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
+                    <input
+                      name="price"
+                      type="number"
+                      step="any"
+                      value={productDraft.price}
+                      onChange={(e) => setProductDraft({ ...productDraft, price: e.target.value })}
+                      className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Catalog Category</label>
+                    <select
+                      name="product_type"
+                      value={productDraft.kit_type === "internet" ? "system" : productDraft.product_type}
+                      onChange={(e) => setProductDraft({ ...productDraft, product_type: e.target.value as ProductType })}
+                      className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    >
+                      {PRODUCT_TYPE_FILTERS.filter((f) => f.id !== "all").map((f) => (
+                        <option key={f.id} value={f.id}>{f.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Kit Type</label>
+                    <select
+                      name="kit_type"
+                      value={productDraft.kit_type}
+                      onChange={(e) => {
+                        const kitType = e.target.value as ProductDraft["kit_type"];
+                        setProductDraft({
+                          ...productDraft,
+                          kit_type: kitType,
+                          // Internet products only show in the catalog as complete systems.
+                          product_type: kitType === "internet" ? "system" : productDraft.product_type,
+                        });
+                      }}
+                      className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    >
+                      <option value="solar">Solar</option>
+                      <option value="internet">Internet</option>
+                      <option value="powerstation">Powerstation</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags</label>
+                    <input
+                      name="tags"
+                      value={productDraft.tags}
+                      onChange={(e) => setProductDraft({ ...productDraft, tags: e.target.value })}
+                      className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                      placeholder="residential,featured"
+                    />
+                  </div>
+                </div>
+
+                {productDraft.mode === "manual" && (
+                  <div className="space-y-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Product Shape</label>
+                      <select
+                        value={productDraft.shape}
+                        onChange={(e) => {
+                          const shape = e.target.value as ProductDraft["shape"];
+                          setProductDraft({
+                            ...productDraft,
+                            shape,
+                            // A single part is a component; a setup or kit is a system.
+                            product_type: productDraft.kit_type === "internet" ? "system" : shape === "single" ? "component" : "system",
+                          });
+                        }}
+                        className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                      >
+                        <option value="single">Single device</option>
+                        <option value="setup">Setup (inverter + battery)</option>
+                        <option value="kit">Kit (inverter + battery + panel)</option>
+                      </select>
+                    </div>
+
+                    {productDraft.shape === "single" ? (
+                      <>
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Component</label>
+                          <select
+                            value={productDraft.single_role}
+                            onChange={(e) => setProductDraft({ ...productDraft, single_role: e.target.value as ProductDraft["single_role"] })}
+                            className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                          >
+                            <option value="inverter">Inverter</option>
+                            <option value="battery">Battery</option>
+                            <option value="panel">Panel</option>
+                            <option value="network">Network device</option>
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Component Name</label>
+                            <input
+                              required
+                              value={productDraft.single_name}
+                              onChange={(e) => setProductDraft({ ...productDraft, single_name: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts / Ah</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.single_watts}
+                              onChange={(e) => setProductDraft({ ...productDraft, single_watts: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.single_price}
+                              onChange={(e) => setProductDraft({ ...productDraft, single_price: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="col-span-3">
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter</label>
+                            <input
+                              required
+                              value={productDraft.inverter}
+                              onChange={(e) => setProductDraft({ ...productDraft, inverter: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.inverter_w}
+                              onChange={(e) => setProductDraft({ ...productDraft, inverter_w: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.inverter_price}
+                              onChange={(e) => setProductDraft({ ...productDraft, inverter_price: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-4">
+                          <div className="col-span-3">
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Bank</label>
+                            <input
+                              required
+                              value={productDraft.battery_config}
+                              onChange={(e) => setProductDraft({ ...productDraft, battery_config: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Wh</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.battery_wh}
+                              onChange={(e) => setProductDraft({ ...productDraft, battery_wh: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={productDraft.battery_price}
+                              onChange={(e) => setProductDraft({ ...productDraft, battery_price: e.target.value })}
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                            />
+                          </div>
+                        </div>
+                        {productDraft.shape === "kit" && (
+                          <div className="grid grid-cols-3 gap-4">
+                            <div className="col-span-3">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Solar Panel Array</label>
+                              <input
+                                required
+                                value={productDraft.panel_config}
+                                onChange={(e) => setProductDraft({ ...productDraft, panel_config: e.target.value })}
+                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts</label>
+                              <input
+                                type="number"
+                                step="any"
+                                value={productDraft.panel_w}
+                                onChange={(e) => setProductDraft({ ...productDraft, panel_w: e.target.value })}
+                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
+                              <input
+                                type="number"
+                                step="any"
+                                value={productDraft.panel_price}
+                                onChange={(e) => setProductDraft({ ...productDraft, panel_price: e.target.value })}
+                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <button type="submit" className="w-full py-3 bg-stone-900 text-white rounded-xl font-bold mt-4 shrink-0">
+                  {productDraft.mode === "promote" ? "Save as Product" : "Create Product"}
+                </button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Add Hardware Modal */}
       <AnimatePresence>
         {showAddMasterDevice && (
@@ -5832,7 +6467,12 @@ const liveWiringPrice = liveSizing
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
-                    <select name="category" defaultValue={itemData(editingMasterDevice)?.category || "electronics"} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                    <select
+                      name="category"
+                      value={masterDeviceCategory}
+                      onChange={(e) => setMasterDeviceCategory(e.target.value as DeviceCategory)}
+                      className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                    >
                       <option value="electronics">Electronics</option>
                       <option value="motor">Motor</option>
                       <option value="compressor">Compressor</option>
@@ -5849,7 +6489,7 @@ const liveWiringPrice = liveSizing
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Starting Price (₦, optional)</label>
                   <input name="price" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.price} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="Leave blank for Price on request" />
                 </div>
-                <details className="rounded-2xl border border-stone-200 bg-stone-50/60">
+                <details className="rounded-2xl border border-stone-200 bg-stone-50/60" open={masterDeviceCategory === "internet"}>
                   <summary className="cursor-pointer select-none px-4 py-3 text-xs font-bold uppercase text-stone-500">
                     Internet Device Specs (optional)
                   </summary>

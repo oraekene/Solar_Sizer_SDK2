@@ -13,7 +13,7 @@
     "lint": "tsc --noEmit",
     "typegen": "wrangler types",
     "check:worker": "wrangler check",
-    "test:worker": "node --experimental-strip-types --test worker/enrich.test.ts",
+    "test:worker": "node --experimental-strip-types --test worker/enrich.test.ts test/wiringSizer.test.ts",
     "d1:migrate:local": "wrangler d1 migrations apply solar-sizer-sdk2 --local"
   },
   "dependencies": {

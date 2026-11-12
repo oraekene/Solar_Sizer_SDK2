@@ -67,7 +67,7 @@ export function enrichCombinationData(product: JsonRecord, combinationData: unkn
                 price: data.panel_price ?? 0,
               },
             },
-          ].filter((component) => component.quantity > 0)
+          ].filter((component) => component.quantity > 0 && String(component.name ?? '').trim() !== '')
         : kitType === 'powerstation'
           ? [
               {

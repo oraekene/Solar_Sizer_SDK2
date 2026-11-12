@@ -294,6 +294,8 @@ export interface PDFSettings {
   quotePrefix: string;
   footerLine1: string;
   footerLine2: string;
+  /** VAT rate added to the quoted grand total. Editable in Hardware DB. */
+  vatPercent: number;
 }
 
 export type AppTab = 'calculator' | 'products' | 'internet' | 'database' | 'logs' | 'profiles' | 'results';

@@ -731,7 +731,7 @@ export const PRODUCT_TYPE_FILTERS: { id: "all" | "system" | "powerstation" | "co
   { id: "all", label: "All", desc: "Everything in the catalog." },
   { id: "system", label: "Complete Systems", desc: "Inverter, battery and panel bundles, including internet kits." },
   { id: "powerstation", label: "Powerstations", desc: "Standalone all-in-one power units." },
-  { id: "component", label: "Components", desc: "Panels, batteries, charge controllers and internet hardware." },
+  { id: "component", label: "Components", desc: "Panels, batteries and charge controllers." },
   { id: "accessory", label: "Accessories", desc: "Cables and installation extras." },
 ];
 

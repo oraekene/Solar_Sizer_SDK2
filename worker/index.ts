@@ -151,14 +151,18 @@ function normalizeHardware(row: Record<string, unknown>): Record<string, unknown
   };
 }
 
+const PRODUCT_TYPES = new Set(['system', 'powerstation', 'component', 'accessory']);
+
 function normalizeProduct(row: Record<string, unknown>): Record<string, unknown> & { combination_data: JsonRecord | null; tags: string[] } {
   const tags = safeJsonParse<string[]>(row.tags, []);
   const combination_data = enrichCombinationData(row, safeJsonParse<unknown>(row.combination_data, null));
+  // An explicit admin category wins; older rows fall back to tag classification.
+  const storedType = typeof row.product_type === 'string' && PRODUCT_TYPES.has(row.product_type) ? row.product_type : null;
   return {
     ...row,
     combination_data,
     tags,
-    product_type: classifyProductType(tags, combination_data !== null),
+    product_type: storedType ?? classifyProductType(tags, combination_data !== null),
   };
 }
 
@@ -190,11 +194,18 @@ const SCHEMA = [
     combination_data TEXT DEFAULT NULL,
     tags TEXT NOT NULL DEFAULT '[]',
     price REAL NOT NULL DEFAULT 0,
+    product_type TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   `CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT DEFAULT NULL,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS admin_attempts (
+    ip TEXT PRIMARY KEY,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    locked_until TEXT DEFAULT NULL,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
   'CREATE INDEX IF NOT EXISTS idx_hardware_user_id ON hardware(user_id)',
@@ -424,20 +435,22 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
   if (pathname === '/api/products' && method === 'POST') {
     if (!(await requireAdmin(request, env))) return unauthorized();
-    const product = await readBody<{ id: string; name: string; description: string; type: string; combination_data?: JsonRecord | null; tags?: string[]; price: number }>(request);
+    const product = await readBody<{ id: string; name: string; description: string; type: string; combination_data?: JsonRecord | null; tags?: string[]; price: number; product_type?: string }>(request);
     const combinationData = enrichCombinationData(product, product.combination_data ?? null);
+    const productType = product.product_type && PRODUCT_TYPES.has(product.product_type) ? product.product_type : null;
 
     await run(
       env.DB,
-      `INSERT INTO products (id, name, description, type, combination_data, tags, price)
-       VALUES (?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO products (id, name, description, type, combination_data, tags, price, product_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          description = excluded.description,
          type = excluded.type,
          combination_data = excluded.combination_data,
          tags = excluded.tags,
-         price = excluded.price`,
+         price = excluded.price,
+         product_type = excluded.product_type`,
       product.id,
       product.name,
       product.description,
@@ -445,6 +458,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
       JSON.stringify(combinationData),
       JSON.stringify(product.tags ?? []),
       product.price,
+      productType,
     );
     return json({ success: true });
   }
