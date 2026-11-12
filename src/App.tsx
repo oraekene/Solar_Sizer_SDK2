@@ -68,10 +68,11 @@ import {
   WiringItem,
   WiringCategory,
   TimeRange,
-  ChargeController
+  ChargeController,
+  DeviceSpecs
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
-import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT } from "./constants";
+import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
 import { sizeWiring, normalizeWiringSpecs, specNumber } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import { sdk } from "./sdk";
@@ -334,37 +335,78 @@ const buildProductDetails = (product: Product): SystemCombination => {
  */
 const InternetDeviceModal = ({
   device,
+  product,
   powerstations,
   products,
   onBuy,
   onClose,
 }: {
   device: MasterDevice;
+  product?: Product;
   powerstations: Powerstation[];
   products: Product[];
   onBuy: (product: Product) => void;
   onClose: () => void;
 }) => {
+  const specs = device.specs ?? {};
   const watts = Math.max(0, device.default_watts);
-  const dailyWh = Math.round(watts * 24);
-  const surgeW = Math.round(watts * 1.3);
+  const duty = Math.min(100, Math.max(1, specs.duty_cycle ?? 100));
+  const peakW = Math.max(watts, specs.peak_watts ?? 0, Math.round(watts * 1.3));
+  const peakIsEstimate = !specs.peak_watts;
+  const dailyWh = Math.round((watts * 24 * duty) / 100);
   // 12 hours of overnight autonomy on a lithium bank at 80% usable depth.
-  const nightWh = Math.round((watts * 12) / 0.8);
+  const nightWh = Math.round((watts * 12 * duty) / 100 / 0.8);
+  const solarW = Math.ceil(dailyWh / (4.5 * 0.8));
+  const batteryFor = (hours: number) => Math.round((watts * hours * duty) / 100 / 0.8);
+  const deviceClass = specs.device_class
+    ? INTERNET_DEVICE_CLASS_LABELS[specs.device_class] ?? specs.device_class
+    : "Internet Hardware";
 
-  const matchedPowerstations = powerstations
-    .filter((ps) => ps.max_output_w >= surgeW)
-    .sort((a, b) => a.price - b.price)
-    .slice(0, 3);
+  const traits = [
+    { label: "Device class", value: specs.device_class ? deviceClass : "Not set" },
+    { label: "Rated load", value: `${watts}W` },
+    { label: "Peak draw", value: `${peakW}W` },
+    specs.input_voltage ? { label: "Input voltage", value: specs.input_voltage } : null,
+    specs.connector ? { label: "Connector", value: specs.connector } : null,
+    { label: "Duty cycle", value: `${duty}%` },
+    specs.ports ? { label: "Ports", value: String(specs.ports) } : null,
+    specs.poe_budget_w ? { label: "PoE budget", value: `${specs.poe_budget_w}W` } : null,
+    specs.uplink ? { label: "Uplink", value: specs.uplink } : null,
+    specs.bands ? { label: "Bands", value: specs.bands } : null,
+    specs.operating_temp_c ? { label: "Operating temp", value: specs.operating_temp_c } : null,
+    specs.dish_power_w ? { label: "Dish power", value: `${specs.dish_power_w}W` } : null,
+    specs.mast_height_m ? { label: "Mast height", value: `${specs.mast_height_m}m` } : null,
+    { label: "Tags", value: device.tags.join(", ") || "—" },
+    { label: "Listed price", value: device.price ? `₦${device.price.toLocaleString()}` : "On request" },
+  ].filter((trait): trait is { label: string; value: string } => trait !== null);
 
-  const matchedProducts = products
-    .filter((p) => {
-      const cd = p.combination_data;
-      if (!cd) return false;
-      const outW = cd.inverter_w ?? cd.array_size_w ?? 0;
-      return outW >= surgeW && (p.tags.includes("powerstation") || p.tags.includes("solar"));
-    })
-    .sort((a, b) => a.price - b.price)
-    .slice(0, 3);
+  const outputPowerstations = Array.from(
+    new Map(
+      powerstations
+        .filter((ps) => ps.max_output_w >= peakW)
+        .map((ps) => [ps.name, ps]),
+    ).values(),
+  ).sort((a, b) => a.price - b.price);
+  const fullPowerstations = outputPowerstations.filter((ps) => ps.capacity_wh >= nightWh);
+
+  const outputProducts = Array.from(
+    new Map(
+      products
+        .filter((p) => {
+          const cd = p.combination_data;
+          return !!cd && (cd.inverter_w ?? cd.array_size_w ?? 0) >= peakW;
+        })
+        .map((p) => [p.name, p]),
+    ).values(),
+  ).sort((a, b) => a.price - b.price);
+  const fullProducts = outputProducts.filter((p) => {
+    const cd = p.combination_data;
+    return (cd?.battery_wh ?? cd?.battery_total_wh ?? 0) >= nightWh;
+  });
+
+  const usingOutputOnly = fullPowerstations.length === 0 && fullProducts.length === 0;
+  const matchedPowerstations = (usingOutputOnly ? outputPowerstations : fullPowerstations).slice(0, 3);
+  const matchedProducts = (usingOutputOnly ? outputProducts : fullProducts).slice(0, 3);
 
   return (
     <motion.div
@@ -385,7 +427,7 @@ const InternetDeviceModal = ({
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
-                {device.category === "internet" ? "Internet Hardware" : device.category}
+                {deviceClass}
               </span>
               {device.tags.map((tag) => (
                 <span key={tag} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
@@ -409,9 +451,9 @@ const InternetDeviceModal = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { label: "Continuous draw", value: `${watts}W`, note: "Rated load" },
-                { label: "Daily energy", value: `${dailyWh}Wh`, note: "24h at rated load" },
-                { label: "Startup headroom", value: `${surgeW}W`, note: "30% surge margin" },
-                { label: "Overnight bank", value: `${nightWh}Wh`, note: "12h, 80% usable" },
+                { label: "Peak draw", value: `${peakW}W`, note: peakIsEstimate ? "30% surge margin" : "Configured peak" },
+                { label: "Daily energy", value: `${dailyWh}Wh`, note: `${duty}% duty cycle` },
+                { label: "Solar input", value: `${solarW}W`, note: "PV to refill daily use" },
               ].map((stat) => (
                 <div key={stat.label} className="p-3 bg-stone-50 rounded-2xl border border-stone-100">
                   <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">{stat.label}</p>
@@ -420,23 +462,60 @@ const InternetDeviceModal = ({
                 </div>
               ))}
             </div>
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              {[6, 12, 24].map((hours) => (
+                <div key={hours} className="p-2 bg-stone-50 rounded-xl border border-stone-100 text-center">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">{hours}h runtime</p>
+                  <p className="text-sm font-black text-stone-900">{batteryFor(hours)}Wh</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-stone-400 mt-2">Battery sizes assume 80% usable depth on a lithium bank.</p>
           </section>
+
+          {product?.combination_data?.component_specs?.length ? (
+            <section>
+              <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-3">Included Hardware</h3>
+              <div className="space-y-2">
+                {product.combination_data.component_specs.map((spec, index) => (
+                  <div key={`${spec.role}-${index}`} className="flex items-center justify-between gap-3 p-3 bg-stone-50 rounded-2xl border border-stone-100">
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-stone-900 break-words">{spec.name}</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">{spec.role} · qty {spec.quantity}</p>
+                    </div>
+                    <div className="text-right text-[11px] text-stone-500 shrink-0">
+                      {Object.entries(spec.specs ?? {}).slice(0, 2).map(([key, value]) => (
+                        <p key={key}>{key}: {String(value)}</p>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section>
             <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-3">Device Traits</h3>
-            <div className="grid grid-cols-2 gap-2 text-xs text-stone-600">
-              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Category</span><span className="font-bold">{device.category}</span></div>
-              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Nominal load</span><span className="font-bold">{watts}W</span></div>
-              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Tags</span><span className="font-bold text-right">{device.tags.join(", ") || "—"}</span></div>
-              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Listed price</span><span className="font-bold">{device.price ? `₦${device.price.toLocaleString()}` : "On request"}</span></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-stone-600">
+              {traits.map((trait) => (
+                <div key={trait.label} className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg">
+                  <span>{trait.label}</span>
+                  <span className="font-bold text-right">{trait.value}</span>
+                </div>
+              ))}
             </div>
           </section>
 
           <section>
             <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-1">Recommended Solar Power Source</h3>
             <p className="text-xs text-stone-500 mb-3">
-              Sized for at least {surgeW}W continuous output and roughly {nightWh}Wh of overnight storage. Pure sine wave output protects radio and router components.
+              Sized for at least {peakW}W peak output, {nightWh}Wh of overnight storage and {solarW}W of solar input. Pure sine wave output protects radio and router components.
             </p>
+            {usingOutputOnly && (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3 mb-3">
+                No catalog source covers the full overnight bank. The units below meet the {peakW}W peak output, so add external battery capacity or use the calculator for a custom system.
+              </p>
+            )}
             {matchedPowerstations.length === 0 && matchedProducts.length === 0 ? (
               <p className="text-sm text-stone-500 p-4 bg-stone-50 rounded-2xl border border-stone-100">
                 No power source in the catalog meets this device's startup and overnight needs. Use the calculator to size a custom system.
@@ -478,8 +557,33 @@ const InternetDeviceModal = ({
   );
 };
 
-const safeNumber = (value: unknown, fallback = 0) => {  const n = typeof value === "number" ? value : Number(value);
+const safeNumber = (value: unknown, fallback = 0) => {
+  const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
+};
+
+/**
+ * Internet catalog products carry their load in component_specs or in
+ * inverter_w, so adapt them to the device shape instead of duplicating the
+ * internet modal. A matching master device supplies the richer traits.
+ */
+const internetProductAsDevice = (product: Product, masterDevices: MasterDevice[]): MasterDevice => {
+  const networkWatts = (product.combination_data?.component_specs ?? [])
+    .filter((spec) => spec.role === "network")
+    .reduce((total, spec) => total + safeNumber(spec.specs?.watts), 0);
+  const matched = masterDevices
+    .filter((device) => product.name.toLowerCase().includes(device.name.toLowerCase()))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+
+  return {
+    id: product.id,
+    name: product.name,
+    category: "internet",
+    default_watts: safeNumber(product.combination_data?.inverter_w) || networkWatts || matched?.default_watts || 0,
+    price: product.price,
+    specs: matched?.specs ?? {},
+    tags: product.tags,
+  };
 };
 
 const getSystemKey = (sys: SystemCombination, index: number) =>
@@ -920,7 +1024,7 @@ export default function App() {
   });
   const [masterDevices, setMasterDevices] = useState<MasterDevice[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [selectedProductTag, setSelectedProductTag] = useState<string>("flagship");
+  const [selectedProductTag, setSelectedProductTag] = useState<string>("all");
   const [isCompact, setIsCompact] = useState(false);
 
   // URL Parameter Handling
@@ -1110,6 +1214,7 @@ export default function App() {
   const [selectedSystemLog, setSelectedSystemLog] = useState<string[] | null>(null);
   const [selectedSystemDetails, setSelectedSystemDetails] = useState<SystemCombination | null>(null);
   const [selectedInternetDevice, setSelectedInternetDevice] = useState<MasterDevice | null>(null);
+  const [selectedInternetProduct, setSelectedInternetProduct] = useState<Product | null>(null);
   const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
   const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -1274,6 +1379,7 @@ export default function App() {
 
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
+  const [masterDeviceClass, setMasterDeviceClass] = useState<string>("");
 
   const safeLocalStorageSet = (key: string, value: any) => {
     try {
@@ -2378,6 +2484,7 @@ export default function App() {
 
   const startEditingMasterDevice = (device: MasterDevice) => {
     setEditingMasterDevice(itemData(device) as MasterDevice);
+    setMasterDeviceClass(device.specs?.device_class ?? "");
     setShowAddMasterDevice(true);
   };
 
@@ -2391,12 +2498,36 @@ export default function App() {
     const adminKey = sessionStorage.getItem("ss_admin_key") || "";
 
     const fd = new FormData(e.currentTarget);
+    const optionalNumber = (key: string) => {
+      const raw = fd.get(key);
+      if (raw === null || raw === "") return undefined;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : undefined;
+    };
+    const optionalText = (key: string) => {
+      const raw = (fd.get(key) as string | null)?.trim();
+      return raw || undefined;
+    };
     const device = {
       id: editingMasterDevice?.id || crypto.randomUUID(),
       name: fd.get("name") as string,
       category: fd.get("category") as DeviceCategory,
       default_watts: Number(fd.get("default_watts")),
       price: fd.get("price") ? Number(fd.get("price")) : undefined,
+      specs: {
+        device_class: (fd.get("device_class") as DeviceSpecs["device_class"]) || undefined,
+        peak_watts: optionalNumber("peak_watts"),
+        input_voltage: optionalText("input_voltage"),
+        connector: optionalText("connector"),
+        duty_cycle: optionalNumber("duty_cycle"),
+        ports: optionalNumber("ports"),
+        poe_budget_w: optionalNumber("poe_budget_w"),
+        uplink: optionalText("uplink"),
+        bands: optionalText("bands"),
+        operating_temp_c: optionalText("operating_temp_c"),
+        mast_height_m: optionalNumber("mast_height_m"),
+        dish_power_w: optionalNumber("dish_power_w"),
+      } as DeviceSpecs,
       tags: (fd.get("tags") as string)?.split(",").map(t => t.trim()).filter(Boolean) || [],
     };
 
@@ -2977,13 +3108,14 @@ const liveWiringPrice = liveSizing
             onClose={() => setSelectedSavedComparison(null)}
           />
         )}
-        {selectedInternetDevice && (
+        {(selectedInternetDevice || selectedInternetProduct) && (
           <InternetDeviceModal
-            device={selectedInternetDevice}
+            device={selectedInternetDevice ?? internetProductAsDevice(selectedInternetProduct!, masterDevices)}
+            product={selectedInternetProduct ?? undefined}
             powerstations={powerstations}
             products={products}
             onBuy={(product) => startBachsCheckout(buildProductDetails(product))}
-            onClose={() => setSelectedInternetDevice(null)}
+            onClose={() => { setSelectedInternetDevice(null); setSelectedInternetProduct(null); }}
           />
         )}
       </AnimatePresence>
@@ -3847,15 +3979,7 @@ const liveWiringPrice = liveSizing
                     </button>
                   </>
                 )}
-                {[
-                  { id: 'all', label: 'All', desc: 'Everything in our catalog.' },
-                  { id: 'flagship', label: 'Flagship', desc: 'Premium, high-performance system combinations.' },
-                  { id: 'kit', label: 'Kits', desc: 'Pre-configured systems, including flagship and standard combos.' },
-                  { id: 'solar', label: 'Solar', desc: 'All system combinations excluding flagship ones.' },
-                  { id: 'internet', label: 'Internet', desc: 'Products specifically related to internet connectivity.' },
-                  { id: 'panel', label: 'Panels', desc: 'Standalone solar panels.' },
-                  { id: 'battery', label: 'Batteries', desc: 'Standalone batteries.' }
-                ].map(tag => (
+                {PRODUCT_TYPE_FILTERS.map(tag => (
                   <Tooltip key={tag.id} content={tag.desc}>
                     <button
                       onClick={() => setSelectedProductTag(tag.id)}
@@ -3874,11 +3998,7 @@ const liveWiringPrice = liveSizing
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {products
-                .filter(p => {
-                  if (selectedProductTag === 'all') return true;
-                  if (selectedProductTag === 'solar') return p.tags.includes('solar') && !p.tags.includes('flagship');
-                  return p.tags.includes(selectedProductTag);
-                })
+                .filter(p => selectedProductTag === 'all' || p.product_type === selectedProductTag)
                 .map(product => (
                 <motion.div
                   key={product.id}
@@ -3934,7 +4054,13 @@ const liveWiringPrice = liveSizing
                     </div>
                     <div className="flex items-center gap-2">
                       <button 
-                        onClick={() => setSelectedSystemDetails(buildProductDetails(product))}
+                        onClick={() => {
+                          if (product.tags.includes("internet")) {
+                            setSelectedInternetProduct(product);
+                          } else {
+                            setSelectedSystemDetails(buildProductDetails(product));
+                          }
+                        }}
                         className="px-3 py-2 bg-white text-stone-700 border border-stone-200 text-xs font-bold rounded-xl hover:bg-stone-100 transition-all"
                       >
                         View Specs
@@ -4044,7 +4170,10 @@ const liveWiringPrice = liveSizing
                       <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
                         {product.tags.find(t => t.startsWith('tier-'))?.replace('tier-', 'Tier ') || 'Internet'}
                       </span>
-                      <p className="text-2xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
+                      <div className="text-right">
+                        <p className="text-[9px] font-bold text-stone-400 uppercase">Starting From</p>
+                        <p className="text-2xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
+                      </div>
                     </div>
                     <h3 className="text-xl font-black text-stone-900 mb-3">{product.name}</h3>
                     <p className="text-sm text-stone-500 mb-8 leading-relaxed">{product.description}</p>
@@ -4058,7 +4187,7 @@ const liveWiringPrice = liveSizing
                     <button
                       onClick={() => {
                         setShowInteractiveBridge(false);
-                        setSelectedSystemDetails(buildProductDetails(product));
+                        setSelectedInternetProduct(product);
                       }}
                       className="flex-1 bg-stone-100 text-stone-700 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
                     >
@@ -4308,7 +4437,7 @@ const liveWiringPrice = liveSizing
                 ))}
                 {isDeveloper && (
                   <button 
-                    onClick={() => { setEditingMasterDevice(null); setShowAddMasterDevice(true); }}
+                    onClick={() => { setEditingMasterDevice(null); setMasterDeviceClass(""); setShowAddMasterDevice(true); }}
                     className="w-[260px] shrink-0 py-2 border-2 border-dashed border-stone-200 rounded-xl text-stone-400 text-xs font-bold hover:border-stone-400 hover:text-stone-600 transition-all"
                   >
                     + Add Master Device
@@ -5720,6 +5849,80 @@ const liveWiringPrice = liveSizing
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Starting Price (₦, optional)</label>
                   <input name="price" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.price} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="Leave blank for Price on request" />
                 </div>
+                <details className="rounded-2xl border border-stone-200 bg-stone-50/60">
+                  <summary className="cursor-pointer select-none px-4 py-3 text-xs font-bold uppercase text-stone-500">
+                    Internet Device Specs (optional)
+                  </summary>
+                  <div className="p-4 pt-0 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Class</label>
+                        <select
+                          name="device_class"
+                          value={masterDeviceClass}
+                          onChange={(e) => setMasterDeviceClass(e.target.value)}
+                          className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                        >
+                          <option value="">Not set</option>
+                          {INTERNET_DEVICE_CLASSES.map((deviceClass) => (
+                            <option key={deviceClass.id} value={deviceClass.id}>{deviceClass.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Peak Watts</label>
+                        <input name="peak_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.peak_watts} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="Defaults to 30% surge" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Duty Cycle (%)</label>
+                        <input name="duty_cycle" type="number" min="1" max="100" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.duty_cycle ?? 100} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Input Voltage</label>
+                        <input name="input_voltage" defaultValue={itemData(editingMasterDevice)?.specs?.input_voltage} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 12V DC" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Connector</label>
+                        <input name="connector" defaultValue={itemData(editingMasterDevice)?.specs?.connector} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. DC barrel / PoE" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Ports</label>
+                        <input name="ports" type="number" step="1" defaultValue={itemData(editingMasterDevice)?.specs?.ports} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 4" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Uplink</label>
+                        <input name="uplink" defaultValue={itemData(editingMasterDevice)?.specs?.uplink} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 5G / fibre / satellite" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Bands</label>
+                        <input name="bands" defaultValue={itemData(editingMasterDevice)?.specs?.bands} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. LTE B1/B3/B7/B20" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Operating Temp</label>
+                        <input name="operating_temp_c" defaultValue={itemData(editingMasterDevice)?.specs?.operating_temp_c} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. -20 to 55°C" />
+                      </div>
+                      {masterDeviceClass === "satellite" && (
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Dish Power (W)</label>
+                          <input name="dish_power_w" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.dish_power_w} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
+                        </div>
+                      )}
+                      {masterDeviceClass === "poe_radio" && (
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">PoE Budget (W)</label>
+                          <input name="poe_budget_w" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.poe_budget_w} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
+                        </div>
+                      )}
+                      {(masterDeviceClass === "satellite" || masterDeviceClass === "poe_radio") && (
+                        <div>
+                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Mast Height (m)</label>
+                          <input name="mast_height_m" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.mast_height_m} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-stone-400">Used by the Internet details modal for power, runtime and installation traits.</p>
+                  </div>
+                </details>
                 <div>
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
                   <input name="tags" defaultValue={itemData(editingMasterDevice)?.tags?.join(", ")} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="e.g. lighting, basic" />

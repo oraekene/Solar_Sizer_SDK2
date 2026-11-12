@@ -230,6 +230,8 @@ export interface SavedResult {
   grid_kwh_override?: number | null;
 }
 
+export type ProductType = 'system' | 'powerstation' | 'component' | 'accessory';
+
 export interface Product {
   id: string;
   name: string;
@@ -238,8 +240,35 @@ export interface Product {
   combination_data?: SystemCombination | null;
   tags: string[];
   price: number;
+  product_type: ProductType;
   kit_type?: 'solar' | 'internet' | 'powerstation';
   component_specs?: KitComponentSpec[];
+}
+
+export type InternetDeviceClass =
+  | 'cpe'
+  | 'router'
+  | 'mesh'
+  | 'satellite'
+  | 'poe_radio'
+  | 'ont'
+  | 'switch'
+  | 'enterprise_router'
+  | 'other';
+
+export interface DeviceSpecs {
+  device_class?: InternetDeviceClass;
+  peak_watts?: number;
+  input_voltage?: string;
+  connector?: string;
+  duty_cycle?: number;
+  ports?: number;
+  poe_budget_w?: number;
+  uplink?: string;
+  bands?: string;
+  operating_temp_c?: string;
+  mast_height_m?: number;
+  dish_power_w?: number;
 }
 
 export interface MasterDevice {
@@ -248,6 +277,7 @@ export interface MasterDevice {
   category: DeviceCategory;
   default_watts: number;
   price?: number;
+  specs?: DeviceSpecs;
   tags: string[];
 }
 

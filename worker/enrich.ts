@@ -1,4 +1,18 @@
+import type { ProductType } from '../src/types.ts';
+
 type JsonRecord = Record<string, unknown>;
+
+/**
+ * One classifier for both catalog sources: stored products and hardware rows
+ * exposed as products. Every card lands in exactly one bucket.
+ */
+export function classifyProductType(tags: string[], hasCombinationData: boolean): ProductType {
+  const set = new Set(tags);
+  if (hasCombinationData || set.has('kit')) return 'system';
+  if (set.has('accessory')) return 'accessory';
+  if (['panel', 'battery', 'internet', 'mppt', 'pwm'].some((tag) => set.has(tag))) return 'component';
+  return 'powerstation';
+}
 
 type ComponentSpec = {
   role: string;

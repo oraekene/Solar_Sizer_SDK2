@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { enrichCombinationData } from './enrich.ts';
+import { classifyProductType, enrichCombinationData } from './enrich.ts';
 
 const product = { name: 'Test Kit', description: 'Kit description', price: 1000 };
 
@@ -58,4 +58,13 @@ test('uses the product price for powerstation and internet kits', () => {
 test('returns null for missing or non-object data', () => {
   assert.equal(enrichCombinationData(product, null), null);
   assert.equal(enrichCombinationData(product, 'not-json'), null);
+});
+
+test('classifies every catalog card into one exclusive bucket', () => {
+  assert.equal(classifyProductType(['kit', 'solar'], true), 'system');
+  assert.equal(classifyProductType(['flagship', 'portable', 'pure-sine'], false), 'powerstation');
+  assert.equal(classifyProductType(['panel', 'solar'], false), 'component');
+  assert.equal(classifyProductType(['internet', 'tier-a'], false), 'component');
+  assert.equal(classifyProductType(['mppt', '12v'], false), 'component');
+  assert.equal(classifyProductType(['flagship', 'solar', 'accessory'], false), 'accessory');
 });

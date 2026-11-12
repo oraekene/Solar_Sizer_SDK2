@@ -724,3 +724,29 @@ export const WIRING_SPEC_FIELDS: Record<WiringCategory, { key: string; label: st
     { key: "type", label: "Device Type", type: "select", options: ["Smart Meter", "Smart Outlet", "Smart Plug", "Energy Monitor"] }
   ]
 };
+
+// One exclusive bucket per catalog card. Filtering reads product_type from the
+// API, which classifies stored products and hardware rows with the same rule.
+export const PRODUCT_TYPE_FILTERS: { id: "all" | "system" | "powerstation" | "component" | "accessory"; label: string; desc: string }[] = [
+  { id: "all", label: "All", desc: "Everything in the catalog." },
+  { id: "system", label: "Complete Systems", desc: "Inverter, battery and panel bundles, including internet kits." },
+  { id: "powerstation", label: "Powerstations", desc: "Standalone all-in-one power units." },
+  { id: "component", label: "Components", desc: "Panels, batteries, charge controllers and internet hardware." },
+  { id: "accessory", label: "Accessories", desc: "Cables and installation extras." },
+];
+
+export const INTERNET_DEVICE_CLASSES: { id: string; label: string }[] = [
+  { id: "cpe", label: "4G / 5G CPE" },
+  { id: "router", label: "Wi-Fi Router" },
+  { id: "mesh", label: "Mesh Node" },
+  { id: "satellite", label: "Satellite Terminal" },
+  { id: "poe_radio", label: "Outdoor PoE Radio" },
+  { id: "ont", label: "Fibre ONT" },
+  { id: "switch", label: "Network Switch" },
+  { id: "enterprise_router", label: "Enterprise Router" },
+  { id: "other", label: "Other" },
+];
+
+export const INTERNET_DEVICE_CLASS_LABELS: Record<string, string> = Object.fromEntries(
+  INTERNET_DEVICE_CLASSES.map((item) => [item.id, item.label]),
+);

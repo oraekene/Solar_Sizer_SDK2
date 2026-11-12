@@ -1,6 +1,6 @@
 import { buildCombinations } from '../src/utils/solarCalculator.ts';
 import type { BatteryPreference, Device, Hardware, Product, Region } from '../src/types.ts';
-import { enrichCombinationData } from './enrich.ts';
+import { classifyProductType, enrichCombinationData } from './enrich.ts';
 import { seedDevices, seedHardware, seedProducts } from './seed-data';
 
 type Env = {
@@ -139,6 +139,7 @@ function normalizeDevice(row: Record<string, unknown>): Record<string, unknown> 
   return {
     ...row,
     tags: safeJsonParse<string[]>(row.tags, []),
+    specs: safeJsonParse<JsonRecord>(row.specs, {}),
   };
 }
 
@@ -151,10 +152,13 @@ function normalizeHardware(row: Record<string, unknown>): Record<string, unknown
 }
 
 function normalizeProduct(row: Record<string, unknown>): Record<string, unknown> & { combination_data: JsonRecord | null; tags: string[] } {
+  const tags = safeJsonParse<string[]>(row.tags, []);
+  const combination_data = enrichCombinationData(row, safeJsonParse<unknown>(row.combination_data, null));
   return {
     ...row,
-    combination_data: enrichCombinationData(row, safeJsonParse<unknown>(row.combination_data, null)),
-    tags: safeJsonParse<string[]>(row.tags, []),
+    combination_data,
+    tags,
+    product_type: classifyProductType(tags, combination_data !== null),
   };
 }
 
@@ -165,6 +169,7 @@ const SCHEMA = [
     category TEXT NOT NULL,
     default_watts REAL NOT NULL,
     price REAL,
+    specs TEXT NOT NULL DEFAULT '{}',
     tags TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
@@ -280,6 +285,7 @@ function hardwareCatalogAsProducts(rows: Array<Record<string, unknown> & { data:
     combination_data: null,
     tags: hardware.tags,
     price: Number((hardware.data as JsonRecord).price ?? 0),
+    product_type: classifyProductType(hardware.tags, false),
   }));
 }
 
@@ -342,23 +348,25 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
   if (pathname === '/api/devices' && method === 'POST') {
     if (!(await requireAdmin(request, env))) return unauthorized();
-    const device = await readBody<{ id: string; name: string; category: string; default_watts: number; price?: number; tags?: string[] }>(request);
+    const device = await readBody<{ id: string; name: string; category: string; default_watts: number; price?: number; specs?: JsonRecord; tags?: string[] }>(request);
 
     await run(
       env.DB,
-      `INSERT INTO devices_master (id, name, category, default_watts, price, tags)
-       VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO devices_master (id, name, category, default_watts, price, specs, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          category = excluded.category,
          default_watts = excluded.default_watts,
          price = excluded.price,
+         specs = excluded.specs,
          tags = excluded.tags`,
       device.id,
       device.name,
       device.category,
       device.default_watts,
       device.price ?? null,
+      JSON.stringify(device.specs ?? {}),
       JSON.stringify(device.tags ?? []),
     );
     return json({ success: true });
