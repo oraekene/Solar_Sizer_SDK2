@@ -247,6 +247,7 @@ export interface MasterDevice {
   name: string;
   category: DeviceCategory;
   default_watts: number;
+  price?: number;
   tags: string[];
 }
 

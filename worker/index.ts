@@ -164,6 +164,7 @@ const SCHEMA = [
     name TEXT NOT NULL,
     category TEXT NOT NULL,
     default_watts REAL NOT NULL,
+    price REAL,
     tags TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
@@ -341,21 +342,23 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
   if (pathname === '/api/devices' && method === 'POST') {
     if (!(await requireAdmin(request, env))) return unauthorized();
-    const device = await readBody<{ id: string; name: string; category: string; default_watts: number; tags?: string[] }>(request);
+    const device = await readBody<{ id: string; name: string; category: string; default_watts: number; price?: number; tags?: string[] }>(request);
 
     await run(
       env.DB,
-      `INSERT INTO devices_master (id, name, category, default_watts, tags)
-       VALUES (?, ?, ?, ?, ?)
+      `INSERT INTO devices_master (id, name, category, default_watts, price, tags)
+       VALUES (?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          name = excluded.name,
          category = excluded.category,
          default_watts = excluded.default_watts,
+         price = excluded.price,
          tags = excluded.tags`,
       device.id,
       device.name,
       device.category,
       device.default_watts,
+      device.price ?? null,
       JSON.stringify(device.tags ?? []),
     );
     return json({ success: true });

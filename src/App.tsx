@@ -276,7 +276,7 @@ const HardwareCard = ({
 const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
-      const isAllInOne = cd.kit_type === "powerstation" || cd.all_in_one === true;
+      const isAllInOne = cd.kit_type === "powerstation" || cd.all_in_one === true || product.tags.includes("powerstation");
       return {
         ...cd,
         // DB-enriched products often omit these; the details modal calls toFixed on them.
@@ -328,44 +328,157 @@ const buildProductDetails = (product: Product): SystemCombination => {
     };
   };
 
-  const buildMasterDeviceDetails = (device: MasterDevice): SystemCombination => {
-    const isInternet = device.category === "internet" || device.tags.includes("internet");
+/**
+ * Internet hardware has no solar sizing role, so its details modal shows the
+ * traits that matter for connectivity plus the solar sources that can carry it.
+ */
+const InternetDeviceModal = ({
+  device,
+  powerstations,
+  products,
+  onBuy,
+  onClose,
+}: {
+  device: MasterDevice;
+  powerstations: Powerstation[];
+  products: Product[];
+  onBuy: (product: Product) => void;
+  onClose: () => void;
+}) => {
+  const watts = Math.max(0, device.default_watts);
+  const dailyWh = Math.round(watts * 24);
+  const surgeW = Math.round(watts * 1.3);
+  // 12 hours of overnight autonomy on a lithium bank at 80% usable depth.
+  const nightWh = Math.round((watts * 12) / 0.8);
 
-    return {
-      inverter: device.name,
-      inverter_price: 0,
-      battery_config: "N/A",
-      battery_price: 0,
-      panel_config: "N/A",
-      panel_price: 0,
-      array_size_w: device.default_watts,
-      battery_total_wh: 0,
-      total_price: 0,
-      daily_yield: 0,
-      deficit: 0,
-      status: "Optimal",
-      advice: `${device.name} is a ${device.default_watts}W ${isInternet ? "internet" : "hardware"} device.`,
-      log: [`${device.name} (${device.default_watts}W)`],
-      is_preconfigured: true,
-      product_name: device.name,
-      product_description: `Default load: ${device.default_watts}W`,
-      kit_type: isInternet ? "internet" : "solar",
-      component_specs: [
-        {
-          role: isInternet ? "network" : "inverter",
-          name: device.name,
-          quantity: 1,
-          specs: {
-            watts: device.default_watts,
-            category: device.category,
-          },
-        },
-      ],
-    };
-  };
+  const matchedPowerstations = powerstations
+    .filter((ps) => ps.max_output_w >= surgeW)
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 3);
 
-const safeNumber = (value: unknown, fallback = 0) => {
-  const n = typeof value === "number" ? value : Number(value);
+  const matchedProducts = products
+    .filter((p) => {
+      const cd = p.combination_data;
+      if (!cd) return false;
+      const outW = cd.inverter_w ?? cd.array_size_w ?? 0;
+      return outW >= surgeW && (p.tags.includes("powerstation") || p.tags.includes("solar"));
+    })
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 3);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.96, y: 16 }}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+      >
+        <div className="p-6 border-b border-stone-100 flex items-start justify-between gap-4 shrink-0">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
+                {device.category === "internet" ? "Internet Hardware" : device.category}
+              </span>
+              {device.tags.map((tag) => (
+                <span key={tag} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
+                  {tag}
+                </span>
+              ))}
+            </div>
+            <h2 className="text-2xl font-black text-stone-900">{device.name}</h2>
+            <p className="text-sm text-stone-500 mt-1">
+              {device.price ? `Starting from ₦${device.price.toLocaleString()}` : "Price on request"}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-stone-100 rounded-full shrink-0" aria-label="Close">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-6 overflow-y-auto">
+          <section>
+            <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-3">Power Profile</h3>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Continuous draw", value: `${watts}W`, note: "Rated load" },
+                { label: "Daily energy", value: `${dailyWh}Wh`, note: "24h at rated load" },
+                { label: "Startup headroom", value: `${surgeW}W`, note: "30% surge margin" },
+                { label: "Overnight bank", value: `${nightWh}Wh`, note: "12h, 80% usable" },
+              ].map((stat) => (
+                <div key={stat.label} className="p-3 bg-stone-50 rounded-2xl border border-stone-100">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-stone-400">{stat.label}</p>
+                  <p className="text-lg font-black text-stone-900">{stat.value}</p>
+                  <p className="text-[10px] text-stone-400">{stat.note}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-3">Device Traits</h3>
+            <div className="grid grid-cols-2 gap-2 text-xs text-stone-600">
+              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Category</span><span className="font-bold">{device.category}</span></div>
+              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Nominal load</span><span className="font-bold">{watts}W</span></div>
+              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Tags</span><span className="font-bold text-right">{device.tags.join(", ") || "—"}</span></div>
+              <div className="flex justify-between gap-4 p-2 bg-stone-50 rounded-lg"><span>Listed price</span><span className="font-bold">{device.price ? `₦${device.price.toLocaleString()}` : "On request"}</span></div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-1">Recommended Solar Power Source</h3>
+            <p className="text-xs text-stone-500 mb-3">
+              Sized for at least {surgeW}W continuous output and roughly {nightWh}Wh of overnight storage. Pure sine wave output protects radio and router components.
+            </p>
+            {matchedPowerstations.length === 0 && matchedProducts.length === 0 ? (
+              <p className="text-sm text-stone-500 p-4 bg-stone-50 rounded-2xl border border-stone-100">
+                No power source in the catalog meets this device's startup and overnight needs. Use the calculator to size a custom system.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {matchedPowerstations.map((ps) => (
+                  <div key={ps.id} className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-stone-200">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-stone-900 break-words">{ps.name}</p>
+                      <p className="text-xs text-stone-500">{ps.capacity_wh}Wh · {ps.max_output_w}W out · {ps.max_pv_input_w}W PV in</p>
+                    </div>
+                    <span className="font-bold text-emerald-600 shrink-0">₦{ps.price.toLocaleString()}</span>
+                  </div>
+                ))}
+                {matchedProducts.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-stone-200">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-stone-900 break-words">{p.name}</p>
+                      <p className="text-xs text-stone-500">{p.description}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-bold text-emerald-600">₦{p.price.toLocaleString()}</span>
+                      <button
+                        onClick={() => onBuy(p)}
+                        className="px-3 py-1.5 bg-emerald-600 text-white text-[11px] font-bold rounded-lg hover:bg-emerald-700 transition-all flex items-center gap-1"
+                      >
+                        <ShoppingCart className="w-3 h-3" /> Buy
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const safeNumber = (value: unknown, fallback = 0) => {  const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) ? n : fallback;
 };
 
@@ -996,6 +1109,7 @@ export default function App() {
   const [newRange, setNewRange] = useState({ start: 18, end: 23 });
   const [selectedSystemLog, setSelectedSystemLog] = useState<string[] | null>(null);
   const [selectedSystemDetails, setSelectedSystemDetails] = useState<SystemCombination | null>(null);
+  const [selectedInternetDevice, setSelectedInternetDevice] = useState<MasterDevice | null>(null);
   const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
   const [adjustedLoad, setAdjustedLoad] = useState<{ devices: Device[], deficit: number } | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -2282,6 +2396,7 @@ export default function App() {
       name: fd.get("name") as string,
       category: fd.get("category") as DeviceCategory,
       default_watts: Number(fd.get("default_watts")),
+      price: fd.get("price") ? Number(fd.get("price")) : undefined,
       tags: (fd.get("tags") as string)?.split(",").map(t => t.trim()).filter(Boolean) || [],
     };
 
@@ -2862,6 +2977,15 @@ const liveWiringPrice = liveSizing
             onClose={() => setSelectedSavedComparison(null)}
           />
         )}
+        {selectedInternetDevice && (
+          <InternetDeviceModal
+            device={selectedInternetDevice}
+            powerstations={powerstations}
+            products={products}
+            onBuy={(product) => startBachsCheckout(buildProductDetails(product))}
+            onClose={() => setSelectedInternetDevice(null)}
+          />
+        )}
       </AnimatePresence>
 
       {/* Header */}
@@ -2894,24 +3018,14 @@ const liveWiringPrice = liveSizing
               >
                 <Wifi className="w-4 h-4" /> Internet
               </button>
-              <button 
-                onClick={() => setActiveTab("profiles")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "profiles" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <FolderOpen className="w-4 h-4" /> Profiles
-              </button>
-              <button 
-                onClick={() => setActiveTab("results")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "results" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Save className="w-4 h-4" /> Results
-              </button>
-              <button 
-                onClick={() => setActiveTab("database")}
-                className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "database" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
-              >
-                <Database className="w-4 h-4" /> Hardware DB
-              </button>
+                {isDeveloper && (
+                  <button 
+                    onClick={() => setActiveTab("database")}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === "database" ? "bg-white shadow-sm text-emerald-600" : "text-stone-500 hover:text-stone-900"}`}
+                  >
+                    <Database className="w-4 h-4" /> Hardware DB
+                  </button>
+                )}
                 {isDeveloper && (
                   <button 
                     onClick={() => setActiveTab("logs")}
@@ -2922,13 +3036,32 @@ const liveWiringPrice = liveSizing
                 )}
             </nav>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <button 
                 onClick={() => setShowSaveProfile(true)}
                 className="hidden md:flex bg-emerald-600 text-white px-4 py-2 rounded-full hover:bg-emerald-700 transition-colors items-center gap-2 text-sm font-medium"
               >
                 <Save className="w-4 h-4" /> Save Profile
               </button>
+              <details className="hidden md:block relative">
+                <summary className="list-none cursor-pointer p-2 rounded-full text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-colors" title="Saved items">
+                  <ChevronDown className="w-5 h-5" />
+                </summary>
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl border border-stone-200 shadow-xl p-2 z-20">
+                  <button
+                    onClick={(e) => { setActiveTab("profiles"); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-2 ${activeTab === "profiles" ? "bg-emerald-50 text-emerald-700" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    <FolderOpen className="w-4 h-4" /> Profiles
+                  </button>
+                  <button
+                    onClick={(e) => { setActiveTab("results"); e.currentTarget.closest("details")?.removeAttribute("open"); }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm font-medium flex items-center gap-2 ${activeTab === "results" ? "bg-emerald-50 text-emerald-700" : "text-stone-600 hover:bg-stone-50"}`}
+                  >
+                    <Save className="w-4 h-4" /> Results
+                  </button>
+                </div>
+              </details>
               <div className="hidden md:block h-6 w-px bg-stone-200" />
             </div>
           </div>
@@ -3794,17 +3927,26 @@ const liveWiringPrice = liveSizing
                       </div>
                     )}
                   </div>
-                  <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between">
+                  <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-bold text-stone-400 uppercase">Starting From</p>
                       <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
                     </div>
-                    <button 
-                      onClick={() => setSelectedSystemDetails(buildProductDetails(product))}
-                      className="px-4 py-2 bg-stone-900 text-white text-xs font-bold rounded-xl hover:bg-stone-800 transition-all"
-                    >
-                      View Specs
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setSelectedSystemDetails(buildProductDetails(product))}
+                        className="px-3 py-2 bg-white text-stone-700 border border-stone-200 text-xs font-bold rounded-xl hover:bg-stone-100 transition-all"
+                      >
+                        View Specs
+                      </button>
+                      <button 
+                        onClick={() => startBachsCheckout(buildProductDetails(product))}
+                        disabled={checkoutLoading}
+                        className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center gap-1.5"
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" /> Buy
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -3847,11 +3989,6 @@ const liveWiringPrice = liveSizing
               )}
             </div>
 
-            <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl text-amber-900 text-sm">
-              <p className="font-black mb-2 uppercase tracking-wider text-[10px]">Pricing Disclaimer</p>
-              <p className="leading-relaxed">Prices below are naira-range estimates sourced from Lagos import-market data as of early 2026. Verify on the day before purchasing.</p>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {/* List Internet Master Devices */}
               {masterDevices
@@ -3868,6 +4005,12 @@ const liveWiringPrice = liveSizing
                         <span className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-black uppercase rounded-full border border-stone-200">
                           Hardware
                         </span>
+                        <div className="text-right">
+                          <p className="text-[9px] font-bold text-stone-400 uppercase">Starting From</p>
+                          <p className="text-lg font-black text-stone-900">
+                            {md.price ? `₦${md.price.toLocaleString()}` : "On request"}
+                          </p>
+                        </div>
                       </div>
                       <h3 className="text-xl font-black text-stone-900 mb-3">{md.name}</h3>
                       <p className="text-sm text-stone-500 mb-4">Standard {md.name} for high-speed connectivity.</p>
@@ -3877,7 +4020,7 @@ const liveWiringPrice = liveSizing
                     </div>
                     <div className="p-6 border-t border-stone-100">
                       <button
-                        onClick={() => setSelectedSystemDetails(buildMasterDeviceDetails(md))}
+                        onClick={() => setSelectedInternetDevice(md)}
                         className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
                       >
                         View Specs
@@ -3911,15 +4054,22 @@ const liveWiringPrice = liveSizing
                       "Run this on pure sine wave power from your SolarOne unit to protect sensitive radio components from voltage spikes."
                     </div>
                   </div>
-                  <div className="p-6 border-t border-stone-100">
+                  <div className="p-6 border-t border-stone-100 flex items-center gap-2">
                     <button
                       onClick={() => {
                         setShowInteractiveBridge(false);
                         setSelectedSystemDetails(buildProductDetails(product));
                       }}
-                      className="w-full bg-stone-900 text-white py-3 rounded-2xl text-xs font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-900/10"
+                      className="flex-1 bg-stone-100 text-stone-700 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
                     >
                       View Specs
+                    </button>
+                    <button
+                      onClick={() => startBachsCheckout(buildProductDetails(product))}
+                      disabled={checkoutLoading}
+                      className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl text-xs font-bold hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-1.5"
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5" /> Buy
                     </button>
                   </div>
                 </motion.div>
@@ -3928,7 +4078,7 @@ const liveWiringPrice = liveSizing
           </div>
         )}
 
-        {activeTab === "database" && (
+        {activeTab === "database" && isDeveloper && (
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <div>
@@ -5565,6 +5715,10 @@ const liveWiringPrice = liveSizing
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Default Watts</label>
                     <input name="default_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.default_watts} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" />
                   </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Starting Price (₦, optional)</label>
+                  <input name="price" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.price} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" placeholder="Leave blank for Price on request" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Tags (comma separated)</label>
