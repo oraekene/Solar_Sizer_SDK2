@@ -70,7 +70,7 @@ The scraped row is written by the publish step with:
 
 ### 2.2 Offers (price evidence)
 
-An offer is one seller listing of one canonical product. Required fields:
+An offer is one seller listing of one canonical product. The table is `hardware_offers`, and it holds every ad the scraper has ever seen. Required fields:
 
 - `canonical_id`
 - `source_site` — `specialist`, `jiji`, `jumia`, (later `konga`, `cdcare`, `aliexpress`, `temu`)
@@ -108,7 +108,7 @@ An offer is one seller listing of one canonical product. Required fields:
 - `created_at`, `reviewed_at`, `reviewer`
 - `rejected_with_reason`
 
-Every rejected or excluded ad is also written to an **archive** table with the same core fields plus its rejection/attraction `reason_code`, so it is never deleted and can be promoted later.
+Every rejected or excluded ad keeps its row in `hardware_offers` with the status `excluded` and a `reason_code`, so it is never deleted and can be promoted later without a new fetch. The archive is therefore the excluded subset of the offers table rather than a second table that copies the same fields.
 
 ### 2.4 Identity
 
@@ -313,7 +313,7 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 - No model call can change a row unilaterally; all enrichment answers are suggestions or evidence.
 - Calls are **queued by image hash and result-cached**, so the same photo never pays for a model twice.
 - A failed model call never blocks publishing; the row keeps its highest-available provenance.
-- The queue is drained by the always-on FreeLLMAPI host itself. The GitHub Actions scraper enqueues unknown images to a D1 table and moves on, so scraping never depends on model latency.
+- The queue is drained by the always-on FreeLLMAPI host itself. The GitHub Actions scraper enqueues unknown images in the `scraper_queue` table and moves on, so scraping never depends on model latency.
 - **Test strategy**: scraper tests run against saved golden-page HTML snapshots stored in the repo with no live network access, enrichment tests run against a deterministic mock model that returns fixed, schema-valid responses, and a CI stage asserts that every offer reason code and every status value has a documented definition.
 - **Spot-check sampling method**: for the 30-offer audit, take 30 offers by stratified random draw across all phase-one sources and all trust tiers, and score each on brand match, model match and price match against the offer's source page and its canonical product; the raw list of sampled offers is written to the run report so the audit is reproducible.
 
