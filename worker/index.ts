@@ -1,6 +1,7 @@
 import { buildCombinations } from '../src/utils/solarCalculator.ts';
 import type { BatteryPreference, Device, Hardware, Product, Region } from '../src/types.ts';
 import { classifyProductType, enrichCombinationData } from './enrich.ts';
+import { handleScraperRoute } from './scraper.ts';
 import { seedDevices, seedHardware, seedProducts } from './seed-data';
 
 type Env = {
@@ -387,6 +388,12 @@ async function handleApi(request: Request, env: Env, pathname: string) {
     if (!(await requireAdmin(request, env))) return unauthorized();
     await run(env.DB, 'DELETE FROM devices_master WHERE id = ?', pathname.slice('/api/devices/'.length));
     return json({ success: true });
+  }
+
+  if (pathname.startsWith('/api/scraper/')) {
+    if (!(await requireAdmin(request, env))) return unauthorized();
+    const handled = await handleScraperRoute(request, env, pathname, method);
+    if (handled) return handled;
   }
 
   if (pathname === '/api/hardware' && method === 'GET') {

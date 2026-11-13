@@ -118,7 +118,7 @@ Every rejected or excluded ad keeps its row in `hardware_offers` with the status
 
 ### 2.5 Price history
 
-Every published hardware price is appended to a `price_history` log (`hardware_row_id`, `price`, `median_at_publish`, `date`). Rows are kept indefinitely in compressed form for drift reporting.
+Every published hardware price is appended to a `price_history` log (`hardware_row_id`, `price`, `median_at_publish`, `date`). An offer whose price changes appends a row with `offer_id` set instead, so the same table holds both the published prices and the offer movements. Rows are kept indefinitely in compressed form for drift reporting.
 
 ### 2.6 Offer dedupe and seller identity
 

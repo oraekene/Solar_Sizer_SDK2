@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS hardware_candidates (
   rejected_with_reason TEXT,
   reviewer TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   reviewed_at TEXT,
   published_hardware_id TEXT
 );
@@ -75,7 +76,8 @@ CREATE INDEX IF NOT EXISTS idx_candidates_created ON hardware_candidates(created
 
 CREATE TABLE IF NOT EXISTS price_history (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  hardware_row_id TEXT NOT NULL,
+  hardware_row_id TEXT NOT NULL DEFAULT '',
+  offer_id TEXT,
   price REAL NOT NULL,
   median_at_publish REAL,
   reason TEXT NOT NULL DEFAULT 'publish',
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS price_history (
 );
 
 CREATE INDEX IF NOT EXISTS idx_price_history_row ON price_history(hardware_row_id);
+CREATE INDEX IF NOT EXISTS idx_price_history_offer ON price_history(offer_id);
 CREATE INDEX IF NOT EXISTS idx_price_history_date ON price_history(date);
 
 CREATE TABLE IF NOT EXISTS run_report (
