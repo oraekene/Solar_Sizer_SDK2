@@ -1,5 +1,15 @@
 import type { Panel, Product, SystemCombination } from "../types";
 
+/**
+ * A powerstation carries its inverter and battery inside the unit, even when it
+ * is sold with a panel. Its DC side is factory-wired, so there is no separate
+ * battery cable or breaker to quote.
+ */
+export const isAllInOneProduct = (product: Product, cd: SystemCombination): boolean =>
+  cd.kit_type === "powerstation" ||
+  cd.all_in_one === true ||
+  product.tags.includes("powerstation");
+
 /** The catalogue panel whose size is closest to the given wattage. */
 const closestPanel = (catalogue: Panel[], watts: number): Panel | undefined => {
   if (!catalogue.length || watts <= 0) return undefined;

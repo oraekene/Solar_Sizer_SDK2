@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { sizeWiring } from '../src/utils/wiringSizer.ts';
-import { productHardware } from '../src/utils/productHardware.ts';
+import { productHardware, isAllInOneProduct } from '../src/utils/productHardware.ts';
 import type { Panel, Product, WiringItem } from '../src/types.ts';
 
 const item = (over: Partial<WiringItem> & { id: string }): WiringItem => ({
@@ -123,6 +123,43 @@ test('a kit keeps its MC4 connectors even when every extra item is optional', ()
   });
   assert.ok(sizing.includeIds.has('mc4'));
   assert.ok(sizing.includeIds.has('spanner'));
+  assert.ok(sizing.includeIds.has('pv'));
+});
+
+test('a kit built on a powerstation is all in one, so its DC gear is dropped', () => {
+  const powerstationKit: Product = { ...kit, tags: ['solar', 'kit', 'powerstation'] };
+  const cd = powerstationKit.combination_data!;
+  const batteryCable = item({
+    id: 'dc',
+    category: 'cables',
+    specs: { gauge: '10mm²', length: 5, type: 'Copper' },
+  });
+  const breaker = item({
+    id: 'breaker',
+    category: 'breakers',
+    specs: { amperage: 100, voltage: 150, poles: 2 },
+  });
+  const enclosure = item({
+    id: 'enclosure',
+    category: 'breakers',
+    specs: { ways: 2, rating: 65, material: 'ABS' },
+  });
+
+  assert.equal(isAllInOneProduct(powerstationKit, cd), true);
+  assert.equal(isAllInOneProduct(kit, kit.combination_data!), false);
+
+  const hardware = productHardware(powerstationKit, cd, catalogue);
+  const sizing = sizeWiring({
+    items: [pvCable, mc4Kit, batteryCable, breaker, enclosure],
+    panel: hardware.panel_data,
+    arrayWatts: 250,
+    batteryWh: 390,
+    maxAcW: 300,
+    all_in_one: isAllInOneProduct(powerstationKit, cd),
+  });
+  assert.equal(sizing.includeIds.has('dc'), false);
+  assert.equal(sizing.includeIds.has('breaker'), false);
+  assert.equal(sizing.includeIds.has('enclosure'), false);
   assert.ok(sizing.includeIds.has('pv'));
 });
 

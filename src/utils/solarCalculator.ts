@@ -1,7 +1,7 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES, WIRING as DEFAULT_WIRING } from "../constants";
 import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ChargeController, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
 import { sizeWiring } from "./wiringSizer";
-import { productHardware } from "./productHardware";
+import { productHardware, isAllInOneProduct } from "./productHardware";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -376,7 +376,7 @@ export function buildCombinations(
     const prodLog: string[] = [];
     const data = prod.combination_data;
     const kitType = getKitType(data);
-    const isAllInOneKit = data.kit_type === "powerstation" || data.all_in_one === true;
+    const isAllInOneKit = isAllInOneProduct(prod, data);
 
     const invW = data.inverter_w || 0;
     const batWh = data.battery_wh || 0;

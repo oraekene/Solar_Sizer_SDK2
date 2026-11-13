@@ -73,7 +73,7 @@ import {
   DeviceSpecs
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
-import { productHardware } from "./utils/productHardware";
+import { productHardware, isAllInOneProduct } from "./utils/productHardware";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
 import { sizeWiring, normalizeWiringSpecs, specNumber, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
@@ -651,12 +651,9 @@ const powerstationAsProduct = (ps: Powerstation, price = ps.price, name = ps.nam
 const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
-      // A kit tagged as a powerstation still has its own battery and panel, so
-      // it is only one unit when nothing is separate.
-      const isAllInOne =
-        cd.kit_type === "powerstation" ||
-        cd.all_in_one === true ||
-        (product.tags.includes("powerstation") && !cd.battery_config && !cd.panel_config);
+      // A powerstation kit has its inverter and battery built in, so its DC
+      // side is factory-wired even when the kit adds a panel.
+      const isAllInOne = isAllInOneProduct(product, cd);
       return {
         ...cd,
         // DB-enriched products often omit these; the details modal calls toFixed on them.
@@ -3675,13 +3672,16 @@ export default function App() {
       safeNumber(system.battery_price) +
       safeNumber(system.panel_price);
     const total = safeNumber(system.total_price);
+    // A powerstation contains its inverter and battery, so only a bundled panel
+    // has a price of its own. The rest of the unit price stays on the inverter.
+    const allInOne = system.all_in_one === true;
     if (declared > 0 || total <= 0) return system;
 
     const split = estimateBundleSplit(
       Math.max(0, total - safeNumber(system.wiring_price)),
       system.panel_w ?? system.array_size_w,
-      system.battery_wh ?? system.battery_total_wh,
-      { panels, batteries },
+      allInOne ? 0 : system.battery_wh ?? system.battery_total_wh,
+      { panels, batteries: allInOne ? [] : batteries },
       margins
     );
 
@@ -6158,7 +6158,7 @@ const liveWiringPrice = liveSizing
                         <Cpu className="w-8 h-8 text-emerald-600 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.inverter}</h3>
                         <p className="text-sm text-stone-500">Central Power Unit</p>
-                        {partialMode && (
+                        {partialMode && !selectedSystemDetails.all_in_one && (
                           <label className="flex items-center gap-2 cursor-pointer mt-2 shrink-0">
                             <input
                               type="checkbox"
@@ -6195,7 +6195,7 @@ const liveWiringPrice = liveSizing
                         <BatteryIcon className="w-8 h-8 text-blue-600 mb-4" />
                         <h3 className="font-bold text-lg mb-1">{selectedSystemDetails.battery_config}</h3>
                         <p className="text-sm text-stone-500">Energy Storage Bank</p>
-                        {partialMode && (
+                        {partialMode && !selectedSystemDetails.all_in_one && (
                           <label className="flex items-center gap-2 cursor-pointer mt-2 shrink-0">
                             <input
                               type="checkbox"
