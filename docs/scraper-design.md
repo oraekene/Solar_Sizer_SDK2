@@ -136,7 +136,7 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 
 - **GitHub Actions scheduled workflow** is the scraper runner. It runs unattended, never depends on the local PC, and can parse full HTML.
 - Each scraper is a Node job using plain `fetch`, no headless browser, because all three phase-one sites return server-rendered HTML.
-- **Admin endpoint contract**: the runner posts to a single authenticated route with the `X-Scraper-Key` header carrying a secret that is stored in GitHub Secrets and the Cloudflare Worker environment; the response is a small JSON status with a run id, and the runner treats any non-200 as a run failure rather than continuing.
+- **Admin endpoint contract**: the runner posts to a single authenticated route using the existing `x-admin-key` header, which the Worker already checks against the `ADMIN_PASSWORD` environment value with a timing-safe compare and a failed-attempt lockout. The same value is stored as a GitHub Actions secret. The response is a small JSON status with a run id, and the runner treats any non-200 as a run failure rather than continuing.
 - Job runs only while the page parses successfully; network-only failures are reported.
 - **First-run backfill**: the initial crawl reads the existing hardware rows and the seeded watchlist only, writes candidates with `manual`-protect flags, and never overwrites a row whose `price_source` is already `manual`. The first successful run writes a heartbeat so the watchdog does not raise a false alert on day one.
 
@@ -264,14 +264,46 @@ For each new listing:
 
 ### 5.1 FreeLLMAPI placement
 
-FreeLLMAPI is a self-hostable Node 20 server, not bound to localhost by the project — 127.0.0.1 is the default binding in this machine's config. It runs on a **small always-on host** (Fly.io or Hetzner, roughly two to five dollars a month), because its SQLite database holds the per-key usage counters that keep the free-model pool under caps, and an ephemeral database forgets them.
+FreeLLMAPI is a self-hostable Node 20 server, not bound to localhost by the project — 127.0.0.1 is the default binding in this machine's config. It runs on a **small always-on host** (Fly.io or Hetzner, roughly two to seven dollars a month), because its SQLite database holds the per-key usage counters that keep the free-model pool under caps, and an ephemeral database forgets them.
+
+The host runs two processes: the FreeLLMAPI gateway, and a small **enrichment drainer** that pulls queued images from the Worker, calls the gateway on loopback, and writes the results back.
 
 Deployment notes:
 
-- Single image: `ghcr.io/tashfeenahmed/freellmapi:latest`, multi-arch (amd64/arm64).
-- Declarative startup config via `FREEAPI_CONFIG_JSON` or `FREEAPI_CONFIG_PATH`, containing provider keys, the `routing.strategy`, model list, and admin account; the router then serves the unified `freellmapi-…` bearer key at `/v1`.
-- Provider keys are stored encrypted at rest; the `ENCRYPTION_KEY` is a repository secret, never hardcoded.
-- It is never exposed to the public internet. Traffic is GitHub Actions → a private IP on the always-on host → FreeLLMAPI, so no dashboard login or TLS termination is required.
+- Single image: `ghcr.io/tashfeenahmed/freellmapi:latest`, multi-arch (amd64/arm64). The container serves the API and the dashboard on port 3001.
+- Required environment: `ENCRYPTION_KEY` (32 random bytes as hex) and `PORT=3001`. `ENCRYPTION_KEY` encrypts the provider keys at rest and never leaves the host.
+- Declarative startup config via `FREEAPI_CONFIG_JSON` or `FREEAPI_CONFIG_PATH`, containing provider keys, the `routing.strategy`, model list, and admin account; the router then serves the unified `freellmapi-…` bearer key at `/v1`. That file holds plaintext secrets, so it is protected like the encryption key.
+- The SQLite database lives at `/app/server/data/freeapi.db` in the container, or wherever `FREEAPI_DB_PATH` points. A host with an ephemeral disk needs `FREEAPI_DB_PATH` plus a backup target, or a persistent volume.
+- The gateway binds to the loopback interface, because the only caller is the drainer on the same host.
+
+#### The host pulls, it does not accept calls
+
+**GitHub Actions runners cannot reach a private IP on a remote host.** A hosted runner sits in a Microsoft datacenter with no route to the host's private network, so an earlier version of this document was wrong when it described the traffic as running to a private IP.
+
+The fix is not to build a private path. The fix is that **nothing calls the host**, because the pipeline already separates scraping from enrichment:
+
+- GitHub Actions scrapes, extracts text, and writes a candidate plus an image hash to the Worker, then ends its job.
+- The enrichment drainer on the always-on host polls the Worker for queued image hashes, downloads the image, calls `http://127.0.0.1:3001/v1/chat/completions` on loopback, and writes the OCR or VLM result back to the Worker.
+- The Worker merges the enrichment result into the candidate when it arrives.
+
+Every call in this design leaves the host as an outbound HTTPS request, so the host needs no inbound port, no public IP address, no tunnel, no reverse proxy and no Cloudflare Access service token. The gateway is reachable only from the machine it runs on.
+
+The three outbound destinations are the Worker admin API, the model providers that FreeLLMAPI calls, and the Kapso API if the alert path is hosted on the host. Each one is an ordinary public HTTPS endpoint, and the Worker path already authenticates with the existing `x-admin-key` header.
+
+The cost of this choice is that an enriched candidate appears minutes after the sweep instead of inside it. The publish bar already waits for a required field to have a source, so a row publishes on a later pass once the enrichment lands.
+
+#### Host choice
+
+| Option | Price | Memory | Persistent disk | Notes |
+| --- | --- | --- | --- | --- |
+| Fly.io `shared-cpu-1x` | $3.69/month for 512 MB, $6.70/month for 1 GB | 512 MB or 1 GB | 1 GB volume at $0.15/month | Deploys from the repo with no SSH. Region `jnb` (Johannesburg) is the closest to Nigeria. A personal organisation whose bill is under $5 has that bill waived. |
+| Hetzner Cloud CX23 | €5.99/month | 4 GB | 40 GB NVMe included | The cheapest memory per dollar and a full disk for the SQLite file, but it needs account verification and hands-on host setup. |
+
+**Recommendation: Fly.io**, one `shared-cpu-1x` Machine with 512 MB of RAM and a 1 GB volume, deployed to `jnb`, with `auto_stop_machines = false` and `min_machines_running = 1` so the gateway stays up and the usage counters survive a restart. It costs about $3.84 per month before egress, which a personal organisation does not pay below the $5 threshold, and it removes the SSH, patching and disk-loss work that a plain virtual machine would need. If the gateway later needs more memory for image reading, the change is one line: a 1 GB Machine at $6.70 per month.
+
+The Machine runs the gateway and the drainer as two child processes of one supervisor, because Fly gives each process group its own Machine and a second Machine doubles the bill. The gateway keeps its port on loopback, so the Machine has no public HTTP service and Fly never routes traffic to it.
+
+The scraping itself does not run on this host. GitHub Actions does the fetching, so the host's only job is model enrichment, which is not latency-sensitive.
 
 ### 5.2 Model call governance
 
@@ -423,7 +455,6 @@ Everything in this list was discussed and consciously postponed. Nothing here bl
 
 ## 12. Open items before implementation
 
-- Confirm the always-on host platform (Fly.io vs Hetzner) and reserve it.
-- Obtain and store the secrets: the GitHub Actions `X-Scraper-Key`, the FreeLLMAPI unified bearer key, the `ENCRYPTION_KEY`, the Kapso/WhatsApp sender key, and the FX rate source.
-- Seed the phase-one watchlist: existing hardware rows plus the one specialist retailer's panel and battery categories and the Jiji and Jumia category URLs.
-- Produce the Nigerian retailer and dealer inventory that was promised during the grilling, and name the one specialist retailer for phase one.
+- Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets, following `docs/scraper-runbook.md`.
+- Store the remaining secrets: the Worker `ADMIN_PASSWORD`, the GitHub Actions copies of `ADMIN_PASSWORD`, `WORKER_URL` and `FX_RATE_URL`, and the Kapso values for the alert.
+- Add the specialist retailer to the watchlist once the inventory in `docs/sources-inventory.md` names it.

@@ -1,0 +1,141 @@
+{
+  "_comment": "Phase-one watchlist for the Solar Sizer hardware scraper. Every URL here was fetched and confirmed to return server-rendered product listings. See docs/scraper-design.md section 3 for the rules these entries feed.",
+  "_rules": {
+    "panels": "A watchlist entry is a category or brand path, not a product. The daily sweep re-checks known offer URLs; the weekly discovery crawl walks these paths.",
+    "manual_rows": "The 15 rows listed under manual_rows are protected. The scraper may attach offers to them but must never change their price automatically (design doc section 6.1).",
+    "budget": "500 offer checks per day, 200 listing pages per weekly crawl, one request per second (design doc section 3.2)."
+  },
+
+  "manual_rows": [
+    { "hardware_id": "p-1", "brand": "Kulpower", "model": "100W Mono", "watts": 100 },
+    { "hardware_id": "p-2", "brand": "9Solar", "model": "190W Mono", "watts": 190 },
+    { "hardware_id": "p-3", "brand": "Kulpower", "model": "200W Mono", "watts": 200 },
+    { "hardware_id": "p-4", "brand": "Kulpower", "model": "250W Mono", "watts": 250 },
+    { "hardware_id": "p-5", "brand": "Kulpower", "model": "340W Mono", "watts": 340 },
+    { "hardware_id": "p-6", "brand": "Kulpower", "model": "450W Mono", "watts": 450 },
+    { "hardware_id": "p-7", "brand": "9Solar", "model": "330W Mono", "watts": 330 },
+    { "hardware_id": "p-8", "brand": "9Solar", "model": "430W Mono", "watts": 430 },
+    { "hardware_id": "p-9", "brand": "9Solar", "model": "550W Mono", "watts": 550 },
+    { "hardware_id": "p-10", "brand": "9Solar", "model": "600W Mono", "watts": 600 },
+    { "hardware_id": "b-1", "brand": "PowMr", "model": "50Ah LiFePO4", "voltage": 12.8, "capacity_ah": 50, "chemistry": "lithium" },
+    { "hardware_id": "b-2", "brand": "Taico", "model": "12V 100Ah LiFePO4", "voltage": 12, "capacity_ah": 100, "chemistry": "lithium" },
+    { "hardware_id": "b-3", "brand": "Taico", "model": "12V 200Ah LiFePO4", "voltage": 12, "capacity_ah": 200, "chemistry": "lithium" },
+    { "hardware_id": "b-4", "brand": "Cworth", "model": "12V 100Ah LiFePO4", "voltage": 12, "capacity_ah": 100, "chemistry": "lithium" },
+    { "hardware_id": "b-5", "brand": "Cworth", "model": "12V 200Ah LiFePO4", "voltage": 12, "capacity_ah": 200, "chemistry": "lithium" }
+  ],
+
+  "discovery_paths": [
+    {
+      "site": "jumia",
+      "type": "panel",
+      "url": "https://www.jumia.com.ng/solar-panels/",
+      "listing_count_at_seed": 579,
+      "verified": "2026-11-13",
+      "note": "Server-rendered. Prices and names present in raw HTML. 15 pages listed."
+    },
+    {
+      "site": "jumia",
+      "type": "battery",
+      "url": "https://www.jumia.com.ng/solar-battery-chargers-charging-kits/",
+      "listing_count_at_seed": 1800,
+      "verified": "2026-11-13",
+      "note": "Category mixes batteries with controllers, generators and kits. The reason codes wrong_product_type and bundle handle the noise. 45 pages listed."
+    },
+    {
+      "site": "jumia",
+      "type": "battery",
+      "url": "https://www.jumia.com.ng/mlp-solar-batteries/",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "Cleaner battery landing page discovered in the category footer. Verify listing count on first crawl."
+    },
+    {
+      "site": "jumia",
+      "type": "panel",
+      "url": "https://www.jumia.com.ng/solar-wind-power/",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "Parent category. Panels and batteries both live under it, so it is a secondary crawl path only."
+    },
+    {
+      "site": "jiji",
+      "type": "panel",
+      "url": "https://jiji.ng/electronics?query=solar%20panel",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "Jiji has no solar subcategory path; /electronics is the parent. The query parameter is the discovery route. Product pages render server-side via window.__NUXT__."
+    },
+    {
+      "site": "jiji",
+      "type": "battery",
+      "url": "https://jiji.ng/electronics?query=solar%20battery",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "Same route as panels, different query. Filters for Used and Foreign Used condition are exposed on the category page and must be used to detect condition."
+    }
+  ],
+
+  "brand_paths": {
+    "_comment": "Brand filter paths on Jumia, used to find branded panels and batteries that the generic category crawl may rank below the fold. Brands marked priority are the ones matching the manual rows or common in the Nigerian market.",
+    "jumia_panels": [
+      { "brand": "Jinko", "path": "/solar-panels/jinko/", "priority": true, "reason": "Manual rows use 9Solar and Kulpower; Jinko is the most listed premium brand in the category." },
+      { "brand": "Trina Solar", "path": "/solar-panels/trina-solar/", "priority": true },
+      { "brand": "CanadianSolar", "path": "/solar-panels/canadiansolar/", "priority": true },
+      { "brand": "Oraimo", "path": "/solar-panels/oraimo/", "priority": true },
+      { "brand": "Duravolt", "path": "/solar-panels/duravolt/", "priority": true },
+      { "brand": "Qasa", "path": "/solar-panels/qasa/", "priority": false },
+      { "brand": "Sunfit", "path": "/solar-panels/sunfit/", "priority": false },
+      { "brand": "Generic", "path": "/solar-panels/generic/", "priority": true, "reason": "The unbranded bucket feed. Highest expected volume of unbranded panels." },
+      { "brand": "General", "path": "/solar-panels/general/", "priority": true, "reason": "The unbranded bucket feed. Sellers use both Generic and General." }
+    ],
+    "jumia_batteries": [
+      { "brand": "itel Energy", "path": "/solar-battery-chargers-charging-kits/itel-energy/", "priority": true, "reason": "Brand official store with an itel Energy Jumia storefront. Verified tier source." },
+      { "brand": "Felicity Solar", "path": "/solar-battery-chargers-charging-kits/felicity-solar/", "priority": true },
+      { "brand": "CWORTH ENERGY", "path": "/solar-battery-chargers-charging-kits/cworth-energy/", "priority": true, "reason": "Manual rows b-4 and b-5 are Cworth." },
+      { "brand": "PowMr", "path": "/solar-battery-chargers-charging-kits/powmr/", "priority": true, "reason": "Manual row b-1 is PowMr." },
+      { "brand": "Duravolt", "path": "/solar-battery-chargers-charging-kits/duravolt/", "priority": true },
+      { "brand": "Luminous", "path": "/solar-battery-chargers-charging-kits/luminous/", "priority": false, "reason": "Lead-acid tubular. Chemistry differs from the manual lithium rows, so it is discovery only." },
+      { "brand": "WattCycle", "path": "/solar-battery-chargers-charging-kits/watt-cycle/", "priority": false },
+      { "brand": "Generic", "path": "/solar-battery-chargers-charging-kits/generic/", "priority": true, "reason": "Generic lead-acid and lithium batteries, the unbranded battery bucket feed." }
+    ]
+  },
+
+  "search_terms": {
+    "_comment": "Free-text queries for platforms that have no category path for the product type. Used by the weekly discovery crawl only.",
+    "jiji": [
+      "solar panel",
+      "solar battery",
+      "inverter battery",
+      "lithium battery 12v",
+      "tubular battery",
+      "panel 450w",
+      "panel 550w"
+    ]
+  },
+
+  "aliases": {
+    "_comment": "Brand spelling variants that the identity normaliser folds together. Grown from review-queue merges, never from a model guess.",
+    "9solar": ["9solar", "nine solar", "nine solar energy", "9 solar"],
+    "kulpower": ["kulpower", "kul power", "kulpower energy"],
+    "cworth": ["cworth", "cworth energy", "cworth energy 12v lithium battery"],
+    "taico": ["taico", "taico energy"],
+    "powmr": ["powmr", "pow mr", "pow-mr"],
+    "itel": ["itel", "itel energy", "itelenergy"],
+    "felicity": ["felicity", "felicity solar", "felicitysolar"],
+    "duravolt": ["duravolt", "dura volts", "duravolts"],
+    "generic": ["generic", "general", "unbranded", "no name", "noname"]
+  },
+
+  "watchlist_datasheets": {
+    "_comment": "Datasheet lookup keys for the manual rows. The datasheet URL is filled in by the first run that finds one; until then the row pools specs across seller offers.",
+    "panels": [
+      { "hardware_id": "p-9", "brand": "9Solar", "model": "550W Mono", "expected_watts": 550, "expected_voc": 49.9, "expected_isc": 14.0 },
+      { "hardware_id": "p-6", "brand": "Kulpower", "model": "450W Mono", "expected_watts": 450, "expected_voc": 49.5, "expected_isc": 11.5 },
+      { "hardware_id": "p-10", "brand": "9Solar", "model": "600W Mono", "expected_watts": 600, "expected_voc": 52.5, "expected_isc": 14.5 }
+    ],
+    "batteries": [
+      { "hardware_id": "b-3", "brand": "Taico", "model": "12V 200Ah LiFePO4", "expected_voltage": 12, "expected_capacity_ah": 200, "expected_chemistry": "lithium" },
+      { "hardware_id": "b-5", "brand": "Cworth", "model": "12V 200Ah LiFePO4", "expected_voltage": 12, "expected_capacity_ah": 200, "expected_chemistry": "lithium" }
+    ]
+  }
+}
