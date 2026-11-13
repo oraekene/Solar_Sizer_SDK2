@@ -86,6 +86,8 @@ export interface WiringSizing {
    * They are listed so the buyer can pick the right size.
    */
   unsizedIds: Set<string>;
+  /** Ids of the items this system cannot do without. */
+  requiredIds: Set<string>;
   /** One line per sized item, used by the quote PDF guide. */
   notes: string[];
   derived: {
@@ -134,6 +136,8 @@ export const sizeWiring = (
 
   // All-in-one (powerstation / coupled kit): no battery-to-inverter cables or DC breakers.
   const isAllInOne = input.all_in_one === true;
+  // The DC side only exists when a separate battery feeds the inverter.
+  const hasDc = dcAmps > 0 && !isAllInOne;
 
   // Cable groups are sized against the current they actually carry.
   const cableTarget: Record<string, number> = {
@@ -146,6 +150,8 @@ export const sizeWiring = (
   const winners = new Set<string>();
   // Mandatory items that apply but have no known size, so no size can be picked.
   const unsized = new Set<string>();
+  // Items the system cannot do without, even when the size is unknown.
+  const required = new Set<string>();
 
   for (const category of Object.keys(SIZED_SPEC) as WiringCategory[]) {
     const specKey = SIZED_SPEC[category]!;
@@ -176,7 +182,18 @@ export const sizeWiring = (
       // No current to size against, for example a lone battery with no inverter.
       // The item still applies, so list it and let the buyer choose the size.
       if (target <= 0) {
-        for (const item of candidates) unsized.add(item.id);
+        const groupRequired =
+          group === "PV Wire"
+            ? hasPv
+            : group === "Copper" || group === "breakers"
+            ? hasDc
+            : group === "Twin & Earth"
+            ? maxAcW > 0
+            : false;
+        for (const item of candidates) {
+          unsized.add(item.id);
+          if (groupRequired) required.add(item.id);
+        }
         continue;
       }
 
@@ -200,10 +217,16 @@ export const sizeWiring = (
 
     const specKey = SIZED_SPEC[item.category];
     if (!hasPv && PV_ONLY_CATEGORIES.includes(item.category)) continue;
+    // All-in-one: the DC gear is inside the unit already.
+    if (isAllInOne && item.category === "breakers") continue;
     if (!specKey || specNumber(item.specs[specKey]) <= 0) {
-      // An accessory with no size of its own. A catalog product lists it for
-      // the buyer to choose rather than adding it to the price automatically.
-      if (input.discretionary) unsized.add(item.id);
+      // An accessory with no size of its own, such as a breaker enclosure. It
+      // belongs to the side of the system that exists, so it is required when
+      // that side is there. Otherwise it is just an extra the buyer can drop.
+      const requiredBySystem =
+        item.category === "mc4_connectors" ? hasPv : item.category === "breakers" ? hasDc : false;
+      if (requiredBySystem) required.add(item.id);
+      if (input.discretionary && !requiredBySystem) unsized.add(item.id);
       else includeIds.add(item.id);
       continue;
     }
@@ -234,6 +257,7 @@ export const sizeWiring = (
   return {
     includeIds,
     unsizedIds: unsized,
+    requiredIds: required,
     notes,
     derived: {
       dcAmps: Math.round(dcAmps),

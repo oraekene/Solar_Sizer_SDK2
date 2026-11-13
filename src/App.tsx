@@ -73,6 +73,7 @@ import {
   DeviceSpecs
 } from "./types";
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
+import { productHardware } from "./utils/productHardware";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
 import { sizeWiring, normalizeWiringSpecs, specNumber, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
@@ -647,62 +648,15 @@ const powerstationAsProduct = (ps: Powerstation, price = ps.price, name = ps.nam
   },
 });
 
-/**
- * Turn a product's stored specs into the hardware objects the sizer needs, so a
- * lone panel, battery or inverter gets its wiring sized like a full system.
- */
-const productHardware = (product: Product, cd: SystemCombination) => {
-  const panelW = cd.panel_w ?? 0;
-  const inverterW = cd.inverter_w ?? 0;
-  const batteryWh = cd.battery_wh ?? cd.battery_total_wh ?? 0;
-  const voltage = cd.battery_voltage ?? 48;
-  const ampHours = cd.battery_ah ?? (voltage > 0 && batteryWh > 0 ? batteryWh / voltage : 0);
-
-  return {
-    panel_data: panelW > 0
-      ? {
-          id: product.id,
-          name: cd.panel_config || product.name,
-          watts: panelW,
-          voc: cd.panel_voc ?? 0,
-          isc: cd.panel_isc ?? 0,
-          price: cd.panel_price ?? 0,
-        }
-      : undefined,
-    inverter_data: inverterW > 0
-      ? {
-          id: product.id,
-          name: cd.inverter || product.name,
-          max_ac_w: inverterW,
-          cc_max_pv_w: panelW,
-          cc_max_voc: cd.panel_voc ?? 0,
-          cc_max_amps: 0,
-          system_vdc: cd.inverter_system_vdc ?? voltage,
-          max_charge_amps: 0,
-          cc_type: cd.cc_type ?? "mppt",
-          max_parallel_units: 1,
-          price: cd.inverter_price ?? 0,
-        }
-      : undefined,
-    battery_data: batteryWh > 0
-      ? {
-          id: product.id,
-          name: cd.battery_config || product.name,
-          voltage,
-          capacity_ah: ampHours,
-          type: cd.battery_type ?? "lithium",
-          max_parallel_strings: 1,
-          min_c_rate: 0.5,
-          price: cd.battery_price ?? 0,
-        }
-      : undefined,
-  };
-};
-
-const buildProductDetails = (product: Product): SystemCombination => {
+const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
-      const isAllInOne = cd.kit_type === "powerstation" || cd.all_in_one === true || product.tags.includes("powerstation");
+      // A kit tagged as a powerstation still has its own battery and panel, so
+      // it is only one unit when nothing is separate.
+      const isAllInOne =
+        cd.kit_type === "powerstation" ||
+        cd.all_in_one === true ||
+        (product.tags.includes("powerstation") && !cd.battery_config && !cd.panel_config);
       return {
         ...cd,
         // DB-enriched products often omit these; the details modal calls toFixed on them.
@@ -716,7 +670,7 @@ const buildProductDetails = (product: Product): SystemCombination => {
         product_description: product.description,
         component_specs: cd.component_specs ?? [],
         all_in_one: isAllInOne,
-        ...productHardware(product, cd),
+        ...productHardware(product, cd, panelCatalogue),
       };
     }
 
@@ -736,7 +690,7 @@ const buildProductDetails = (product: Product): SystemCombination => {
           product_name: product.name,
           product_description: product.description,
           is_preconfigured: true,
-          ...productHardware(product, psData),
+          ...productHardware(product, psData, panelCatalogue),
         };
       }
     }
@@ -745,11 +699,20 @@ const buildProductDetails = (product: Product): SystemCombination => {
     // only their own card; empty labels keep the modal from inventing the rest.
     const isPanel = product.tags?.includes("panel") ?? false;
     const isBattery = product.tags?.includes("battery") ?? false;
-    const role = isInternet ? "network" : isPanel ? "panel" : isBattery ? "battery" : "inverter";
+    const isPowerstation = product.tags?.includes("powerstation") ?? false;
+    const role = isInternet
+      ? "network"
+      : isPowerstation
+      ? "powerstation"
+      : isPanel
+      ? "panel"
+      : isBattery
+      ? "battery"
+      : "inverter";
 
     return {
-      inverter: role === "inverter" ? product.name : "",
-      inverter_price: role === "inverter" ? product.price : 0,
+      inverter: role === "inverter" || role === "powerstation" ? product.name : "",
+      inverter_price: role === "inverter" || role === "powerstation" ? product.price : 0,
       battery_config: role === "battery" ? product.name : "",
       battery_price: role === "battery" ? product.price : 0,
       panel_config: role === "panel" ? product.name : "",
@@ -766,7 +729,9 @@ const buildProductDetails = (product: Product): SystemCombination => {
       product_id: product.id,
       product_name: product.name,
       product_description: product.description,
-      kit_type: isInternet ? "internet" : "solar",
+      kit_type: isInternet ? "internet" : isPowerstation ? "powerstation" : "solar",
+      // A powerstation carries its own battery and charge control inside.
+      all_in_one: isPowerstation,
       component_specs: [
         {
           role,
@@ -3757,8 +3722,8 @@ export default function App() {
           arrayWatts: selectedSystemDetails?.array_size_w || selectedSystemDetails?.panel_w || 0,
           batteryWh: selectedSystemDetails?.battery_total_wh || 0,
           systemVdc:
-            selectedSystemDetails?.battery_data?.voltage ??
             selectedSystemDetails?.inverter_data?.system_vdc ??
+            selectedSystemDetails?.battery_data?.voltage ??
             48,
           maxAcW:
             selectedSystemDetails?.inverter_w || batterySizingWatts(selectedSystemDetails),
@@ -4004,7 +3969,7 @@ const liveWiringPrice = liveSizing
             powerstations={powerstations}
             products={products}
             routers={masterDevices}
-            onBuy={(product) => startBachsCheckout(buildProductDetails(product))}
+            onBuy={(product) => startBachsCheckout(buildProductDetails(product, panels))}
             onBuyDevice={(device) => startDeviceCheckout(device)}
             onClose={() => { setSelectedInternetDevice(null); setSelectedInternetProduct(null); }}
           />
@@ -4914,10 +4879,10 @@ const liveWiringPrice = liveSizing
                           setSelectedInternetProduct(product);
                         } else {
                           setDetailSource("catalog");
-                          setSelectedSystemDetails(buildProductDetails(product));
+                          setSelectedSystemDetails(buildProductDetails(product, panels));
                         }
                       }}
-                      onBuy={() => startBachsCheckout(buildProductDetails(product))}
+                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels))}
                     >
                       {product.combination_data && (
                         <div className="space-y-2.5 p-4 bg-stone-50 rounded-2xl border border-stone-100 mt-5">
@@ -5029,7 +4994,7 @@ const liveWiringPrice = liveSizing
                         setShowInteractiveBridge(false);
                         setSelectedInternetProduct(product);
                       }}
-                      onBuy={() => startBachsCheckout(buildProductDetails(product))}
+                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels))}
                       badge={
                         <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
                           {product.tags.find((t) => t.startsWith("tier-"))?.replace("tier-", "Tier ") || "Kit"}
@@ -6399,7 +6364,7 @@ const liveWiringPrice = liveSizing
                                               ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
                                               : "bg-emerald-100 text-emerald-700"
                                           }`}>
-                                            {isOptional ? "Optional" : isCatalogProduct ? "Recommended" : "Required"}
+                                            {isOptional ? "Optional" : "Required"}
                                           </span>
                                         </div>
 
@@ -6519,8 +6484,12 @@ const liveWiringPrice = liveSizing
                                               {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
                                             </p>
                                           </div>
-                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 bg-stone-100 text-stone-600">
-                                            Size to fit
+                                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                                            liveSizing.requiredIds.has(item.id)
+                                              ? "bg-amber-100 text-amber-700"
+                                              : "bg-stone-100 text-stone-600"
+                                          }`}>
+                                            {liveSizing.requiredIds.has(item.id) ? "Required, size to fit" : "Size to fit"}
                                           </span>
                                         </div>
                                         <div className="space-y-1 text-xs text-stone-500 mb-3">

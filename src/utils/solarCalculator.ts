@@ -1,6 +1,7 @@
 import { BATTERIES, INVERTERS, LOCATION_PSH, PANELS, SURGE_MULTIPLIERS, IRRADIANCE_PROFILES, WIRING as DEFAULT_WIRING } from "../constants";
 import { Device, LoadAnalysis, Region, SystemCombination, Inverter, Panel, Battery, BatteryPreference, Product, Powerstation, ChargeController, ProfitMargins, KitComponentSpec, WiringItem } from "../types";
 import { sizeWiring } from "./wiringSizer";
+import { productHardware } from "./productHardware";
 
 export function calculateUserNeeds(devices: Device[]): LoadAnalysis {
   const hourlyConsumption: Record<number, number> = {};
@@ -459,6 +460,8 @@ export function buildCombinations(
       component_specs: buildKitComponentSpecs(prod, data),
       product_name: prod.name,
       product_description: prod.description,
+      // The kit needs its real hardware, or its PV cable and connectors are lost.
+      ...productHardware(prod, data, safeHardware.panels),
     });
 
     allLogs.push(prodLog);
