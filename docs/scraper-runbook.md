@@ -21,7 +21,7 @@ This runbook lists the accounts, hosts and secrets that the hardware scraper nee
 | `ADMIN_PASSWORD` | Worker environment, GitHub Actions, Fly Machine | Scraper, drainer | Use one value in all three places. The Worker already checks it against the `x-admin-key` header. |
 | `ENCRYPTION_KEY` | Fly Machine | Gateway | 32 random bytes as hex. It encrypts the provider keys at rest. It never leaves the host. |
 | `FREEAPI_CONFIG_JSON` | Fly Machine | Gateway | The provider keys, the routing strategy and the dashboard account. It holds plain secrets. |
-| `WORKER_URL` | Fly Machine, GitHub Actions | Drainer, scraper | The public address of the Worker. |
+| `WORKER_URL` | Fly Machine, GitHub Actions | Drainer, scraper | The public address of the Worker. Use `https://sdk2.solarsizer.workers.dev`. |
 | `KAPSO_API_KEY` | Worker environment | Alert cron | Sends the WhatsApp alert. |
 | `KAPSO_PHONE_NUMBER_ID` | Worker environment | Alert cron | The WhatsApp number that sends the alert. |
 | `KAPSO_ALERT_TO` | Worker environment | Alert cron | The owner number in international format, for example `2348012345678`. |
@@ -120,7 +120,7 @@ Check the state with `fly status`. The Machine must show as `running`.
 
    Add one entry in `keys` for every free model provider that you use. The file holds plain secrets. Keep it out of the repo. Write it as one line of JSON.
 
-3. Set the host secrets. The command reads the pairs from standard input.
+3. Set the host secrets. The command reads the pairs from standard input. Set `WORKER_URL` to `https://sdk2.solarsizer.workers.dev` first.
 
    On Windows PowerShell:
 
@@ -234,8 +234,8 @@ Run these checks after the implementation lands.
 3. The Worker rejects a request without the key and accepts it with the key.
 
    ```
-   curl -i https://sdk2.<your subdomain>.workers.dev/api/scraper/heartbeat
-   curl -i -H "x-admin-key: $ADMIN_PASSWORD" https://sdk2.<your subdomain>.workers.dev/api/scraper/heartbeat
+   curl -i https://sdk2.solarsizer.workers.dev/api/scraper/heartbeat
+   curl -i -H "x-admin-key: $ADMIN_PASSWORD" https://sdk2.solarsizer.workers.dev/api/scraper/heartbeat
    ```
 
    The first call answers `401`. The second call answers `200`.
