@@ -1,6 +1,6 @@
 # Hardware Scraping System — Design v1 (phase one)
 
-**Status:** draft, awaiting implementation. **Owner:** Kenechukwu Oraelosi. **Last updated:** 2026-11-13.
+**Status:** v1, gaps closed, awaiting implementation. **Owner:** Kenechukwu Oraelosi. **Last updated:** 2026-11-13.
 
 This document captures every decision made in the engineering-grill session for the system that auto-populates the Solar Sizer hardware database from Nigerian e-commerce and solar-product sources. It is written so an agent can implement phase one from it, and so decisions can be reviewed, amended and versioned.
 
@@ -64,8 +64,8 @@ The scraped row is written by the publish step with:
 - `id` — deterministic slug from the identity key, prefixed `sc-` (for *scraped*), e.g. `sc-9solar-550-mono`. This avoids collisions with seeded ids and makes origin obvious.
 - `user_id` — `system`.
 - `type` — `panel` or `battery`.
-- `data` — the fully typed object (`Panel` or `Battery`), every required field present at one of the sources in Section 4.4.
-- `tags` — category tag plus derived tags: `scraped`, `panel`/`battery`, plus flags for the row as needed, e.g. `representative` (see Section 4.4), `estimated-specs` (when any required field is class-derived).
+- `data` — the fully typed object (`Panel` or `Battery`), every required field present at one of the sources in Section 4.1.
+- `tags` — category tag plus derived tags: `scraped`, `panel`/`battery`, plus flags for the row as needed, e.g. `representative` (see Section 3.7), `estimated-specs` (when any required field is class-derived).
 - `description` — one neutral line: `Aggregated from N sellers, last checked YYYY-MM-DD. Median ₦X. Sources: <sites>`.
 
 ### 2.2 Offers (price evidence)
@@ -120,6 +120,14 @@ Every rejected or excluded ad is also written to an **archive** table with the s
 
 Every published hardware price is appended to a `price_history` log (`hardware_row_id`, `price`, `median_at_publish`, `date`). Rows are kept indefinitely in compressed form for drift reporting.
 
+### 2.6 Offer dedupe and seller identity
+
+- **Offer uniqueness** is the tuple `(source_site, source_listing_id)`, where `source_listing_id` is the platform's own listing id when available, or a stable hash of `(source_site, source_url, seller_id)` otherwise. Re-checking an offer updates the existing offer row; a changed price appends a row to `price_history` but does not create a duplicate offer.
+- **Identical-offer collapse**: two ads from the same seller on the same platform with the same price and a matching perceptual hash count as one offer in the median. A matching hash on a different price is not collapsed; it is a different offer, and the photo match is recorded as a cross-post signal. Collapse is reported in the run so the admin can see how much of the pool is self-cannibalised.
+- **Seller identity** is normalised per platform as `seller_id` (for example `jiji:seller:abc123`). The same seller on two platforms gets the same normalized `seller_id` only when a second signal agrees, such as a shared phone number or store handle the platforms expose; otherwise the platforms are treated as independent data points.
+- **Trust aggregation** is per normalized `seller_id` across all their offers on all platforms: a seller that is an official store on Jumia and rated on Jiji is established everywhere, while each listing still contributes its own condition, price and availability to the pool.
+- **Display and reporting**: the admin offers section shows the collapsed offer with a badge stating the number of identical ads collapsed; the collapse never reduces the seller's evidence base, because all their ads remain in the archive and continue to feed the trust score.
+
 ---
 
 ## 3. Source mechanics and compliance
@@ -128,7 +136,9 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 
 - **GitHub Actions scheduled workflow** is the scraper runner. It runs unattended, never depends on the local PC, and can parse full HTML.
 - Each scraper is a Node job using plain `fetch`, no headless browser, because all three phase-one sites return server-rendered HTML.
+- **Admin endpoint contract**: the runner posts to a single authenticated route with the `X-Scraper-Key` header carrying a secret that is stored in GitHub Secrets and the Cloudflare Worker environment; the response is a small JSON status with a run id, and the runner treats any non-200 as a run failure rather than continuing.
 - Job runs only while the page parses successfully; network-only failures are reported.
+- **First-run backfill**: the initial crawl reads the existing hardware rows and the seeded watchlist only, writes candidates with `manual`-protect flags, and never overwrites a row whose `price_source` is already `manual`. The first successful run writes a heartbeat so the watchdog does not raise a false alert on day one.
 
 ### 3.2 Rate discipline
 
@@ -153,7 +163,9 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 - **Qualified offers must be `piece`-basis.** A pallet, pair, carton or set price is divided by the **seller's stated** count, never an assumed one, and only when the count is explicit and matches the product.
 - **Derived per-piece prices** are allowed and labelled, so a pallet of 31 at ₦3,100,000 publishes as ₦100,000 per piece with `unit_basis: derived`, `unit_quantity: 31`.
 - **Ambiguous ads are excluded, not averaged:** price ranges, "price depends on quantity", bundles, and installation-inclusive prices are dropped with a reason code and archived.
-- **USD listings** are converted only when a rate and the rate date are both stored; otherwise excluded.
+- **USD listings** are converted using a daily NGN/USD rate fetched from a single configured reference and stored with the rate date; a conversion is allowed only when the stored rate is less than seven days old. The rate source is a repository secret so it can be rotated without a redeploy.
+- Converted prices are rounded to the nearest hundred naira before entering the pool, and the raw converted value is kept alongside the rounded figure for audit.
+- **Rate-limit handling**: each source keeps its own soft budget below the global ceiling, a jittered backoff on a 429 or throttle response, and a mid-run pause that reports the skipped offers; a sustained challenge from one source pauses that source adapter rather than failing the whole run.
 - **VAT** stays as quoted with a `vat_included` flag. The calculator ranks on shelf price, and no silent VAT adjustment is applied.
 
 ### 3.5 Trust policy
@@ -167,9 +179,10 @@ Hard gates (offer excluded):
 
 Tier (controls qualification):
 
-- **verified** — official/verified store or platform-verified seller.
-- **established** — rating 4.0+ with 10+ reviews, or a known distributor.
+- **verified** — official store, platform-verified badge, or the brand's own distributor page.
+- **established** — rating of 4.0 or higher with at least 10 reviews, or a seller known to stock the brand.
 - **unknown** — everything else.
+- **Price outlier** for the fake/bait gate is an offer priced below 60% of the current canonical median, which is the typical depth of a missing-zero typo or a bait listing and is far deeper than legitimate discounting. The threshold is configurable per source and is reviewed whenever the unknown-offer rate rises.
 
 The median is computed from verified and established offers. **Unknown offers are archived and shown, but do not set the median.** If no verified or established offer exists, the median falls back to unknown offers with a `low-confidence-price` flag on the row; it is never dropped for want of a better offer.
 
@@ -211,6 +224,8 @@ A row may publish only when every required field has a source at one of these ra
 5. `class_derived` — default for the chemistry/technology class, marked `class_derived` and `estimated-specs`.
 
 Rank 5 values carry `confidence` low and a visible marker on the row. They are allowed for panels and for the bucket; for batteries they are disallowed for chemistry.
+
+**Estimated rows in end-user quotes**: a row carrying `estimated-specs` or `representative` is still selectable in the calculator, because the unbranded panel market is mostly estimated and hiding it would make the tool useless, but the quote line shows a short "estimated specs" marker and the admin details modal lists each estimated field with its source and confidence. A battery row never shows this marker because a battery cannot publish on an inferred value.
 
 ### 4.2 Estimation safety
 
@@ -267,6 +282,8 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 - Calls are **queued by image hash and result-cached**, so the same photo never pays for a model twice.
 - A failed model call never blocks publishing; the row keeps its highest-available provenance.
 - The queue is drained by the always-on FreeLLMAPI host itself. The GitHub Actions scraper enqueues unknown images to a D1 table and moves on, so scraping never depends on model latency.
+- **Test strategy**: scraper tests run against saved golden-page HTML snapshots stored in the repo with no live network access, enrichment tests run against a deterministic mock model that returns fixed, schema-valid responses, and a CI stage asserts that every offer reason code and every status value has a documented definition.
+- **Spot-check sampling method**: for the 30-offer audit, take 30 offers by stratified random draw across all phase-one sources and all trust tiers, and score each on brand match, model match and price match against the offer's source page and its canonical product; the raw list of sampled offers is written to the run report so the audit is reproducible.
 
 ### 5.3 Pipeline stages
 
@@ -303,7 +320,7 @@ The admin Database tab is extended:
 
 ### 6.3 Archive
 
-Every excluded or rejected ad is archived with `reason_code` (from the set in Section 8.4), price, seller, source URL and `scraped_at`. No entry is deleted. Bundles or multi-variant ads can be promoted into a kit row or split later without re-fetching.
+Every excluded or rejected ad is archived with `reason_code` (from the closed set in Section 8.3), price, seller, source URL and `scraped_at`. No entry is deleted. Bundles or multi-variant ads can be promoted into a kit row or split later without re-fetching, following the promotion rule in Section 8.4.
 
 ---
 
@@ -330,7 +347,37 @@ If all four fail, the ad falls into the unbranded bucket.
 
 ### 8.2 Run report
 
-Each run writes a report with: sources checked, offers re-checked, prices changed within band, prices queued, candidates created, candidates approved, candidates rejected, ambiguity reason codes with counts, model calls made, and errors.
+Each run writes a report with: sources checked, offers re-checked, offers collapsed, unique sellers, trust tier distribution, prices changed within band, prices queued, candidates created, candidates approved, candidates rejected, ambiguity reason codes with counts, model calls made, and errors. The report is stored in a `run_report` table keyed by run id so it can be queried by date and source.
+
+### 8.3 Reason codes
+
+Every excluded or archived offer carries exactly one reason code from this fixed set. A new code is only added by editing this list and a test that asserts the set is closed.
+
+- `used` — condition is used.
+- `foreign_used` — condition is foreign used.
+- `refurbished` — condition is refurbished or open box.
+- `listing_not_found` — the platform reports the listing is gone.
+- `missing_required_spec` — no qualifying source for a required field.
+- `price_outlier` — priced below the fake/bait threshold.
+- `price_range` — the ad quotes a range rather than one number.
+- `price_depends_on_quantity` — the price varies with quantity and no count is stated.
+- `call_for_price` — no number is published.
+- `bundle` — the ad sells a system or several products together.
+- `multi_variant` — the ad covers several variants with one price.
+- `installation_included` — the price includes installation.
+- `ambiguous_unit` — the unit basis or pack count cannot be read.
+- `usd_rate_unavailable` — a USD price with no fresh stored rate.
+- `trust_unknown_only` — excluded from the median because only unknown-tier offers remain, and no fallback was permitted for this product.
+- `duplicate_of_existing_offer` — collapsed into an identical offer.
+- `wrong_product_type` — the ad is not a panel or a battery.
+- `not_solar_hardware` — the ad matched a search but is unrelated hardware.
+- `unverified_stale` — no successful check inside the staleness window.
+- `admin_rejected` — an admin rejected the candidate.
+- `superseded` — a newer candidate replaced this one.
+
+### 8.4 Archive promotion
+
+An archived offer is never deleted and can be promoted without re-fetching the page. A promotion creates a new `hardware_candidates` row in `pending_review` that references the archived offer id, so the archive record and the new candidate keep their link. Promotion is allowed for any archived offer whose reason code describes ambiguity rather than a disqualifier, which means `price_range`, `price_depends_on_quantity`, `bundle`, `multi_variant`, `installation_included` and `ambiguous_unit` can be promoted after a human resolves the ambiguity, while `used`, `foreign_used`, `price_outlier` and `listing_not_found` cannot be promoted into a live price.
 
 ---
 
@@ -354,9 +401,29 @@ Each run writes a report with: sources checked, offers re-checked, prices change
 
 ---
 
-## 11. Open items before implementation
+## 11. Deferred to later phases
+
+Everything in this list was discussed and consciously postponed. Nothing here blocks phase one.
+
+| Item | Phase | Why it waits |
+| --- | --- | --- |
+| Inverters, powerstations, charge controllers, wiring, accessories | 2 | Inverter MPPT ceilings and surge values are the least published specs and the most dangerous to guess. |
+| `products` table, kits, accessories catalogue | 2 | Phase one proves the hardware pipeline first. |
+| Konga and CDcare adapters | 1b | Accepted as "immediately after" the first three sources; Konga disallows `/search` and product detail paths, so its adapter needs a different discovery route. |
+| AliExpress and Temu price contribution | 3 | Needs a landed-cost model covering shipping, duty and FX before an import price may enter a median. |
+| Social sources (Twitter/X, Facebook, Nairaland, Instagram, WhatsApp) | out of scope | Closed or unstructured graphs needing login, session tracking or image-post analysis. |
+| CDcare installment price as a normal price kind | 1b | An installment total is not comparable to a cash price until its own conversion rule is defined. |
+| Used-price series | 2 | The used archive is populated in phase one, but no series or display is built yet. |
+| Reliability badge as a ranking signal | 2 | Phase one uses trust only to qualify offers; a badge would add a ranking axis. |
+| Seller rating history, dispute history, external review aggregation | 2 | No public data source for these was verified. |
+| True external reverse image search (Lens, Bing Visual Search, Yandex, TinEye) | 2 | No dependable free API; the useful version is the admin escalation button, not the automated path. |
+| Full visual anti-counterfeit beyond price, trust and sticker OCR | 2 | A counterfeit sticker is a claim, not proof, and scraping cannot settle it. |
+| VAT adjustment, landed cost, delivery normalisation | 2 | The calculator ranks on shelf price, so changing the price basis now would distort every existing quote. |
+| Automatic kit promotion from an archived bundle | 2 | The archive promotion path exists in phase one, but splitting a bundle into a kit row needs the `products` table. |
+
+## 12. Open items before implementation
 
 - Confirm the always-on host platform (Fly.io vs Hetzner) and reserve it.
-- Obtain and store the three secrets: the GitHub Actions runner token scope, the FreeLLMAPI unified bearer key, and the Kapso/WhatsApp sender key.
-- Seed the phase-one watchlist: existing hardware rows plus the one specialist retailer's panel/battery categories and the Jiji + Jumia solar panel and battery category URLs.
-- Decide the exact 30-product spot-check sampling method and record it in a test spec.
+- Obtain and store the secrets: the GitHub Actions `X-Scraper-Key`, the FreeLLMAPI unified bearer key, the `ENCRYPTION_KEY`, the Kapso/WhatsApp sender key, and the FX rate source.
+- Seed the phase-one watchlist: existing hardware rows plus the one specialist retailer's panel and battery categories and the Jiji and Jumia category URLs.
+- Produce the Nigerian retailer and dealer inventory that was promised during the grilling, and name the one specialist retailer for phase one.
