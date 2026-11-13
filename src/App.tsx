@@ -223,21 +223,76 @@ type ProductDraft = {
   kit_type: "solar" | "internet" | "powerstation";
   tags: string;
   shape: "single" | "setup" | "kit";
-  single_role: "inverter" | "battery" | "panel" | "network";
-  single_name: string;
-  single_watts: string;
-  single_price: string;
+  single_role: "inverter" | "battery" | "panel" | "chargeController" | "accessory";
   inverter: string;
   inverter_w: string;
+  inverter_vdc: string;
   inverter_price: string;
-  battery_config: string;
-  battery_wh: string;
+  battery: string;
+  battery_voltage: string;
+  battery_ah: string;
   battery_price: string;
-  panel_config: string;
+  panel: string;
   panel_w: string;
+  panel_voc: string;
+  panel_isc: string;
   panel_price: string;
+  cc: string;
+  cc_pv: string;
+  cc_voc: string;
+  cc_amps: string;
+  cc_price: string;
+  ps_capacity: string;
+  ps_output: string;
+  ps_pv: string;
+  net_devices: string[];
+  net_router: string;
   sourceSystem?: SystemCombination;
 };
+
+/** The component fields a shape asks for. */
+const PRODUCT_SHAPE_ROLES: Record<ProductDraft["shape"], ProductDraft["single_role"][]> = {
+  single: ["inverter", "battery", "panel", "chargeController", "accessory"],
+  setup: ["inverter", "battery"],
+  kit: ["inverter", "battery", "panel"],
+};
+
+/** A blank product draft. */
+const emptyProductDraft = (): ProductDraft => ({
+  mode: "manual",
+  id: Math.random().toString(36).substr(2, 9),
+  name: "",
+  description: "",
+  price: "",
+  product_type: "system",
+  kit_type: "solar",
+  tags: "",
+  shape: "kit",
+  single_role: "inverter",
+  inverter: "",
+  inverter_w: "",
+  inverter_vdc: "48",
+  inverter_price: "",
+  battery: "",
+  battery_voltage: "12",
+  battery_ah: "",
+  battery_price: "",
+  panel: "",
+  panel_w: "",
+  panel_voc: "",
+  panel_isc: "",
+  panel_price: "",
+  cc: "",
+  cc_pv: "",
+  cc_voc: "",
+  cc_amps: "",
+  cc_price: "",
+  ps_capacity: "",
+  ps_output: "",
+  ps_pv: "",
+  net_devices: [],
+  net_router: "",
+});
 
 const itemData = (item: any, fallbackType?: HardwareType) => {
   if (!item) return null;
@@ -301,6 +356,228 @@ const HardwareCard = ({
     {children}
   </div>
 );
+
+/**
+ * One product card. The catalog and the internet tab both group their items
+ * into category sections, so the card is shared.
+ */
+const CatalogCard = ({
+  product,
+  isDeveloper,
+  onDelete,
+  onEdit,
+  onView,
+  onBuy,
+  badge,
+  children,
+}: {
+  product: Product;
+  isDeveloper: boolean;
+  onDelete?: () => void;
+  onEdit?: () => void;
+  onView: () => void;
+  onBuy: () => void;
+  badge?: ReactNode;
+  children?: ReactNode;
+}) => (
+  <motion.div
+    layout
+    initial={{ opacity: 0, y: 14 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="group relative flex flex-col bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-stone-300 transition-all duration-300"
+  >
+    <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-600 via-emerald-400 to-amber-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+    <div className="p-6 flex-1">
+      <div className="flex justify-between items-start gap-3 mb-4">
+        {badge ?? (
+          <div className="flex gap-1 flex-wrap">
+            {product.tags.map((tag) => (
+              <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+        {isDeveloper && (
+          <div className="flex items-center gap-1 shrink-0">
+            {onEdit && (
+              <button
+                onClick={onEdit}
+                className="p-1.5 text-stone-300 hover:text-emerald-600 transition-colors"
+                title="Edit product"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="p-1.5 text-stone-300 hover:text-red-600 transition-colors"
+                title="Delete product"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      <h3 className="text-lg font-black text-stone-900 leading-snug mb-2 break-words">{product.name}</h3>
+      <p className="text-sm text-stone-500 leading-relaxed line-clamp-2">{product.description}</p>
+      {children}
+    </div>
+    <div className="p-5 bg-stone-50 border-t border-stone-100 flex items-center justify-between gap-3">
+      <div>
+        <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Starting From</p>
+        <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={onView}
+          className="px-3 py-2 bg-white text-stone-700 border border-stone-200 text-xs font-bold rounded-xl hover:bg-stone-100 transition-all"
+        >
+          View Specs
+        </button>
+        <button
+          onClick={onBuy}
+          className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center gap-1.5"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" /> Buy
+        </button>
+      </div>
+    </div>
+  </motion.div>
+);
+
+/** A category section header with a thin rule under it. */
+const SectionHeading = ({ label, count, desc }: { label: string; count: number; desc?: string }) => (
+  <div className="flex items-baseline gap-3 mb-6 pb-4 border-b border-stone-200">
+    <h3 className="text-xl font-black tracking-tight text-stone-900">{label}</h3>
+    <span className="text-xs font-bold text-stone-400">{count} item{count === 1 ? "" : "s"}</span>
+    {desc && <p className="text-sm text-stone-500 ml-auto hidden lg:block text-right">{desc}</p>}
+  </div>
+);
+
+/** One internet device card. Shares the catalog card look. */
+const InternetDeviceCard = ({
+  device,
+  onView,
+  onBuy,
+}: {
+  device: MasterDevice;
+  onView: () => void;
+  onBuy: () => void;
+}) => {
+  const deviceClass = device.specs?.device_class;
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group relative flex flex-col bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-xl hover:-translate-y-1 hover:border-stone-300 transition-all duration-300"
+    >
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-600 via-sky-400 to-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+      <div className="p-6 flex-1">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
+            {deviceClass ? INTERNET_DEVICE_CLASS_LABELS[deviceClass] ?? deviceClass : "Internet Device"}
+          </span>
+          <div className="text-right shrink-0">
+            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Starting From</p>
+            <p className="text-xl font-black text-stone-900">
+              {device.price ? `₦${device.price.toLocaleString()}` : "On request"}
+            </p>
+          </div>
+        </div>
+        <h3 className="text-lg font-black text-stone-900 leading-snug mb-2 break-words">{device.name}</h3>
+        <p className="text-sm text-stone-500 leading-relaxed">
+          Standard {device.name} for high-speed connectivity.
+        </p>
+        <div className="flex items-center gap-2 text-xs font-bold text-stone-400 mt-4">
+          <Zap className="w-4 h-4" /> {device.default_watts}W Consumption
+        </div>
+      </div>
+      <div className="p-5 bg-stone-50 border-t border-stone-100 flex items-center gap-2">
+        <button
+          onClick={onView}
+          className="flex-1 bg-white text-stone-700 border border-stone-200 py-2.5 rounded-2xl text-xs font-bold hover:bg-stone-100 transition-all"
+        >
+          View Specs
+        </button>
+        <button
+          onClick={onBuy}
+          className="flex-1 bg-emerald-600 text-white py-2.5 rounded-2xl text-xs font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-1.5"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" /> Buy
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+/** A group of labelled inputs inside the product editor. */
+const DraftGroup = ({
+  title,
+  fields,
+}: {
+  title: string;
+  fields: {
+    label: string;
+    value: string;
+    type?: string;
+    step?: string;
+    required?: boolean;
+    placeholder?: string;
+    span?: boolean;
+    onChange: (value: string) => void;
+  }[];
+}) => (
+  <div className="space-y-2">
+    <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">{title}</p>
+    <div className="grid grid-cols-2 gap-3">
+      {fields.map((field) => (
+        <div key={field.label} className={field.span ? "col-span-2" : ""}>
+          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">{field.label}</label>
+          <input
+            type={field.type ?? "text"}
+            step={field.step}
+            required={field.required}
+            placeholder={field.placeholder}
+            value={field.value}
+            onChange={(e) => field.onChange(e.target.value)}
+            className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+          />
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+/** The internet device traits the admin can fill in. */
+const INTERNET_SPEC_FIELDS: { key: string; label: string; type?: string; placeholder?: string }[] = [
+  { key: "peak_watts", label: "Peak Watts", type: "number" },
+  { key: "duty_cycle", label: "Duty Cycle (%)", type: "number" },
+  { key: "input_voltage", label: "Input Voltage", placeholder: "e.g. 12V DC" },
+  { key: "connector", label: "Connector", placeholder: "e.g. DC barrel / PoE" },
+  { key: "ports", label: "Ports", type: "number" },
+  { key: "poe_budget_w", label: "PoE Budget (W)", type: "number" },
+  { key: "uplink", label: "Uplink", placeholder: "e.g. 5G / fibre / satellite" },
+  { key: "bands", label: "Bands", placeholder: "e.g. LTE B1/B3/B7/B20" },
+  { key: "operating_temp_c", label: "Operating Temp", placeholder: "e.g. -20 to 55°C" },
+  { key: "dish_power_w", label: "Dish Power (W)", type: "number" },
+  { key: "mast_height_m", label: "Mast Height (m)", type: "number" },
+];
+
+/** Each device class only needs the traits that describe it. */
+const INTERNET_CLASS_FIELDS: Record<string, string[]> = {
+  cpe: ["peak_watts", "duty_cycle", "input_voltage", "connector", "ports", "uplink", "bands", "operating_temp_c"],
+  router: ["peak_watts", "duty_cycle", "ports", "uplink", "bands", "operating_temp_c"],
+  mesh: ["peak_watts", "duty_cycle", "ports", "uplink", "bands"],
+  satellite: ["peak_watts", "duty_cycle", "dish_power_w", "mast_height_m", "uplink", "bands", "operating_temp_c"],
+  poe_radio: ["peak_watts", "duty_cycle", "poe_budget_w", "mast_height_m", "uplink", "bands", "operating_temp_c"],
+  ont: ["peak_watts", "duty_cycle", "connector", "ports", "uplink", "operating_temp_c"],
+  switch: ["peak_watts", "duty_cycle", "poe_budget_w", "ports", "connector"],
+  enterprise_router: ["peak_watts", "duty_cycle", "poe_budget_w", "ports", "uplink", "bands", "operating_temp_c"],
+};
 
 const DEFAULT_PDF_SETTINGS: PDFSettings = {
   quoteTitle: "SOLARSIZER PRO QUOTE",
@@ -370,6 +647,58 @@ const powerstationAsProduct = (ps: Powerstation, price = ps.price, name = ps.nam
   },
 });
 
+/**
+ * Turn a product's stored specs into the hardware objects the sizer needs, so a
+ * lone panel, battery or inverter gets its wiring sized like a full system.
+ */
+const productHardware = (product: Product, cd: SystemCombination) => {
+  const panelW = cd.panel_w ?? 0;
+  const inverterW = cd.inverter_w ?? 0;
+  const batteryWh = cd.battery_wh ?? cd.battery_total_wh ?? 0;
+  const voltage = cd.battery_voltage ?? 48;
+  const ampHours = cd.battery_ah ?? (voltage > 0 && batteryWh > 0 ? batteryWh / voltage : 0);
+
+  return {
+    panel_data: panelW > 0
+      ? {
+          id: product.id,
+          name: cd.panel_config || product.name,
+          watts: panelW,
+          voc: cd.panel_voc ?? 0,
+          isc: cd.panel_isc ?? 0,
+          price: cd.panel_price ?? 0,
+        }
+      : undefined,
+    inverter_data: inverterW > 0
+      ? {
+          id: product.id,
+          name: cd.inverter || product.name,
+          max_ac_w: inverterW,
+          cc_max_pv_w: panelW,
+          cc_max_voc: cd.panel_voc ?? 0,
+          cc_max_amps: 0,
+          system_vdc: cd.inverter_system_vdc ?? voltage,
+          max_charge_amps: 0,
+          cc_type: cd.cc_type ?? "mppt",
+          max_parallel_units: 1,
+          price: cd.inverter_price ?? 0,
+        }
+      : undefined,
+    battery_data: batteryWh > 0
+      ? {
+          id: product.id,
+          name: cd.battery_config || product.name,
+          voltage,
+          capacity_ah: ampHours,
+          type: cd.battery_type ?? "lithium",
+          max_parallel_strings: 1,
+          min_c_rate: 0.5,
+          price: cd.battery_price ?? 0,
+        }
+      : undefined,
+  };
+};
+
 const buildProductDetails = (product: Product): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
@@ -387,6 +716,7 @@ const buildProductDetails = (product: Product): SystemCombination => {
         product_description: product.description,
         component_specs: cd.component_specs ?? [],
         all_in_one: isAllInOne,
+        ...productHardware(product, cd),
       };
     }
 
@@ -399,12 +729,14 @@ const buildProductDetails = (product: Product): SystemCombination => {
         (ps) => ps.id === product.id || sourceKey(ps.name) === sourceKey(product.name)
       );
       if (matched) {
+        const psData = powerstationAsProduct(matched, product.price, product.name).combination_data!;
         return {
-          ...powerstationAsProduct(matched, product.price, product.name).combination_data!,
+          ...psData,
           product_id: product.id,
           product_name: product.name,
           product_description: product.description,
           is_preconfigured: true,
+          ...productHardware(product, psData),
         };
       }
     }
@@ -448,6 +780,11 @@ const buildProductDetails = (product: Product): SystemCombination => {
     };
   };
 
+/** Classes that need a router or CPE to reach the internet. */
+const INTERNET_SUPPORT_CLASSES = ["mesh", "satellite", "poe_radio", "ont", "switch"];
+/** Classes that can reach the internet on their own. */
+const INTERNET_ROUTER_CLASSES = ["cpe", "router", "enterprise_router"];
+
 /**
  * Internet hardware has no solar sizing role, so its details modal shows the
  * traits that matter for connectivity plus the solar sources that can carry it.
@@ -457,14 +794,18 @@ const InternetDeviceModal = ({
   product,
   powerstations,
   products,
+  routers,
   onBuy,
+  onBuyDevice,
   onClose,
 }: {
   device: MasterDevice;
   product?: Product;
   powerstations: Powerstation[];
   products: Product[];
+  routers: MasterDevice[];
   onBuy: (product: Product) => void;
+  onBuyDevice: (device: MasterDevice) => void;
   onClose: () => void;
 }) => {
   const specs = device.specs ?? {};
@@ -481,9 +822,14 @@ const InternetDeviceModal = ({
     ? INTERNET_DEVICE_CLASS_LABELS[specs.device_class] ?? specs.device_class
     : "Internet Hardware";
 
+  // Support devices need a router or CPE to reach the internet.
+  const needsRouter = INTERNET_SUPPORT_CLASSES.includes(specs.device_class ?? "");
+  const pairableRouters = routers.filter((r) =>
+    INTERNET_ROUTER_CLASSES.includes(r.specs?.device_class ?? "")
+  );
+
   const traits = [
-    { label: "Device class", value: specs.device_class ? deviceClass : "Not set" },
-    { label: "Rated load", value: `${watts}W` },
+    { label: "Device class", value: specs.device_class ? deviceClass : "Not set" },    { label: "Rated load", value: `${watts}W` },
     { label: "Peak draw", value: `${peakW}W` },
     specs.input_voltage ? { label: "Input voltage", value: specs.input_voltage } : null,
     specs.connector ? { label: "Connector", value: specs.connector } : null,
@@ -631,6 +977,42 @@ const InternetDeviceModal = ({
               ))}
             </div>
           </section>
+
+          {needsRouter && pairableRouters.length > 0 && (
+            <section>
+              <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-1">Pairs With</h3>
+              <p className="text-xs text-stone-500 mb-3">
+                A {deviceClass.toLowerCase()} has no internet link of its own. Add one of these routers to complete the setup.
+              </p>
+              <div className="space-y-2">
+                {pairableRouters.map((router) => (
+                  <div key={router.id} className="flex items-center justify-between gap-3 p-3 rounded-2xl border border-stone-200">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm text-stone-900 break-words">{router.name}</p>
+                      <p className="text-xs text-stone-500">
+                        {router.specs?.device_class
+                          ? INTERNET_DEVICE_CLASS_LABELS[router.specs.device_class] ?? router.specs.device_class
+                          : "Router"}
+                        {" · "}
+                        {router.default_watts}W
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="font-bold text-emerald-600">
+                        {router.price ? `₦${router.price.toLocaleString()}` : "On request"}
+                      </span>
+                      <button
+                        onClick={() => onBuyDevice(router)}
+                        className="px-3 py-1.5 bg-emerald-600 text-white text-[11px] font-bold rounded-lg hover:bg-emerald-700 transition-all flex items-center gap-1"
+                      >
+                        <ShoppingCart className="w-3 h-3" /> Buy
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section>
             <h3 className="text-xs font-black uppercase tracking-wider text-stone-400 mb-1">Recommended Solar Power Source</h3>
@@ -1169,7 +1551,14 @@ export default function App() {
     const compact = params.get("compact") === "true";
 
     if (tab) setActiveTab(tab);
-    if (tag) setSelectedProductTag(tag);
+    if (tag) {
+      setSelectedProductTag(tag);
+      // The catalog is grouped by category, so the link jumps to the section.
+      window.setTimeout(
+        () => document.getElementById(`catalog-${tag}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+        400
+      );
+    }
     if (compact) setIsCompact(true);
   }, []);
   
@@ -1342,6 +1731,8 @@ export default function App() {
   const [newRange, setNewRange] = useState({ start: 18, end: 23 });
   const [selectedSystemLog, setSelectedSystemLog] = useState<string[] | null>(null);
   const [selectedSystemDetails, setSelectedSystemDetails] = useState<SystemCombination | null>(null);
+  /** Which page opened the details modal. Catalog products are looser than results. */
+  const [detailSource, setDetailSource] = useState<"results" | "catalog">("results");
   const [selectedInternetDevice, setSelectedInternetDevice] = useState<MasterDevice | null>(null);
   const [selectedInternetProduct, setSelectedInternetProduct] = useState<Product | null>(null);
   const [showInteractiveBridge, setShowInteractiveBridge] = useState(false);
@@ -1357,6 +1748,7 @@ export default function App() {
       return;
     }
     setProductDraft({
+      ...emptyProductDraft(),
       mode: "promote",
       id: Math.random().toString(36).substr(2, 9),
       name: `${system.inverter} System`,
@@ -1366,17 +1758,12 @@ export default function App() {
       kit_type: system.kit_type ?? "solar",
       tags: "residential",
       shape: "kit",
-      single_role: "inverter",
-      single_name: "",
-      single_watts: "",
-      single_price: "",
       inverter: system.inverter ?? "",
       inverter_w: String(system.inverter_w ?? ""),
       inverter_price: String(system.inverter_price ?? ""),
-      battery_config: system.battery_config ?? "",
-      battery_wh: String(system.battery_wh ?? system.battery_total_wh ?? ""),
+      battery: system.battery_config ?? "",
       battery_price: String(system.battery_price ?? ""),
-      panel_config: system.panel_config ?? "",
+      panel: system.panel_config ?? "",
       panel_w: String(system.panel_w ?? ""),
       panel_price: String(system.panel_price ?? ""),
       sourceSystem: system,
@@ -1390,28 +1777,80 @@ export default function App() {
       return;
     }
     setProductDraft({
+      ...emptyProductDraft(),
       mode: "manual",
       id: Math.random().toString(36).substr(2, 9),
-      name: "",
-      description: "",
-      price: "",
+    });
+  };
+
+  /** Start an internet kit draft, ready for the admin to pick the devices. */
+  const openInternetKitEditor = () => {
+    if (!sessionStorage.getItem("ss_admin_key")) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
+    setProductDraft({
+      ...emptyProductDraft(),
+      mode: "manual",
+      id: Math.random().toString(36).substr(2, 9),
+      kit_type: "internet",
       product_type: "system",
-      kit_type: "solar",
-      tags: "",
       shape: "kit",
-      single_role: "inverter",
-      single_name: "",
-      single_watts: "",
-      single_price: "",
-      inverter: "",
-      inverter_w: "",
-      inverter_price: "",
-      battery_config: "",
-      battery_wh: "",
-      battery_price: "",
-      panel_config: "",
-      panel_w: "",
-      panel_price: "",
+      tags: "internet",
+    });
+  };
+
+  /** Edit a product that is already in the catalog. */
+  const openEditProduct = (product: Product) => {
+    if (!sessionStorage.getItem("ss_admin_key")) {
+      alert("Admin session expired. Visit ?admin=true to unlock again.");
+      return;
+    }
+    const cd = product.combination_data;
+    const has = (value: unknown) => !!value && value !== "N/A";
+    const shape: ProductDraft["shape"] = has(cd?.panel_config) && has(cd?.battery_config)
+      ? "kit"
+      : has(cd?.battery_config)
+      ? "setup"
+      : "single";
+    const singleRole: ProductDraft["single_role"] = has(cd?.panel_config)
+      ? "panel"
+      : has(cd?.battery_config)
+      ? "battery"
+      : "inverter";
+    setProductDraft({
+      ...emptyProductDraft(),
+      mode: "manual",
+      id: product.id,
+      name: product.name,
+      description: product.description,
+      price: String(product.price || ""),
+      product_type: product.product_type,
+      kit_type: cd?.kit_type ?? "solar",
+      tags: (product.tags ?? []).join(", "),
+      shape,
+      single_role: singleRole,
+      inverter: cd?.inverter ?? "",
+      inverter_w: String(cd?.inverter_w ?? ""),
+      inverter_vdc: String(cd?.inverter_system_vdc ?? ""),
+      inverter_price: String(cd?.inverter_price ?? ""),
+      battery: cd?.battery_config ?? "",
+      battery_voltage: String(cd?.battery_voltage ?? ""),
+      battery_ah: String(cd?.battery_ah ?? ""),
+      battery_price: String(cd?.battery_price ?? ""),
+      panel: cd?.panel_config ?? "",
+      panel_w: String(cd?.panel_w ?? ""),
+      panel_voc: String(cd?.panel_voc ?? ""),
+      panel_isc: String(cd?.panel_isc ?? ""),
+      panel_price: String(cd?.panel_price ?? ""),
+      cc: cd?.cc_name ?? "",
+      cc_pv: String(cd?.cc_max_pv_w ?? ""),
+      cc_voc: String(cd?.cc_max_voc ?? ""),
+      cc_amps: String(cd?.cc_max_amps ?? ""),
+      cc_price: String(cd?.cc_price ?? ""),
+      ps_capacity: String(cd?.battery_wh ?? ""),
+      ps_output: String(cd?.inverter_w ?? ""),
+      ps_pv: String(cd?.panel_w ?? ""),
     });
   };
 
@@ -1430,6 +1869,8 @@ export default function App() {
       return Number.isFinite(parsed) ? parsed : 0;
     };
     const tags = draft.tags.split(",").map((t) => t.trim()).filter(Boolean);
+    // Internet kits always carry the internet tag so they show on that tab.
+    if (draft.kit_type === "internet" && !tags.includes("internet")) tags.push("internet");
     const price = num(draft.price);
 
     let combination_data: SystemCombination | null = null;
@@ -1437,41 +1878,130 @@ export default function App() {
 
     if (draft.mode === "promote" && draft.sourceSystem) {
       combination_data = { ...draft.sourceSystem, total_price: price || draft.sourceSystem.total_price };
+    } else if (draft.kit_type === "internet") {
+      // An internet kit is a bundle of the internet devices in the catalogue.
+      const picked = draft.net_devices
+        .map((id) => masterDevices.find((md) => md.id === id))
+        .filter(Boolean) as MasterDevice[];
+      type = "combination";
+      combination_data = {
+        inverter: draft.net_router || picked[0]?.name || "Load Balancing Router",
+        inverter_price: price,
+        inverter_w: 0,
+        battery_config: "",
+        battery_price: 0,
+        panel_config: "",
+        panel_price: 0,
+        array_size_w: 0,
+        battery_total_wh: 0,
+        total_price: price,
+        daily_yield: 0,
+        deficit: 0,
+        status: "Optimal",
+        advice: draft.description,
+        log: [draft.description],
+        kit_type: "internet",
+        is_preconfigured: true,
+        component_specs: picked.map((md) => ({
+          role: "network" as const,
+          name: md.name,
+          quantity: 1,
+          specs: { price: md.price ?? 0, watts: md.default_watts, device_class: md.specs?.device_class ?? "" },
+        })),
+      };
+    } else if (draft.kit_type === "powerstation") {
+      type = "standalone";
+      const capacity = num(draft.ps_capacity);
+      const output = num(draft.ps_output);
+      combination_data = {
+        inverter: draft.name,
+        inverter_price: price,
+        inverter_w: output,
+        battery_config: `${capacity}Wh integrated`,
+        battery_price: 0,
+        battery_wh: capacity,
+        battery_total_wh: capacity,
+        panel_config: "",
+        panel_price: 0,
+        panel_w: num(draft.ps_pv),
+        array_size_w: 0,
+        total_price: price,
+        daily_yield: 0,
+        deficit: 0,
+        status: "Optimal",
+        advice: draft.description,
+        log: [draft.description],
+        kit_type: "powerstation",
+        all_in_one: true,
+        is_preconfigured: true,
+      };
     } else {
+      // Solar: the shape decides which parts the product carries.
+      const roles = draft.shape === "single" ? [draft.single_role] : PRODUCT_SHAPE_ROLES[draft.shape];
+      type = draft.shape === "single" ? "standalone" : "combination";
+
       let inverter = "", inverterW = 0, inverterPrice = 0;
       let battery = "", batteryWh = 0, batteryPrice = 0;
-      let panel = "", panelW = 0, panelPrice = 0;
+      let batteryVoltage = 0, batteryAh = 0;
+      let panel = "", panelW = 0, panelPrice = 0, panelVoc = 0, panelIsc = 0;
+      let cc = "", ccPrice = 0, ccPv = 0, ccVoc = 0, ccAmps = 0;
 
-      if (draft.shape === "single") {
-        type = "standalone";
-        const name = draft.single_name;
-        const watts = num(draft.single_watts);
-        const singlePrice = num(draft.single_price);
-        if (draft.single_role === "inverter") { inverter = name; inverterW = watts; inverterPrice = singlePrice; }
-        else if (draft.single_role === "battery") { battery = name; batteryWh = watts; batteryPrice = singlePrice; }
-        else if (draft.single_role === "panel") { panel = name; panelW = watts; panelPrice = singlePrice; }
-        else { inverter = name; inverterW = watts; inverterPrice = singlePrice; }
-      } else {
-        inverter = draft.inverter; inverterW = num(draft.inverter_w); inverterPrice = num(draft.inverter_price);
-        battery = draft.battery_config; batteryWh = num(draft.battery_wh); batteryPrice = num(draft.battery_price);
-        if (draft.shape === "kit") {
-          panel = draft.panel_config; panelW = num(draft.panel_w); panelPrice = num(draft.panel_price);
-        }
+      if (roles.includes("inverter")) {
+        inverter = draft.inverter;
+        inverterW = num(draft.inverter_w);
+        inverterPrice = num(draft.inverter_price);
+      }
+      if (roles.includes("battery")) {
+        battery = draft.battery;
+        batteryVoltage = num(draft.battery_voltage);
+        batteryAh = num(draft.battery_ah);
+        batteryWh = batteryVoltage * batteryAh;
+        batteryPrice = num(draft.battery_price);
+      }
+      if (roles.includes("panel")) {
+        panel = draft.panel;
+        panelW = num(draft.panel_w);
+        panelVoc = num(draft.panel_voc);
+        panelIsc = num(draft.panel_isc);
+        panelPrice = num(draft.panel_price);
+      }
+      if (roles.includes("chargeController")) {
+        cc = draft.cc;
+        ccPrice = num(draft.cc_price);
+        ccPv = num(draft.cc_pv);
+        ccVoc = num(draft.cc_voc);
+        ccAmps = num(draft.cc_amps);
+      }
+      if (roles.includes("accessory")) {
+        // An accessory carries no parts, so it stands in as the inverter slot.
+        inverter = draft.name;
+        inverterPrice = price;
       }
 
-      const partsTotal = inverterPrice + batteryPrice + panelPrice;
+      const partsTotal = inverterPrice + batteryPrice + panelPrice + ccPrice;
       combination_data = {
         inverter,
         inverter_price: inverterPrice,
         inverter_w: inverterW,
+        inverter_system_vdc: num(draft.inverter_vdc) || batteryVoltage || undefined,
         battery_config: battery,
         battery_price: batteryPrice,
         battery_wh: batteryWh,
         battery_total_wh: batteryWh,
+        battery_voltage: batteryVoltage || undefined,
+        battery_ah: batteryAh || undefined,
         panel_config: panel,
         panel_price: panelPrice,
         panel_w: panelW,
+        panel_voc: panelVoc || undefined,
+        panel_isc: panelIsc || undefined,
         array_size_w: panelW,
+        cc_type: cc ? "mppt" : undefined,
+        cc_max_pv_w: ccPv || undefined,
+        cc_max_voc: ccVoc || undefined,
+        cc_max_amps: ccAmps || undefined,
+        cc_price: ccPrice || undefined,
+        cc_name: cc || undefined,
         total_price: price || partsTotal,
         daily_yield: 0,
         deficit: 0,
@@ -3109,18 +3639,14 @@ export default function App() {
     generateUsageProfile(adjustedLoad && (sys.status === "Conditional" || sys.status === "High Risk") ? adjustedLoad.devices : devices);
   };
 
-  const startBachsCheckout = async (sys: SystemCombination) => {
+  const startCheckout = async (payload: { productId?: string; amount: number; description: string }) => {
     if (checkoutLoading) return;
     setCheckoutLoading(true);
     try {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          productId: sys.product_id,
-          amount: sys.total_price,
-          description: sys.product_name || `${sys.inverter} + ${sys.battery_config}`,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
       if (!res.ok || !data.url) {
@@ -3135,22 +3661,41 @@ export default function App() {
     }
   };
 
+  const startBachsCheckout = async (sys: SystemCombination) =>
+    startCheckout({
+      productId: sys.product_id,
+      amount: sys.total_price,
+      description: sys.product_name || `${sys.inverter} + ${sys.battery_config}`,
+    });
+
+  /** Buy a single internet device straight from the catalogue. */
+  const startDeviceCheckout = async (device: MasterDevice) => {
+    if (!device.price) {
+      alert("This device is priced on request. Send us a message for a quote.");
+      return;
+    }
+    startCheckout({ amount: device.price, description: device.name });
+  };
+
   // The details modal keeps a snapshot, so wiring is recomputed live from the
   // current selection. Products carry no wiring_items, so they get the same
-  // sized list the calculator uses; internet kits have no wiring at all, and a
-  // unit with no PV array (a powerstation, a lone battery) has no PV wiring.
+  // sized list the calculator uses; internet kits have no wiring at all. A
+  // catalog product can be a lone panel, battery or inverter, so it still gets
+  // the extra items that apply to it even without a PV array.
+  const isCatalogProduct = detailSource === "catalog";
   const selectedArrayW =
     selectedSystemDetails?.array_size_w || selectedSystemDetails?.panel_w || 0;
   const hasWiring =
     !!selectedSystemDetails &&
     selectedSystemDetails.kit_type !== "internet" &&
-    selectedArrayW > 0 &&
+    (isCatalogProduct || selectedArrayW > 0) &&
     (Array.isArray(selectedSystemDetails.wiring_items) || !!selectedSystemDetails.product_id);
 
-  // Reset partial mode state when a new system is selected
+  // Reset partial mode state when a new system is selected. Catalog products
+  // open in partial mode so every line can be included or dropped by hand.
   useEffect(() => {
     if (selectedSystemDetails) {
-      setPartialMode(false);
+      setPartialMode(detailSource === "catalog");
       setPartialIncludedComponents({ inverter: true, panels: true, batteries: true });
       setWiringQuantities({});
       setSelectedNiceToHaveIds(new Set());
@@ -3193,6 +3738,16 @@ export default function App() {
     }
   }, [selectedSystemDetails?.inverter, selectedSystemDetails?.battery_config, selectedSystemDetails?.panel_config]);
 
+  /**
+   * A lone battery has no inverter to size against, so its cable is sized for
+   * half of the amp-hour rating, the usual inverter-friendly discharge limit.
+   */
+  const batterySizingWatts = (system: SystemCombination | null): number => {
+    const battery = system?.battery_data;
+    if (!battery || system?.inverter_w || battery.capacity_ah <= 0) return 0;
+    return (0.5 * battery.capacity_ah * battery.voltage) / 1.25;
+  };
+
   const liveSizing = hasWiring
     ? sizeWiring(
         {
@@ -3201,8 +3756,15 @@ export default function App() {
           panel: selectedSystemDetails?.panel_data,
           arrayWatts: selectedSystemDetails?.array_size_w || selectedSystemDetails?.panel_w || 0,
           batteryWh: selectedSystemDetails?.battery_total_wh || 0,
-          maxAcW: selectedSystemDetails?.inverter_w,
+          systemVdc:
+            selectedSystemDetails?.battery_data?.voltage ??
+            selectedSystemDetails?.inverter_data?.system_vdc ??
+            48,
+          maxAcW:
+            selectedSystemDetails?.inverter_w || batterySizingWatts(selectedSystemDetails),
           all_in_one: selectedSystemDetails?.all_in_one,
+          // A product sold on its own keeps every extra item optional.
+          discretionary: isCatalogProduct,
         },
         Array.from(selectedNiceToHaveIds)
       )
@@ -3218,18 +3780,22 @@ export default function App() {
         defaults[id] = Math.max(1, item.qty ?? 1);
       }
     }
+    // Items with no size to size them against start switched off.
+    for (const id of liveSizing.unsizedIds) {
+      if (wiringQuantities[id] === undefined) defaults[id] = 0;
+    }
     if (Object.keys(defaults).length > 0) {
       setWiringQuantities((prev) => ({ ...prev, ...defaults }));
     }
   }, [selectedSystemDetails, liveSizing, wiring, wiringQuantities]);
 
   // Get wire items with dynamic quantities from state
-  const includedWiring = liveSizing 
+  const includedWiring = liveSizing
     ? wiring
-        .filter((w) => liveSizing.includeIds.has(w.id))
+        .filter((w) => liveSizing.includeIds.has(w.id) || liveSizing.unsizedIds.has(w.id))
         .map(w => ({
           ...w,
-          qty: wiringQuantities[w.id] ?? w.qty ?? 1
+          qty: wiringQuantities[w.id] ?? (liveSizing.unsizedIds.has(w.id) ? 0 : w.qty ?? 1)
         }))
         // A zero quantity excludes the item in every mode, not only partial mode.
         .filter(w => (w.qty ?? 1) > 0)
@@ -3351,6 +3917,49 @@ const liveWiringPrice = liveSizing
       }
     : selectedSystemDetails;
 
+  // The catalog is grouped into category sections, one above the other, so the
+  // list stays readable as it grows.
+  const catalogSections = useMemo(() => {
+    const visible = products.filter(
+      (p) => !(p.tags.includes("internet") && p.product_type !== "system")
+    );
+    return PRODUCT_TYPE_FILTERS.filter((f) => f.id !== "all")
+      .map((f) => ({ ...f, items: visible.filter((p) => p.product_type === f.id) }))
+      .filter((section) => section.items.length > 0);
+  }, [products]);
+
+  const scrollToCatalogSection = (id: string) => {
+    setSelectedProductTag(id);
+    document
+      .getElementById(`catalog-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // Internet devices grouped by class so the page stays readable as it grows.
+  const internetDeviceSections = useMemo(() => {
+    const devices = masterDevices.filter(
+      (md) => md.category === "internet" || md.tags.includes("internet")
+    );
+    const byClass = new Map<string, MasterDevice[]>();
+    for (const md of devices) {
+      const key = md.specs?.device_class ?? "other";
+      byClass.set(key, [...(byClass.get(key) ?? []), md]);
+    }
+    const sections = INTERNET_DEVICE_CLASSES.filter((c) => byClass.has(c.id)).map((c) => ({
+      id: c.id,
+      label: c.label,
+      items: byClass.get(c.id)!,
+    }));
+    if (byClass.has("other")) {
+      sections.push({ id: "other", label: "Other Devices", items: byClass.get("other")! });
+    }
+    return sections;
+  }, [masterDevices]);
+
+  const internetKits = products.filter(
+    (p) => p.tags.includes("internet") && p.product_type === "system"
+  );
+
   return (
     <div className="min-h-screen bg-[#F5F5F4] text-[#1C1917] font-sans selection:bg-emerald-100">
       {/* Comparison Modal - Moved higher in DOM and ensured fixed positioning */}
@@ -3394,7 +4003,9 @@ const liveWiringPrice = liveSizing
             product={selectedInternetProduct ?? undefined}
             powerstations={powerstations}
             products={products}
+            routers={masterDevices}
             onBuy={(product) => startBachsCheckout(buildProductDetails(product))}
+            onBuyDevice={(device) => startDeviceCheckout(device)}
             onClose={() => { setSelectedInternetDevice(null); setSelectedInternetProduct(null); }}
           />
         )}
@@ -4062,7 +4673,7 @@ const liveWiringPrice = liveSizing
                                     </p>
                                     <div className="mt-4 flex flex-col gap-2">
                                       <button 
-                                        onClick={() => setSelectedSystemDetails(sys)}
+                                        onClick={() => { setDetailSource("results"); setSelectedSystemDetails(sys); }}
                                         className="w-full px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                                       >
                                         View Details <ChevronRight className="w-4 h-4" />
@@ -4265,107 +4876,77 @@ const liveWiringPrice = liveSizing
                     </button>
                   </>
                 )}
-                {PRODUCT_TYPE_FILTERS.map(tag => (
-                  <Tooltip key={tag.id} content={tag.desc}>
-                    <button
-                      onClick={() => setSelectedProductTag(tag.id)}
-                      className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
-                        selectedProductTag === tag.id 
-                        ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20' 
-                        : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
-                      }`}
-                    >
-                      {tag.label}
-                    </button>
-                  </Tooltip>
-                ))}
+                {PRODUCT_TYPE_FILTERS.filter((f) => f.id !== "all").map((tag) => {
+                  const count = catalogSections.find((s) => s.id === tag.id)?.items.length ?? 0;
+                  if (count === 0) return null;
+                  return (
+                    <Tooltip key={tag.id} content={tag.desc}>
+                      <button
+                        onClick={() => scrollToCatalogSection(tag.id)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                          selectedProductTag === tag.id
+                            ? 'bg-stone-900 text-white shadow-lg shadow-stone-900/20'
+                            : 'bg-white text-stone-400 border border-stone-200 hover:border-stone-400'
+                        }`}
+                      >
+                        {tag.label}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {products
-                // Internet hardware lives in the Internet tab, so those cards
-                // must not leak into the catalog filters.
-                .filter(p => !(p.tags.includes('internet') && p.product_type !== 'system'))
-                .filter(p => selectedProductTag === 'all' || p.product_type === selectedProductTag)
-                .map(product => (
-                <motion.div
-                  key={product.id}
-                  layout
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="bg-white rounded-3xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col"
-                >
-                  <div className="p-6 flex-1">
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex gap-1 flex-wrap">
-                        {product.tags.map(tag => (
-                          <span key={`${product.id}-${tag}`} className="px-2 py-0.5 bg-stone-100 text-stone-500 text-[9px] font-black uppercase rounded-md">
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                      {isDeveloper && (
-                        <button 
-                          onClick={() => deleteProduct(product.id)}
-                          className="p-1.5 text-stone-300 hover:text-red-600 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+            {/* One section per catalog category, stacked one above the other. */}
+            {catalogSections.map((section) => (
+              <section key={section.id} id={`catalog-${section.id}`} className="scroll-mt-24">
+                <SectionHeading label={section.label} count={section.items.length} desc={section.desc} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {section.items.map((product) => (
+                    <CatalogCard
+                      key={product.id}
+                      product={product}
+                      isDeveloper={isDeveloper}
+                      onDelete={() => deleteProduct(product.id)}
+                      onEdit={() => openEditProduct(product)}
+                      onView={() => {
+                        if (product.tags.includes("internet")) {
+                          setSelectedInternetProduct(product);
+                        } else {
+                          setDetailSource("catalog");
+                          setSelectedSystemDetails(buildProductDetails(product));
+                        }
+                      }}
+                      onBuy={() => startBachsCheckout(buildProductDetails(product))}
+                    >
+                      {product.combination_data && (
+                        <div className="space-y-2.5 p-4 bg-stone-50 rounded-2xl border border-stone-100 mt-5">
+                          {product.combination_data.inverter && (
+                            <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
+                              <Cpu className="w-4 h-4 shrink-0" /> {product.combination_data.inverter}
+                            </div>
+                          )}
+                          {product.combination_data.battery_config && (
+                            <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
+                              <BatteryIcon className="w-4 h-4 shrink-0" /> {product.combination_data.battery_config}
+                            </div>
+                          )}
+                          {product.combination_data.panel_config && (
+                            <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
+                              <Sun className="w-4 h-4 shrink-0" /> {product.combination_data.panel_config}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 pt-2 border-t border-stone-100">
+                            <div>Type: {product.combination_data.kit_type || "solar"}</div>
+                            <div>Specs: {product.combination_data.component_specs?.length || 0}</div>
+                          </div>
+                        </div>
                       )}
-                    </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-2">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-6 line-clamp-2">{product.description}</p>
-                    
-                    {product.combination_data && (
-                      <div className="space-y-3 p-4 bg-stone-50 rounded-2xl border border-stone-100 mb-6">
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Cpu className="w-4 h-4" /> {product.combination_data.inverter}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <BatteryIcon className="w-4 h-4" /> {product.combination_data.battery_config}
-                        </div>
-                        <div className="flex items-center gap-2 text-xs font-bold text-stone-600">
-                          <Sun className="w-4 h-4" /> {product.combination_data.panel_config}
-                        </div>
-                    
-                        <div className="grid grid-cols-2 gap-2 text-[10px] text-stone-500 pt-2 border-t border-stone-100">
-                          <div>Type: {product.combination_data.kit_type || "solar"}</div>
-                          <div>Specs: {product.combination_data.component_specs?.length || 0}</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-6 bg-stone-50 border-t border-stone-100 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold text-stone-400 uppercase">Starting From</p>
-                      <p className="text-xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          if (product.tags.includes("internet")) {
-                            setSelectedInternetProduct(product);
-                          } else {
-                            setSelectedSystemDetails(buildProductDetails(product));
-                          }
-                        }}
-                        className="px-3 py-2 bg-white text-stone-700 border border-stone-200 text-xs font-bold rounded-xl hover:bg-stone-100 transition-all"
-                      >
-                        View Specs
-                      </button>
-                      <button 
-                        onClick={() => startBachsCheckout(buildProductDetails(product))}
-                        disabled={checkoutLoading}
-                        className="px-3 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center gap-1.5"
-                      >
-                        <ShoppingCart className="w-3.5 h-3.5" /> Buy
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                    </CatalogCard>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         )}
 
@@ -4394,106 +4975,78 @@ const liveWiringPrice = liveSizing
                       </div>
                     </Tooltip>
                   </div>
-                  <button 
+                  <button
                     onClick={exportInternetDataJSON}
                     className="bg-stone-100 text-stone-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-stone-200 transition-all border border-stone-200"
                   >
                     <Download className="w-4 h-4" /> Export Data
                   </button>
+                  <button
+                    onClick={openInternetKitEditor}
+                    className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all"
+                  >
+                    <Plus className="w-4 h-4" /> Add Internet Kit
+                  </button>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* List Internet Master Devices */}
-              {masterDevices
-                .filter(md => md.category === 'internet' || md.tags.includes('internet'))
-                .map(md => (
-                  <motion.div
-                    key={md.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
-                  >
-                    <div className="p-8 flex-1">
-                      <div className="flex justify-between items-start mb-6">
-                        <span className="px-3 py-1 bg-stone-100 text-stone-600 text-[10px] font-black uppercase rounded-full border border-stone-200">
-                          Hardware
-                        </span>
-                        <div className="text-right">
-                          <p className="text-[9px] font-bold text-stone-400 uppercase">Starting From</p>
-                          <p className="text-lg font-black text-stone-900">
-                            {md.price ? `₦${md.price.toLocaleString()}` : "On request"}
-                          </p>
-                        </div>
-                      </div>
-                      <h3 className="text-xl font-black text-stone-900 mb-3">{md.name}</h3>
-                      <p className="text-sm text-stone-500 mb-4">Standard {md.name} for high-speed connectivity.</p>
-                      <div className="flex items-center gap-2 text-xs font-bold text-stone-400">
-                        <Zap className="w-4 h-4" /> {md.default_watts}W Consumption
-                      </div>
-                    </div>
-                    <div className="p-6 border-t border-stone-100">
-                      <button
-                        onClick={() => setSelectedInternetDevice(md)}
-                        className="w-full bg-stone-100 text-stone-600 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
-                      >
-                        View Specs
-                      </button>
-                    </div>
-                  </motion.div>
-                ))}
+            {/* Internet devices grouped by class, one section above the other. */}
+            {internetDeviceSections.map((section) => (
+              <section key={section.id} id={`internet-${section.id}`} className="scroll-mt-24">
+                <SectionHeading label={section.label} count={section.items.length} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {section.items.map((md) => (
+                    <InternetDeviceCard
+                      key={md.id}
+                      device={md}
+                      onView={() => {
+                        setShowInteractiveBridge(false);
+                        setSelectedInternetDevice(md);
+                      }}
+                      onBuy={() => startDeviceCheckout(md)}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
 
-              {/* List Internet Products — only the bundled kits; the single
-                  internet devices above already cover the standalone hardware. */}
-              {products
-                .filter(p => p.tags.includes('internet') && p.product_type === 'system')
-                .map(product => (
-                <motion.div
-                  key={product.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden flex flex-col hover:shadow-md transition-all"
-                >
-                  <div className="p-8 flex-1">
-                    <div className="flex justify-between items-start mb-6">
-                      <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
-                        {product.tags.find(t => t.startsWith('tier-'))?.replace('tier-', 'Tier ') || 'Internet'}
-                      </span>
-                      <div className="text-right">
-                        <p className="text-[9px] font-bold text-stone-400 uppercase">Starting From</p>
-                        <p className="text-2xl font-black text-stone-900">₦{product.price.toLocaleString()}</p>
-                      </div>
-                    </div>
-                    <h3 className="text-xl font-black text-stone-900 mb-3">{product.name}</h3>
-                    <p className="text-sm text-stone-500 mb-8 leading-relaxed">{product.description}</p>
-                    
-                    <div className="p-5 bg-stone-50 rounded-2xl text-[11px] text-stone-600 leading-relaxed border border-stone-100 italic">
-                      <span className="font-black text-stone-400 uppercase block mb-1 not-italic tracking-wider">SolarOne Power Note</span>
-                      "Run this on pure sine wave power from your SolarOne unit to protect sensitive radio components from voltage spikes."
-                    </div>
-                  </div>
-                  <div className="p-6 border-t border-stone-100 flex items-center gap-2">
-                    <button
-                      onClick={() => {
+            {/* Internet kits. The single devices above already cover the hardware. */}
+            {internetKits.length > 0 && (
+              <section id="internet-kits" className="scroll-mt-24">
+                <SectionHeading
+                  label="Internet Kits"
+                  count={internetKits.length}
+                  desc="Bundled hardware, ready to install."
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {internetKits.map((product) => (
+                    <CatalogCard
+                      key={product.id}
+                      product={product}
+                      isDeveloper={isDeveloper}
+                      onView={() => {
                         setShowInteractiveBridge(false);
                         setSelectedInternetProduct(product);
                       }}
-                      className="flex-1 bg-stone-100 text-stone-700 py-3 rounded-2xl text-xs font-bold hover:bg-stone-200 transition-all"
+                      onBuy={() => startBachsCheckout(buildProductDetails(product))}
+                      badge={
+                        <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
+                          {product.tags.find((t) => t.startsWith("tier-"))?.replace("tier-", "Tier ") || "Kit"}
+                        </span>
+                      }
                     >
-                      View Specs
-                    </button>
-                    <button
-                      onClick={() => startBachsCheckout(buildProductDetails(product))}
-                      disabled={checkoutLoading}
-                      className="flex-1 bg-emerald-600 text-white py-3 rounded-2xl text-xs font-bold hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-1.5"
-                    >
-                      <ShoppingCart className="w-3.5 h-3.5" /> Buy
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
+                      <div className="p-4 bg-stone-50 rounded-2xl text-[11px] text-stone-600 leading-relaxed border border-stone-100 italic mt-5">
+                        <span className="font-black text-stone-400 uppercase block mb-1 not-italic tracking-wider">
+                          SolarOne Power Note
+                        </span>
+                        "Run this on pure sine wave power from your SolarOne unit to protect sensitive radio components from voltage spikes."
+                      </div>
+                    </CatalogCard>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         )}
 
@@ -5286,7 +5839,7 @@ const liveWiringPrice = liveSizing
                             onClick={() => {
                               if (isComparison) setSelectedSavedComparison(r);
                               else if (isAnalysis) setSelectedSavedAnalysis(r);
-                              else setSelectedSystemDetails(r.system_data!);
+                              else { setDetailSource("results"); setSelectedSystemDetails(r.system_data!); }
                             }}
                             className="flex-[2] py-2.5 bg-stone-900 text-white rounded-xl text-sm font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                           >
@@ -5423,7 +5976,7 @@ const liveWiringPrice = liveSizing
                             </button>
                             <div className="flex gap-2">
                               <button 
-                                onClick={() => setSelectedSystemDetails(sys)}
+                                onClick={() => { setDetailSource("results"); setSelectedSystemDetails(sys); }}
                                 className="flex-1 px-6 py-2.5 bg-stone-900 text-white rounded-xl font-semibold hover:bg-stone-800 transition-all flex items-center justify-center gap-2"
                               >
                                 View Details <ChevronRight className="w-4 h-4" />
@@ -5552,6 +6105,7 @@ const liveWiringPrice = liveSizing
             className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm p-4 flex items-center justify-center"
             onClick={() => {
               setSelectedSystemDetails(null);
+              setDetailSource("results");
               setShowInteractiveBridge(false);
               setAdjustedLoad(null);
             }}
@@ -5571,6 +6125,7 @@ const liveWiringPrice = liveSizing
                 <button
                   onClick={() => {
                     setSelectedSystemDetails(null);
+                    setDetailSource("results");
                     setShowInteractiveBridge(false);
                     setAdjustedLoad(null);
                   }}
@@ -5589,7 +6144,7 @@ const liveWiringPrice = liveSizing
                   ) : (
                     <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
                   )}
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <h4
                       className={`font-bold text-sm uppercase tracking-wider ${
                         selectedSystemDetails.status === "Optimal"
@@ -5615,6 +6170,14 @@ const liveWiringPrice = liveSizing
                       </button>
                     )}
                   </div>
+                  <button
+                    onClick={() => startBachsCheckout(quotedSystem ?? selectedSystemDetails)}
+                    disabled={checkoutLoading}
+                    className="shrink-0 px-5 py-2.5 bg-stone-900 text-white rounded-xl font-bold text-sm hover:bg-stone-800 transition-all flex items-center gap-2 disabled:opacity-60"
+                  >
+                    <ShoppingCart className="w-4 h-4" />
+                    {checkoutLoading ? "Starting..." : "Buy"}
+                  </button>
                 </div>
 
                 {showInteractiveBridge && selectedSystemDetails.status !== "Optimal" ? (
@@ -5742,7 +6305,8 @@ const liveWiringPrice = liveSizing
                       <div className="space-y-4">
                         <div className="flex items-center justify-between gap-3">
                           <h4 className="font-bold text-lg flex items-center gap-2">
-                            <Layers className="w-5 h-5 text-stone-400" /> Wiring & Installation
+                            <Layers className="w-5 h-5 text-stone-400" />
+                            {isCatalogProduct ? "Additional Items & Installation" : "Wiring & Installation"}
                           </h4>
                           <span className="text-sm font-bold text-emerald-600">₦{liveWiringPrice.toLocaleString()}</span>
                         </div>
@@ -5765,19 +6329,29 @@ const liveWiringPrice = liveSizing
                           <p className="text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-xl border border-amber-100 flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4 shrink-0" />
                             <span>
-                              <strong>Auto-sizing disabled.</strong> Cable gauges won't update for your system. 
-                              Specify your own lengths. This quote is for components only — not a complete installed system.
+                              {isCatalogProduct ? (
+                                <>
+                                  <strong>Pick what you need.</strong> This product is sold on its own, so every extra
+                                  item is optional. Sizes come from the product specs, so check the gauge before you order.
+                                </>
+                              ) : (
+                                <>
+                                  <strong>Auto-sizing disabled.</strong> Cable gauges won't update for your system.
+                                  Specify your own lengths. This quote is for components only — not a complete installed system.
+                                </>
+                              )}
                             </span>
                           </p>
                         ) : (
                           <p className="text-xs text-stone-500">
-                            Required cables are sized automatically for your system. 
+                            Required cables are sized automatically for your system.
                             Adjust quantities or add optional items below.
                           </p>
                         )}
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                          {/* Selected (sized and optional) wiring items */}
+                          {/* Sized items first, then the ones that still apply but
+                              have no size to size them against yet. */}
                           {liveSizing.includeIds.size > 0 && (
                             <>
                               {Array.from(liveSizing.includeIds)
@@ -5786,7 +6360,7 @@ const liveWiringPrice = liveSizing
                                 .map((item) => {
                                   if (!item) return null;
                                   const isOptional = item.type === "nice-to-have";
-                                  const isIncluded = partialMode 
+                                  const isIncluded = partialMode
                                     ? (wiringQuantities[item.id] !== undefined ? wiringQuantities[item.id] : (item.qty ?? 1)) > 0
                                     : (isOptional && selectedNiceToHaveIds.has(item.id)) || !isOptional;
                                   const currentQty = wiringQuantities[item.id] ?? item.qty ?? 1;
@@ -5797,9 +6371,9 @@ const liveWiringPrice = liveSizing
                                       key={item.id}
                                       title={tooltipText}
                                       className={`p-4 rounded-2xl border transition-all relative ${
-                                        isIncluded 
-                                          ? (isOptional 
-                                            ? "bg-amber-50 border-amber-100" 
+                                        isIncluded
+                                          ? (isOptional
+                                            ? "bg-amber-50 border-amber-100"
                                             : "bg-emerald-50 border-emerald-100")
                                           : "bg-white border-dashed border-stone-200 opacity-50"
                                       }`}
@@ -5812,7 +6386,7 @@ const liveWiringPrice = liveSizing
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
                                           </div>
                                         )}
-                                        
+
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
                                             <p className="font-bold text-stone-900 break-words">{item.name}</p>
@@ -5821,11 +6395,11 @@ const liveWiringPrice = liveSizing
                                             </p>
                                           </div>
                                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
-                                            isOptional 
+                                            isOptional
                                               ? (isIncluded ? "bg-amber-100 text-amber-700" : "bg-stone-100 text-stone-500")
                                               : "bg-emerald-100 text-emerald-700"
                                           }`}>
-                                            {isOptional ? "Optional" : "Required"}
+                                            {isOptional ? "Optional" : isCatalogProduct ? "Recommended" : "Required"}
                                           </span>
                                         </div>
 
@@ -5853,7 +6427,7 @@ const liveWiringPrice = liveSizing
                                                       // In partial mode, toggle inclusion via quantity (0 = excluded)
                                                       const qty = e.target.checked ? (currentQty || 1) : 0;
                                                       setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
-                                                      setWiring(prev => prev.map(w => 
+                                                      setWiring(prev => prev.map(w =>
                                                         w.id === item.id ? { ...w, qty } : w
                                                       ));
                                                     } else {
@@ -5866,7 +6440,7 @@ const liveWiringPrice = liveSizing
                                                   }}
                                                   className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
                                                 />
-                                                <span className="text-xs font-bold text-stone-600">{partialMode ? "Include" : "Include"}</span>
+                                                <span className="text-xs font-bold text-stone-600">Include</span>
                                               </label>
                                             ) : (
                                               <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
@@ -5888,9 +6462,9 @@ const liveWiringPrice = liveSizing
                                                   const qty = Math.max(fallback, Number.isNaN(parsed) ? fallback : parsed);
                                                   setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
                                                   // Also persist to wiring state for localStorage
-                                                  setWiring(prev => prev.map(w => 
-                                                    w.id === item.id 
-                                                      ? { ...w, qty } 
+                                                  setWiring(prev => prev.map(w =>
+                                                    w.id === item.id
+                                                      ? { ...w, qty }
                                                       : w
                                                   ));
                                                 }}
@@ -5905,6 +6479,96 @@ const liveWiringPrice = liveSizing
                                   );
                                 })
                               }
+                            </>
+                          )}
+
+                          {/* Items that still apply but have no size to pick, so the
+                              buyer chooses the gauge. Only shown in partial mode. */}
+                          {partialMode && liveSizing.unsizedIds.size > 0 && (
+                            <>
+                              {Array.from(liveSizing.unsizedIds)
+                                .map(id => wiring.find(w => w.id === id))
+                                .filter(Boolean)
+                                .map((item) => {
+                                  if (!item) return null;
+                                  const currentQty = wiringQuantities[item.id] ?? 0;
+                                  const isIncluded = currentQty > 0;
+                                  const itemPrice = calculateWirePrice({ ...item, qty: currentQty, length_override: item.length_override });
+                                  const tooltipText = item.tooltip ?? item.description;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      title={tooltipText}
+                                      className={`p-4 rounded-2xl border transition-all relative ${
+                                        isIncluded
+                                          ? "bg-stone-50 border-stone-300"
+                                          : "bg-white border-dashed border-stone-200 opacity-70"
+                                      }`}
+                                    >
+                                      <div className="relative group">
+                                        {tooltipText && (
+                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
+                                            {tooltipText}
+                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
+                                          </div>
+                                        )}
+                                        <div className="flex items-start justify-between gap-3">
+                                          <div className="flex-1 min-w-0">
+                                            <p className="font-bold text-stone-900 break-words">{item.name}</p>
+                                            <p className="text-xs text-stone-500">
+                                              {WIRING_CATEGORY_LABELS[item.category]?.label ?? item.category}
+                                            </p>
+                                          </div>
+                                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0 bg-stone-100 text-stone-600">
+                                            Size to fit
+                                          </span>
+                                        </div>
+                                        <div className="space-y-1 text-xs text-stone-500 mb-3">
+                                          {Object.entries(item.specs || {}).map(([key, value]) => (
+                                            <div key={key} className="flex items-center justify-between gap-4">
+                                              <span className="capitalize">{key.replace(/_/g, " ")}</span>
+                                              <span className="font-semibold text-stone-700">{String(value)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-stone-200">
+                                          <span className="font-bold text-stone-700">₦{itemPrice.toLocaleString()}</span>
+                                          <div className="flex items-center gap-4">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                              <input
+                                                type="checkbox"
+                                                checked={isIncluded}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  const qty = e.target.checked ? (currentQty || 1) : 0;
+                                                  setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                }}
+                                                className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                              />
+                                              <span className="text-xs font-bold text-stone-600">Include</span>
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-xs text-stone-500">Qty:</span>
+                                              <input
+                                                type="number"
+                                                min={0}
+                                                max="100"
+                                                value={currentQty}
+                                                onChange={(e) => {
+                                                  e.stopPropagation();
+                                                  const parsed = parseInt(e.target.value);
+                                                  const qty = Math.max(0, Number.isNaN(parsed) ? 0 : parsed);
+                                                  setWiringQuantities(prev => ({ ...prev, [item.id]: qty }));
+                                                }}
+                                                className="w-16 px-2 py-1 text-sm border border-stone-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                             </>
                           )}
 
@@ -6220,8 +6884,24 @@ const liveWiringPrice = liveSizing
                     <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Catalog Category</label>
                     <select
                       name="product_type"
-                      value={productDraft.kit_type === "internet" ? "system" : productDraft.product_type}
-                      onChange={(e) => setProductDraft({ ...productDraft, product_type: e.target.value as ProductType })}
+                      value={productDraft.product_type}
+                      onChange={(e) => {
+                        const category = e.target.value as ProductType;
+                        const next = { ...productDraft, product_type: category };
+                        if (category === "powerstation") {
+                          next.kit_type = "powerstation";
+                          next.shape = "single";
+                        } else {
+                          if (next.kit_type === "powerstation") next.kit_type = "solar";
+                          if (category === "component" || category === "accessory") {
+                            next.shape = "single";
+                            if (category === "accessory") next.single_role = "accessory";
+                          } else if (next.shape === "single") {
+                            next.shape = "kit";
+                          }
+                        }
+                        setProductDraft(next);
+                      }}
                       className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
                     >
                       {PRODUCT_TYPE_FILTERS.filter((f) => f.id !== "all").map((f) => (
@@ -6238,12 +6918,18 @@ const liveWiringPrice = liveSizing
                       value={productDraft.kit_type}
                       onChange={(e) => {
                         const kitType = e.target.value as ProductDraft["kit_type"];
-                        setProductDraft({
-                          ...productDraft,
-                          kit_type: kitType,
-                          // Internet products only show in the catalog as complete systems.
-                          product_type: kitType === "internet" ? "system" : productDraft.product_type,
-                        });
+                        const next = { ...productDraft, kit_type: kitType };
+                        if (kitType === "internet") {
+                          next.product_type = "system";
+                          next.shape = "kit";
+                        } else if (kitType === "powerstation") {
+                          next.product_type = "powerstation";
+                          next.shape = "single";
+                        } else {
+                          if (next.product_type === "powerstation") next.product_type = "system";
+                          if (next.shape === "single" && next.product_type === "system") next.shape = "kit";
+                        }
+                        setProductDraft(next);
                       }}
                       className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
                     >
@@ -6266,172 +6952,157 @@ const liveWiringPrice = liveSizing
 
                 {productDraft.mode === "manual" && (
                   <div className="space-y-4 rounded-2xl border border-stone-200 bg-stone-50/60 p-4">
-                    <div>
-                      <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Product Shape</label>
-                      <select
-                        value={productDraft.shape}
-                        onChange={(e) => {
-                          const shape = e.target.value as ProductDraft["shape"];
-                          setProductDraft({
-                            ...productDraft,
-                            shape,
-                            // A single part is a component; a setup or kit is a system.
-                            product_type: productDraft.kit_type === "internet" ? "system" : shape === "single" ? "component" : "system",
-                          });
-                        }}
-                        className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                      >
-                        <option value="single">Single device</option>
-                        <option value="setup">Setup (inverter + battery)</option>
-                        <option value="kit">Kit (inverter + battery + panel)</option>
-                      </select>
-                    </div>
-
-                    {productDraft.shape === "single" ? (
+                    {productDraft.kit_type === "solar" && (
                       <>
                         <div>
-                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Component</label>
+                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Product Shape</label>
                           <select
-                            value={productDraft.single_role}
-                            onChange={(e) => setProductDraft({ ...productDraft, single_role: e.target.value as ProductDraft["single_role"] })}
+                            value={productDraft.shape}
+                            onChange={(e) => {
+                              const shape = e.target.value as ProductDraft["shape"];
+                              setProductDraft({
+                                ...productDraft,
+                                shape,
+                                // A single part is a component; a setup or kit is a system.
+                                product_type: shape === "single" ? "component" : "system",
+                              });
+                            }}
                             className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
                           >
-                            <option value="inverter">Inverter</option>
-                            <option value="battery">Battery</option>
-                            <option value="panel">Panel</option>
-                            <option value="network">Network device</option>
+                            <option value="single">Single device</option>
+                            <option value="setup">Setup (inverter + battery)</option>
+                            <option value="kit">Kit (inverter + battery + panel)</option>
                           </select>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="col-span-2">
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Component Name</label>
-                            <input
-                              required
-                              value={productDraft.single_name}
-                              onChange={(e) => setProductDraft({ ...productDraft, single_name: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
+
+                        {productDraft.shape === "single" && (
                           <div>
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts / Ah</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.single_watts}
-                              onChange={(e) => setProductDraft({ ...productDraft, single_watts: e.target.value })}
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Component</label>
+                            <select
+                              value={productDraft.single_role}
+                              onChange={(e) => setProductDraft({ ...productDraft, single_role: e.target.value as ProductDraft["single_role"] })}
                               className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.single_price}
-                              onChange={(e) => setProductDraft({ ...productDraft, single_price: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="col-span-3">
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Inverter</label>
-                            <input
-                              required
-                              value={productDraft.inverter}
-                              onChange={(e) => setProductDraft({ ...productDraft, inverter: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.inverter_w}
-                              onChange={(e) => setProductDraft({ ...productDraft, inverter_w: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.inverter_price}
-                              onChange={(e) => setProductDraft({ ...productDraft, inverter_price: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="col-span-3">
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Battery Bank</label>
-                            <input
-                              required
-                              value={productDraft.battery_config}
-                              onChange={(e) => setProductDraft({ ...productDraft, battery_config: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Wh</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.battery_wh}
-                              onChange={(e) => setProductDraft({ ...productDraft, battery_wh: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
-                            <input
-                              type="number"
-                              step="any"
-                              value={productDraft.battery_price}
-                              onChange={(e) => setProductDraft({ ...productDraft, battery_price: e.target.value })}
-                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                            />
-                          </div>
-                        </div>
-                        {productDraft.shape === "kit" && (
-                          <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-3">
-                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Solar Panel Array</label>
-                              <input
-                                required
-                                value={productDraft.panel_config}
-                                onChange={(e) => setProductDraft({ ...productDraft, panel_config: e.target.value })}
-                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Watts</label>
-                              <input
-                                type="number"
-                                step="any"
-                                value={productDraft.panel_w}
-                                onChange={(e) => setProductDraft({ ...productDraft, panel_w: e.target.value })}
-                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                              />
-                            </div>
-                            <div className="col-span-2">
-                              <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Price (₦)</label>
-                              <input
-                                type="number"
-                                step="any"
-                                value={productDraft.panel_price}
-                                onChange={(e) => setProductDraft({ ...productDraft, panel_price: e.target.value })}
-                                className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
-                              />
-                            </div>
+                            >
+                              <option value="inverter">Inverter</option>
+                              <option value="battery">Battery</option>
+                              <option value="panel">Solar panel</option>
+                              <option value="chargeController">Charge controller</option>
+                              <option value="accessory">Accessory</option>
+                            </select>
                           </div>
                         )}
+
+                        {(() => {
+                          const roles = productDraft.shape === "single"
+                            ? [productDraft.single_role]
+                            : PRODUCT_SHAPE_ROLES[productDraft.shape];
+                          const set = (patch: Partial<ProductDraft>) =>
+                            setProductDraft({ ...productDraft, ...patch });
+                          return (
+                            <>
+                              {roles.includes("inverter") && (
+                                <DraftGroup
+                                  title="Inverter"
+                                  fields={[
+                                    { label: "Model", value: productDraft.inverter, span: true, required: true, onChange: (v) => set({ inverter: v }) },
+                                    { label: "Max AC watts", type: "number", step: "any", value: productDraft.inverter_w, onChange: (v) => set({ inverter_w: v }) },
+                                    { label: "System volts", type: "number", step: "any", value: productDraft.inverter_vdc, onChange: (v) => set({ inverter_vdc: v }) },
+                                    { label: "Price (₦)", type: "number", step: "any", value: productDraft.inverter_price, span: true, onChange: (v) => set({ inverter_price: v }) },
+                                  ]}
+                                />
+                              )}
+                              {roles.includes("battery") && (
+                                <DraftGroup
+                                  title="Battery bank"
+                                  fields={[
+                                    { label: "Model", value: productDraft.battery, span: true, required: true, onChange: (v) => set({ battery: v }) },
+                                    { label: "Bank volts", type: "number", step: "any", value: productDraft.battery_voltage, onChange: (v) => set({ battery_voltage: v }) },
+                                    { label: "Amp hours", type: "number", step: "any", value: productDraft.battery_ah, onChange: (v) => set({ battery_ah: v }) },
+                                    { label: "Price (₦)", type: "number", step: "any", value: productDraft.battery_price, span: true, onChange: (v) => set({ battery_price: v }) },
+                                  ]}
+                                />
+                              )}
+                              {roles.includes("panel") && (
+                                <DraftGroup
+                                  title="Solar panel"
+                                  fields={[
+                                    { label: "Model", value: productDraft.panel, span: true, required: true, onChange: (v) => set({ panel: v }) },
+                                    { label: "Watts", type: "number", step: "any", value: productDraft.panel_w, onChange: (v) => set({ panel_w: v }) },
+                                    { label: "Voc (V)", type: "number", step: "any", value: productDraft.panel_voc, onChange: (v) => set({ panel_voc: v }) },
+                                    { label: "Isc (A)", type: "number", step: "any", value: productDraft.panel_isc, onChange: (v) => set({ panel_isc: v }) },
+                                    { label: "Price (₦)", type: "number", step: "any", value: productDraft.panel_price, span: true, onChange: (v) => set({ panel_price: v }) },
+                                  ]}
+                                />
+                              )}
+                              {roles.includes("chargeController") && (
+                                <DraftGroup
+                                  title="Charge controller"
+                                  fields={[
+                                    { label: "Model", value: productDraft.cc, span: true, required: true, onChange: (v) => set({ cc: v }) },
+                                    { label: "Max PV watts", type: "number", step: "any", value: productDraft.cc_pv, onChange: (v) => set({ cc_pv: v }) },
+                                    { label: "Max Voc (V)", type: "number", step: "any", value: productDraft.cc_voc, onChange: (v) => set({ cc_voc: v }) },
+                                    { label: "Max amps", type: "number", step: "any", value: productDraft.cc_amps, onChange: (v) => set({ cc_amps: v }) },
+                                    { label: "Price (₦)", type: "number", step: "any", value: productDraft.cc_price, span: true, onChange: (v) => set({ cc_price: v }) },
+                                  ]}
+                                />
+                              )}
+                              {roles.includes("accessory") && (
+                                <p className="text-xs text-stone-500">
+                                  An accessory carries no parts. The name and price above are the whole product.
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
                       </>
+                    )}
+
+                    {productDraft.kit_type === "powerstation" && (
+                      <DraftGroup
+                        title="Powerstation"
+                        fields={[
+                          { label: "Capacity (Wh)", type: "number", step: "any", value: productDraft.ps_capacity, required: true, onChange: (v) => setProductDraft({ ...productDraft, ps_capacity: v }) },
+                          { label: "AC output (W)", type: "number", step: "any", value: productDraft.ps_output, required: true, onChange: (v) => setProductDraft({ ...productDraft, ps_output: v }) },
+                          { label: "PV input (W)", type: "number", step: "any", value: productDraft.ps_pv, onChange: (v) => setProductDraft({ ...productDraft, ps_pv: v }) },
+                        ]}
+                      />
+                    )}
+
+                    {productDraft.kit_type === "internet" && (
+                      <div className="space-y-4">
+                        <DraftGroup
+                          title="Bundle"
+                          fields={[
+                            { label: "Router or load balancer", value: productDraft.net_router, span: true, placeholder: "e.g. TP-Link ER605 Load Balancer", onChange: (v) => setProductDraft({ ...productDraft, net_router: v }) },
+                          ]}
+                        />
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-stone-400">Devices in this kit</p>
+                          <div className="max-h-48 overflow-y-auto space-y-1 rounded-xl border border-stone-200 bg-white p-2">
+                            {masterDevices
+                              .filter((md) => md.category === "internet" || md.tags.includes("internet"))
+                              .map((md) => (
+                                <label key={md.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-stone-50 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={productDraft.net_devices.includes(md.id)}
+                                    onChange={(e) => {
+                                      const next = e.target.checked
+                                        ? [...productDraft.net_devices, md.id]
+                                        : productDraft.net_devices.filter((id) => id !== md.id);
+                                      setProductDraft({ ...productDraft, net_devices: next });
+                                    }}
+                                    className="w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500"
+                                  />
+                                  <span className="text-sm text-stone-700">{md.name}</span>
+                                  <span className="ml-auto text-xs text-stone-400">
+                                    {md.specs?.device_class ? INTERNET_DEVICE_CLASS_LABELS[md.specs.device_class] : "device"}
+                                  </span>
+                                </label>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -6495,7 +7166,7 @@ const liveWiringPrice = liveSizing
                   </summary>
                   <div className="p-4 pt-0 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
+                      <div className="col-span-2">
                         <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Device Class</label>
                         <select
                           name="device_class"
@@ -6509,58 +7180,29 @@ const liveWiringPrice = liveSizing
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Peak Watts</label>
-                        <input name="peak_watts" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.peak_watts} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="Defaults to 30% surge" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Duty Cycle (%)</label>
-                        <input name="duty_cycle" type="number" min="1" max="100" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.duty_cycle ?? 100} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Input Voltage</label>
-                        <input name="input_voltage" defaultValue={itemData(editingMasterDevice)?.specs?.input_voltage} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 12V DC" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Connector</label>
-                        <input name="connector" defaultValue={itemData(editingMasterDevice)?.specs?.connector} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. DC barrel / PoE" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Ports</label>
-                        <input name="ports" type="number" step="1" defaultValue={itemData(editingMasterDevice)?.specs?.ports} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 4" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Uplink</label>
-                        <input name="uplink" defaultValue={itemData(editingMasterDevice)?.specs?.uplink} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. 5G / fibre / satellite" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Bands</label>
-                        <input name="bands" defaultValue={itemData(editingMasterDevice)?.specs?.bands} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. LTE B1/B3/B7/B20" />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Operating Temp</label>
-                        <input name="operating_temp_c" defaultValue={itemData(editingMasterDevice)?.specs?.operating_temp_c} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" placeholder="e.g. -20 to 55°C" />
-                      </div>
-                      {masterDeviceClass === "satellite" && (
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Dish Power (W)</label>
-                          <input name="dish_power_w" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.dish_power_w} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
-                        </div>
-                      )}
-                      {masterDeviceClass === "poe_radio" && (
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">PoE Budget (W)</label>
-                          <input name="poe_budget_w" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.poe_budget_w} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
-                        </div>
-                      )}
-                      {(masterDeviceClass === "satellite" || masterDeviceClass === "poe_radio") && (
-                        <div>
-                          <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Mast Height (m)</label>
-                          <input name="mast_height_m" type="number" step="any" defaultValue={itemData(editingMasterDevice)?.specs?.mast_height_m} className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl" />
-                        </div>
-                      )}
+                      {(INTERNET_CLASS_FIELDS[masterDeviceClass] ?? INTERNET_SPEC_FIELDS.map((f) => f.key)).map((key) => {
+                        const field = INTERNET_SPEC_FIELDS.find((f) => f.key === key)!;
+                        return (
+                          <div key={key}>
+                            <label className="block text-xs font-bold uppercase text-stone-500 mb-1">{field.label}</label>
+                            <input
+                              name={key}
+                              type={field.type ?? "text"}
+                              step="any"
+                              defaultValue={
+                                itemData(editingMasterDevice)?.specs?.[key] ??
+                                (key === "duty_cycle" ? 100 : undefined)
+                              }
+                              className="w-full px-4 py-2 bg-white border border-stone-200 rounded-xl"
+                              placeholder={field.placeholder}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
-                    <p className="text-[10px] text-stone-400">Used by the Internet details modal for power, runtime and installation traits.</p>
+                    <p className="text-[10px] text-stone-400">
+                      The fields follow the device class. Used by the Internet details modal for power, runtime and installation traits.
+                    </p>
                   </div>
                 </details>
                 <div>

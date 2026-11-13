@@ -70,11 +70,22 @@ export interface WiringSizingInput {
   maxAcW?: number;
   /** Skip battery-to-inverter cables and DC breakers (powerstation or coupled kit). */
   all_in_one?: boolean;
+  /**
+   * Catalog products are sold on their own, so items that were only kept as a
+   * habit are listed for the buyer to choose instead of being included.
+   */
+  discretionary?: boolean;
 }
 
 export interface WiringSizing {
   /** Ids of every item that belongs in this system. */
   includeIds: Set<string>;
+  /**
+   * Mandatory items that still apply but have no size to size them against,
+   * for example the battery cable of a lone battery with no inverter yet.
+   * They are listed so the buyer can pick the right size.
+   */
+  unsizedIds: Set<string>;
   /** One line per sized item, used by the quote PDF guide. */
   notes: string[];
   derived: {
@@ -133,6 +144,8 @@ export const sizeWiring = (
 
   // group key -> winning item id
   const winners = new Set<string>();
+  // Mandatory items that apply but have no known size, so no size can be picked.
+  const unsized = new Set<string>();
 
   for (const category of Object.keys(SIZED_SPEC) as WiringCategory[]) {
     const specKey = SIZED_SPEC[category]!;
@@ -160,6 +173,13 @@ export const sizeWiring = (
           ? acAmps
           : pvAmps;
 
+      // No current to size against, for example a lone battery with no inverter.
+      // The item still applies, so list it and let the buyer choose the size.
+      if (target <= 0) {
+        for (const item of candidates) unsized.add(item.id);
+        continue;
+      }
+
       const sorted = [...candidates].sort(
         (a, b) =>
           specNumber(a.specs[specKey]) - specNumber(b.specs[specKey]) || a.price - b.price
@@ -181,11 +201,15 @@ export const sizeWiring = (
     const specKey = SIZED_SPEC[item.category];
     if (!hasPv && PV_ONLY_CATEGORIES.includes(item.category)) continue;
     if (!specKey || specNumber(item.specs[specKey]) <= 0) {
-      includeIds.add(item.id);
+      // An accessory with no size of its own. A catalog product lists it for
+      // the buyer to choose rather than adding it to the price automatically.
+      if (input.discretionary) unsized.add(item.id);
+      else includeIds.add(item.id);
       continue;
     }
 
     if (!winners.has(item.id)) continue;
+    if (unsized.has(item.id)) continue;
     includeIds.add(item.id);
 
     const size = specNumber(item.specs[specKey]);
@@ -209,6 +233,7 @@ export const sizeWiring = (
 
   return {
     includeIds,
+    unsizedIds: unsized,
     notes,
     derived: {
       dcAmps: Math.round(dcAmps),

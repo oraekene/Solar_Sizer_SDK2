@@ -173,6 +173,20 @@ export interface SystemCombination {
   inverter_w?: number;
   battery_wh?: number;
   panel_w?: number;
+  /** Panel string voltage and short circuit current, used to size PV wiring. */
+  panel_voc?: number;
+  panel_isc?: number;
+  /** Bank voltage and amp-hour rating, used to size the battery cable. */
+  battery_voltage?: number;
+  battery_ah?: number;
+  battery_type?: 'lead-acid' | 'lithium';
+  inverter_system_vdc?: number;
+  /** Charge controller sold on its own. */
+  cc_name?: string;
+  cc_price?: number;
+  cc_max_pv_w?: number;
+  cc_max_voc?: number;
+  cc_max_amps?: number;
   kit_type?: 'solar' | 'internet' | 'powerstation';
   cc_type?: 'pwm' | 'mppt';
   /** When true, the battery and inverter are pre-coupled (powerstation or all-in-one kit). Skips battery-to-inverter cables and DC breakers. */

@@ -47,7 +47,20 @@ test('a powerstation gets no battery-to-inverter cable', () => {
   assert.equal(sizing.includeIds.size, 0);
 });
 
-test('a panel-less system still keeps its battery cable', () => {
+test('a panel-less system with no inverter lists the battery cable for sizing', () => {
   const sizing = sizeWiring({ items: [batteryCable], arrayWatts: 0, batteryWh: 5000 });
+  assert.ok(sizing.unsizedIds.has('copper'));
+  assert.equal(sizing.includeIds.has('copper'), false);
+});
+
+test('a system with an inverter sizes the battery cable', () => {
+  const sizing = sizeWiring({
+    items: [batteryCable],
+    arrayWatts: 0,
+    batteryWh: 5000,
+    maxAcW: 3000,
+    systemVdc: 48,
+  });
   assert.ok(sizing.includeIds.has('copper'));
+  assert.equal(sizing.unsizedIds.has('copper'), false);
 });
