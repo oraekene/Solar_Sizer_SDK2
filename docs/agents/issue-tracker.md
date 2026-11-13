@@ -11,7 +11,7 @@ Issues and PRDs for this repo live as GitHub issues in `oraekene/Solar_Sizer_SDK
 - **Apply / remove labels**: `gh issue edit <number> --repo oraekene/Solar_Sizer_SDK2 --add-label "..."` / `--remove-label "..."`.
 - **Close**: `gh issue close <number> --repo oraekene/Solar_Sizer_SDK2 --comment "..."`.
 
-This working copy is a downloaded snapshot without a `.git` directory, so pass `--repo` explicitly. When run inside a real clone, `gh` infers the repo from `git remote -v` and the flag can be omitted.
+This working copy is a clone with `origin` at `oraekene/Solar_Sizer_SDK2`, so `gh` infers the repo from `git remote -v`. Passing `--repo` explicitly is still safe.
 
 ## Pull requests as a triage surface
 
