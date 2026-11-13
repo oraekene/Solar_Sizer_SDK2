@@ -72,8 +72,59 @@
       "listing_count_at_seed": null,
       "verified": "2026-11-13",
       "note": "Same route as panels, different query. Filters for Used and Foreign Used condition are exposed on the category page and must be used to detect condition."
+    },
+    {
+      "site": "jiji",
+      "type": "battery",
+      "url": "https://jiji.ng/272-solar-batteries",
+      "listing_count_at_seed": 8835,
+      "verified": "2026-11-13",
+      "note": "The solar battery subcategory. Facets give Brand, Type, Condition and Verified seller. Condition counts were Brand New 6347, Refurbished 15 and Used 710."
+    },
+    {
+      "site": "jiji",
+      "type": "panel",
+      "url": "https://jiji.ng/solar-energy-products",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "The Solar and Renewable parent category under Electrical Equipment. It holds panels and batteries, so it is a secondary crawl path only."
+    },
+    {
+      "site": "solarshopnigeria",
+      "type": "panel",
+      "url": "https://solarshopnigeria.com/products?category=pv-modules",
+      "listing_count_at_seed": 7,
+      "verified": "2026-11-13",
+      "note": "The phase-one specialist retailer. Server-rendered prices, spec lines, stock text and PDF datasheet links. Each card carries a productId for the listing id. No robots.txt."
+    },
+    {
+      "site": "solarshopnigeria",
+      "type": "battery",
+      "url": "https://solarshopnigeria.com/products?category=batteries",
+      "listing_count_at_seed": 6,
+      "verified": "2026-11-13",
+      "note": "Same retailer, battery category. Bulk lines state the pack count and the price per unit, so unit_basis never needs an assumption."
+    },
+    {
+      "site": "solarshopnigeria",
+      "type": "panel",
+      "url": "https://solarshopnigeria.com/products?category=pv-modules&stock=in",
+      "listing_count_at_seed": null,
+      "verified": "2026-11-13",
+      "note": "The in-stock filter of the same path. Use it for discovery so that lead-time and pre-order lines do not enter the pool."
     }
   ],
+
+  "phase_one_plus_paths": {
+    "_comment": "Verified paths that join after phase one proves the pattern. The phase-one source count is fixed at one specialist retailer plus Jiji plus Jumia.",
+    "solarmart": [
+      { "type": "panel", "url": "https://solarmart.ng/c/solar-panels", "listing_count_at_seed": 6, "verified": "2026-11-13", "note": "JSON-LD Product on each page with name, sku, brand, price, availability and seller. The URL slug does not match the product name, so read the JSON-LD name." },
+      { "type": "battery", "url": "https://solarmart.ng/c/batteries", "listing_count_at_seed": null, "verified": "2026-11-13", "note": "Same shop, battery category." }
+    ],
+    "buysolar": [
+      { "type": "all", "url": "https://www.buysolar.ng/sitemap.xml", "listing_count_at_seed": null, "verified": "2026-11-13", "note": "Discovery must use the sitemap because the category pages build the product list with JavaScript. The product pages carry JSON-LD with price, availability, itemCondition and the review rating." }
+    ]
+  },
 
   "brand_paths": {
     "_comment": "Brand filter paths on Jumia, used to find branded panels and batteries that the generic category crawl may rank below the fold. Brands marked priority are the ones matching the manual rows or common in the Nigerian market.",
@@ -84,9 +135,7 @@
       { "brand": "Oraimo", "path": "/solar-panels/oraimo/", "priority": true },
       { "brand": "Duravolt", "path": "/solar-panels/duravolt/", "priority": true },
       { "brand": "Qasa", "path": "/solar-panels/qasa/", "priority": false },
-      { "brand": "Sunfit", "path": "/solar-panels/sunfit/", "priority": false },
-      { "brand": "Generic", "path": "/solar-panels/generic/", "priority": true, "reason": "The unbranded bucket feed. Highest expected volume of unbranded panels." },
-      { "brand": "General", "path": "/solar-panels/general/", "priority": true, "reason": "The unbranded bucket feed. Sellers use both Generic and General." }
+      { "brand": "Sunfit", "path": "/solar-panels/sunfit/", "priority": false }
     ],
     "jumia_batteries": [
       { "brand": "itel Energy", "path": "/solar-battery-chargers-charging-kits/itel-energy/", "priority": true, "reason": "Brand official store with an itel Energy Jumia storefront. Verified tier source." },
@@ -95,8 +144,33 @@
       { "brand": "PowMr", "path": "/solar-battery-chargers-charging-kits/powmr/", "priority": true, "reason": "Manual row b-1 is PowMr." },
       { "brand": "Duravolt", "path": "/solar-battery-chargers-charging-kits/duravolt/", "priority": true },
       { "brand": "Luminous", "path": "/solar-battery-chargers-charging-kits/luminous/", "priority": false, "reason": "Lead-acid tubular. Chemistry differs from the manual lithium rows, so it is discovery only." },
-      { "brand": "WattCycle", "path": "/solar-battery-chargers-charging-kits/watt-cycle/", "priority": false },
-      { "brand": "Generic", "path": "/solar-battery-chargers-charging-kits/generic/", "priority": true, "reason": "Generic lead-acid and lithium batteries, the unbranded battery bucket feed." }
+      { "brand": "WattCycle", "path": "/solar-battery-chargers-charging-kits/watt-cycle/", "priority": false }
+    ],
+    "solarshopnigeria": {
+      "_comment": "Brand filter paths on the specialist retailer. The filter is a query parameter, not a path. Only the jinko-solar slug was confirmed from a product page link, so the other slugs must be confirmed on the first crawl.",
+      "path_template": "/products?brand={slug}",
+      "confirmed_slugs": ["jinko-solar"],
+      "labels_needing_a_slug_check": ["Astronergy", "Homaya Pro", "Hoppecke", "Huawei", "JA Solar", "Jinko Solar", "Phocos", "Renon", "Schneider", "Schneider Electric", "SMA Solar", "Steca", "Studer", "Ultron", "Victron Energy"]
+    }
+  },
+
+  "excluded_paths": {
+    "_comment": "Paths the site owner blocks in robots.txt. The crawler must never request them. The Jumia rules come from https://www.jumia.com.ng/robots.txt.",
+    "jumia": [
+      { "path": "/solar-panels/generic/", "rule": "Disallow: /*/generic/" },
+      { "path": "/solar-panels/general/", "rule": "Disallow: /*/general/" },
+      { "path": "/solar-battery-chargers-charging-kits/generic/", "rule": "Disallow: /*/generic/" },
+      { "path_pattern": "/*price=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*rating=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*wattage=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*capacity=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*battery=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*sort=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*q=", "rule": "Site search is blocked" }
+    ],
+    "konga": [
+      { "path_pattern": "/product/*/details", "rule": "Product detail pages are blocked for every crawler" },
+      { "path_pattern": "/search", "rule": "Search is blocked" }
     ]
   },
 
@@ -123,6 +197,16 @@
     "itel": ["itel", "itel energy", "itelenergy"],
     "felicity": ["felicity", "felicity solar", "felicitysolar"],
     "duravolt": ["duravolt", "dura volts", "duravolts"],
+    "astronergy": ["astronergy", "chint", "astronergy chint"],
+    "ja_solar": ["ja solar", "jasolar", "ja solar jam"],
+    "jinko": ["jinko", "jinko solar", "jinkosolar", "tiger neo", "eagle"],
+    "victron": ["victron", "victron energy"],
+    "phocos": ["phocos"],
+    "renon": ["renon", "ebrick"],
+    "hoppecke": ["hoppecke"],
+    "schneider": ["schneider", "schneider electric"],
+    "sma": ["sma", "sma solar"],
+    "huawei": ["huawei"],
     "generic": ["generic", "general", "unbranded", "no name", "noname"]
   },
 

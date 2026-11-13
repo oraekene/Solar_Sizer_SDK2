@@ -29,9 +29,12 @@ Rationale: panels and batteries are the two types that every system must have, a
 
 | Tier | Sources | Phase | Role |
 | --- | --- | --- | --- |
-| 1 | One specialist solar retailer with spec tables; Jiji; Jumia | 1 | Price anchors and discovery |
-| 2 | Konga, CDcare | 1b | Immediately after phase 1 proves the pattern |
+| 1 | SolarShopNigeria (specialist retailer with full spec tables and PDF datasheets); Jiji; Jumia | 1 | Price anchors and discovery |
+| 1b | SolarMart, BuySolar.ng | 1b | Immediately after phase 1 proves the pattern |
+| 2 | Konga, CDcare | 2 | Konga blocks its product detail pages and CDcare has no domain, so both need a new decision |
 | 3 | AliExpress, Temu | optional, later | Reference/spec only; excluded from price unless landed-cost model exists |
+
+The source inventory and the evidence behind each verdict are in `docs/sources-inventory.md`.
 
 **Important correction to earlier notes:** general marketplaces are **not** treated as reference-only. They are equal price sources from the start, with their own price kinds as in Section 8. CDcare contributes installment prices; AliExpress/Temu contribute only if a landed-cost computation is implemented.
 
@@ -73,7 +76,7 @@ The scraped row is written by the publish step with:
 An offer is one seller listing of one canonical product. The table is `hardware_offers`, and it holds every ad the scraper has ever seen. Required fields:
 
 - `canonical_id`
-- `source_site` — `specialist`, `jiji`, `jumia`, (later `konga`, `cdcare`, `aliexpress`, `temu`)
+- `source_site` — `solarshopnigeria`, `jiji`, `jumia`, (later `solarmart`, `buysolar`, `konga`, `cdcare`, `aliexpress`, `temu`)
 - `source_url`
 - `source_listing_id` — the platform's listing id when available, else hash of (site + url)
 - `seller_id` — normalized seller identity on that site
@@ -457,4 +460,5 @@ Everything in this list was discussed and consciously postponed. Nothing here bl
 
 - Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets, following `docs/scraper-runbook.md`.
 - Store the remaining secrets: the Worker `ADMIN_PASSWORD`, the GitHub Actions copies of `ADMIN_PASSWORD`, `WORKER_URL` and `FX_RATE_URL`, and the Kapso values for the alert.
-- Add the specialist retailer to the watchlist once the inventory in `docs/sources-inventory.md` names it.
+- Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed.
+- Confirm that a GitHub Actions runner can read the full Jumia page. A Node fetch returned a reduced page while another client returned the full page, so the runner may see a thinner page than expected.
