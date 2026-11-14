@@ -11,8 +11,10 @@ import {
   isOfferStatus,
   isReasonCode,
   isTrustTier,
+  isQualifiedPublishSupport,
   medianPrice,
   offerId,
+  validateEnrichmentResult,
   withinBand,
 } from './scraper.ts';
 
@@ -160,4 +162,28 @@ test('a review needs candidate ids and a known status', async () => {
     'POST',
   );
   assert.equal(badStatus?.status, 400);
+});
+
+test('an enrichment result accepts known fields and drops empty readings', () => {
+  assert.deepEqual(
+    validateEnrichmentResult({ watts: 550, voc: null, battery_type: 'lithium' }),
+    { watts: 550, battery_type: 'lithium' },
+  );
+  assert.throws(() => validateEnrichmentResult({ watts: -1 }), /positive number/);
+  assert.throws(() => validateEnrichmentResult({ invented: 3 }), /unknown field/);
+});
+
+test('only a fresh qualified offer can support a published price', () => {
+  const now = Date.parse('2026-11-14T00:00:00.000Z');
+  const support = {
+    status: 'qualified',
+    in_stock: 'true',
+    unit_basis: 'piece',
+    condition: 'new',
+    price: 100_000,
+    last_checked: '2026-11-13T00:00:00.000Z',
+  };
+  assert.equal(isQualifiedPublishSupport(support, now), true);
+  assert.equal(isQualifiedPublishSupport({ ...support, status: 'review_required' }, now), false);
+  assert.equal(isQualifiedPublishSupport({ ...support, last_checked: '2026-10-30T00:00:00.000Z' }, now), false);
 });

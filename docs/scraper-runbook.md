@@ -1,116 +1,232 @@
 # Scraper provisioning runbook
 
-This runbook lists the accounts, hosts and secrets that the hardware scraper needs. The design is in `docs/scraper-design.md`. You complete the steps that need your own accounts. The implementation builds the code.
+This runbook lists the accounts, secrets and checks that the hardware scraper needs. The design is in `docs/scraper-design.md`, and the coded defaults are in `docs/scraper-implementation-defaults.md`. You complete the steps that need your own accounts. The code is already in the repository.
 
 ## What exists now
 
-| Item | Where | State |
+| Item | Where | State on 2026-11-14 |
 | --- | --- | --- |
-| Worker and D1 database | Cloudflare | Running |
-| `scraper-alert` label | GitHub | Created |
-| Kapso command line tool | This machine | Installed, not logged in |
-| Fly.io account with one Machine in `jnb` | Fly.io | Not created |
-| GitHub Actions secrets | GitHub | Not created |
-| Worker secrets | Cloudflare Worker | Not created |
-| Host secrets | Fly.io Machine | Not created |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running, but not yet redeployed with the current scraper changes. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0009` applied. `0010` to `0012` are pending. |
+| `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
+| Kapso command line tool | This machine | Installed, not logged in. |
+| Fly.io account and Machine | Fly.io | Not created. |
+| GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL` is set. `CLOUDFLARE_API_TOKEN` is invalid. `CLOUDFLARE_ACCOUNT_ID` and `ADMIN_PASSWORD` are missing. |
+| Worker secrets | Cloudflare | `ADMIN_PASSWORD` exists, but its value is not known locally. The four Kapso values are missing. |
+
+## What blocks the first live run
+
+1. The Cloudflare token fails with `Invalid access token [code: 9109]` and `Authentication error [code: 10000]`. Replace it, and store the account id beside it.
+2. The Worker `ADMIN_PASSWORD` value is unknown. Rotate it to a known value and store the same value in GitHub Actions and on the host.
+3. The four Kapso values are missing, so the WhatsApp alert cannot send.
+4. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
 
 ## Secret inventory
 
 | Secret | Lives in | Used by | Notes |
 | --- | --- | --- | --- |
-| `ADMIN_PASSWORD` | Worker environment, GitHub Actions, Fly Machine | Scraper, drainer | Use one value in all three places. The Worker already checks it against the `x-admin-key` header. |
-| `ENCRYPTION_KEY` | Fly Machine | Gateway | 32 random bytes as hex. It encrypts the provider keys at rest. It never leaves the host. |
-| `FREEAPI_CONFIG_JSON` | Fly Machine | Gateway | The provider keys, the routing strategy and the dashboard account. It holds plain secrets. |
-| `WORKER_URL` | Fly Machine, GitHub Actions | Drainer, scraper | The public address of the Worker. Use `https://sdk2.solarsizer.workers.dev`. |
-| `KAPSO_API_KEY` | Worker environment | Alert cron | Sends the WhatsApp alert. |
-| `KAPSO_PHONE_NUMBER_ID` | Worker environment | Alert cron | The WhatsApp number that sends the alert. |
-| `KAPSO_ALERT_TO` | Worker environment | Alert cron | The owner number in international format, for example `2348012345678`. |
-| `KAPSO_TEMPLATE_NAME` | Worker environment | Alert cron | The approved Meta template for the alert text. |
+| `ADMIN_PASSWORD` | Worker, GitHub Actions, host | Scraper, drainer, watchdog | One value in all three places. The Worker checks it against the `x-admin-key` header. |
+| `CLOUDFLARE_API_TOKEN` | GitHub Actions | Deploy workflow | Needs account-level Workers Scripts edit and D1 edit. |
+| `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Deploy workflow | The account id from the Cloudflare dashboard or `npx wrangler whoami`. |
+| `WORKER_URL` | GitHub Actions, host | Scraper, drainer | `https://sdk2.solarsizer.workers.dev`. Already set in Actions. |
+| `ENCRYPTION_KEY` | Host | FreeLLMAPI gateway | 32 random bytes as hex. Encrypts the provider keys at rest. It never leaves the host. |
+| `FREEAPI_CONFIG_JSON` | Host | FreeLLMAPI gateway | Provider keys, routing and the dashboard account. It holds plain secrets. |
+| `KAPSO_API_KEY` | Worker | Alert route | Sends the WhatsApp alert. |
+| `KAPSO_PHONE_NUMBER_ID` | Worker | Alert route | The WhatsApp number that sends the alert. |
+| `KAPSO_ALERT_TO` | Worker | Alert route | The owner number in international format, for example `2348012345678`. |
+| `KAPSO_TEMPLATE_NAME` | Worker | Alert route | An approved Meta template with one named body parameter, `message`. |
 
-Phase one has no rate source, so the runner archives every price that is not in naira with the reason code `usd_rate_unavailable`. The `FX_RATE_URL` secret becomes necessary only when a source quotes in dollars.
+`FX_RATE_URL` is no longer read. The rate order is fixed in `scraper/fx.ts`: NairaDaily first, then open.er-api.com.
 
 The unified FreeLLMAPI key never leaves the host. The drainer reads it from the gateway database at startup.
 
-## Step 1: Create the Fly.io account
+## Step 1: Rotate the Worker admin password
 
-1. Create the account at `fly.io/app/sign-up` and add a card. Fly.io has no free tier, but a personal organisation does not pay a bill under $5.
+The existing value cannot be read back, so replace it with a value you keep.
+
+1. Generate a value locally. Do not paste it into the repository.
+
+   ```powershell
+   node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+   ```
+
+2. Store it in the Worker. The command reads the value from standard input.
+
+   ```powershell
+   npx wrangler secret put ADMIN_PASSWORD
+   ```
+
+3. Store the same value in GitHub Actions.
+
+   ```powershell
+   gh secret set ADMIN_PASSWORD --repo oraekene/Solar_Sizer_SDK2
+   ```
+
+4. Keep the value in your password manager. The host needs it in Step 5.
+
+## Step 2: Replace the Cloudflare token
+
+1. Open `dash.cloudflare.com/profile/api-tokens` and create a token with these account permissions:
+   - Workers Scripts: Edit.
+   - D1: Edit.
+   - Account Settings: Read, so the account id can be checked.
+
+   No zone permission is needed, because the Worker uses the `workers.dev` address.
+
+2. Copy the account id from the dashboard, or run:
+
+   ```powershell
+   npx wrangler whoami
+   ```
+
+3. Store both values in GitHub Actions.
+
+   ```powershell
+   gh secret set CLOUDFLARE_API_TOKEN --repo oraekene/Solar_Sizer_SDK2
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo oraekene/Solar_Sizer_SDK2
+   ```
+
+4. Confirm the names. Values are never printed.
+
+   ```powershell
+   gh secret list --repo oraekene/Solar_Sizer_SDK2
+   ```
+
+The deploy workflow applies remote D1 migrations before it deploys the Worker, so a working token fixes both the migration gap and the Worker code in one run.
+
+## Step 3: Apply the migrations and deploy the Worker
+
+Do this once now if you do not want to wait for the next push. Run the commands from the repository root with the Cloudflare values in the environment, or after `npx wrangler login`.
+
+```powershell
+npx wrangler d1 migrations apply solar-sizer-sdk2 --remote
+npm run build
+npx wrangler deploy
+```
+
+The three pending migrations are:
+
+| Migration | What it adds |
+| --- | --- |
+| `0010_scraper_fx.sql` | `price_ngn`, `price_ngn_rounded`, `fx_rate`, `fx_rate_date` and `fx_source` on `hardware_offers`. |
+| `0011_scraper_payload_retention.sql` | `raw_payload_at`, backfilled from `scraped_at` or `created_at`. |
+| `0012_scraper_price_currency.sql` | A currency column on `price_history`, so an offer change keeps its quoted currency. |
+
+If the deploy workflow runs first, skip this step. The workflow does the same work.
+
+## Step 4: Verify the Worker and run the scrapers
+
+1. Check that the Worker answers.
+
+   ```powershell
+   curl.exe -i "https://sdk2.solarsizer.workers.dev/healthz"
+   ```
+
+   Expect `200`.
+
+2. Check that the scraper route refuses a request without the key, then accepts it with the key.
+
+   ```powershell
+   curl.exe -i "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
+   curl.exe -i -H "x-admin-key: $env:ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
+   ```
+
+   The first call answers `401`. The second answers `200`.
+
+3. Run one sweep by hand. Use `SCRAPER_START_DELAY_MS=0` so it starts at once.
+
+   ```powershell
+   $env:WORKER_URL = "https://sdk2.solarsizer.workers.dev"
+   $env:ADMIN_PASSWORD = "<the value from Step 1>"
+   $env:SCRAPER_START_DELAY_MS = "0"
+   npm run scraper:sweep
+   ```
+
+4. Run one discovery crawl by hand after the sweep.
+
+   ```powershell
+   $env:SCRAPER_START_DELAY_MS = "0"
+   npm run scraper:discovery
+   ```
+
+5. Read the run reports. The report shows pages, found offers, skips, candidates, publishes, exclusions, cross-posts, the FX rate, request counts per source, paused sources and their reasons, the number of purged payloads and any publish errors.
+
+   ```powershell
+   curl.exe -sS -H "x-admin-key: $env:ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/runs?limit=5"
+   ```
+
+6. Once the by-hand runs pass, start the workflows. They use the same secrets.
+
+   ```powershell
+   gh workflow run scraper-sweep.yml --repo oraekene/Solar_Sizer_SDK2
+   gh workflow run scraper-discovery.yml --repo oraekene/Solar_Sizer_SDK2
+   gh run list --repo oraekene/Solar_Sizer_SDK2 --limit 5
+   ```
+
+The first sweep checks nothing if the database has no offers yet. Run discovery first when the offers table is empty.
+
+## Step 5: Create the always-on host
+
+The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work from the Worker over HTTPS, so it needs no tunnel and no public service.
+
+1. Create the account at `fly.io/app/sign-up` and add a card. A personal organisation does not pay a bill under $5.
+
 2. Install the Fly command line tool.
 
-   On Windows:
-
-   ```
+   ```powershell
    iwr https://fly.io/install.ps1 | iex
-   ```
-
-   On macOS or Linux:
-
-   ```
-   curl -L https://fly.io/install.sh | sh
    ```
 
 3. Log in.
 
-   ```
+   ```powershell
    fly auth login
    ```
 
-## Step 2: Create the Machine and the volume
+4. Create the app and the volume from the repository root. The Dockerfile is `scraper/host/Dockerfile`.
 
-The implementation adds `scraper/host/Dockerfile` to the repo. Run these commands from the repo root after that file exists.
-
-```
-fly launch --no-deploy --name solar-sizer-gateway --region jnb --dockerfile scraper/host/Dockerfile
-fly volumes create freellmapi_data --size 1 --region jnb
-```
-
-Set `fly.toml` to this content:
-
-```toml
-app = "solar-sizer-gateway"
-primary_region = "jnb"
-
-[build]
-  dockerfile = "scraper/host/Dockerfile"
-
-[env]
-  PORT = "3001"
-  HOST = "127.0.0.1"
-
-[mounts]
-  source = "freellmapi_data"
-  destination = "/app/server/data"
-
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-
-[processes]
-  app = "node /app/start.mjs"
-
-[deploy]
-  strategy = "rolling"
-```
-
-Do not add an `http_service` section. The gateway binds to the loopback interface, so Fly must not send public traffic to it.
-
-Deploy the Machine and keep one copy in `jnb`:
-
-```
-fly deploy
-fly scale count app=1 --region jnb
-```
-
-Check the state with `fly status`. The Machine must show as `running`.
-
-## Step 3: Store the host secrets
-
-1. Generate the encryption key on your own machine.
-
+   ```powershell
+   fly launch --no-deploy --name solar-sizer-gateway --region jnb --dockerfile scraper/host/Dockerfile
+   fly volumes create freellmapi_data --size 1 --region jnb
    ```
+
+5. Write `fly.toml` at the repository root with this content.
+
+   ```toml
+   app = "solar-sizer-gateway"
+   primary_region = "jnb"
+
+   [build]
+     dockerfile = "scraper/host/Dockerfile"
+
+   [env]
+     PORT = "3001"
+     HOST = "127.0.0.1"
+
+   [mounts]
+     source = "freellmapi_data"
+     destination = "/app/server/data"
+
+   [[vm]]
+     size = "shared-cpu-1x"
+     memory = "512mb"
+
+   [processes]
+     app = "node /app/start.mjs"
+
+   [deploy]
+     strategy = "rolling"
+   ```
+
+   Do not add an `http_service` section. The gateway binds to the loopback interface.
+
+6. Generate the encryption key.
+
+   ```powershell
    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 
-2. Write the gateway configuration to a file named `freellmapi.config.json`. Use this shape.
+7. Write the gateway configuration to a file named `freellmapi.config.json`. Keep it out of the repository.
 
    ```json
    {
@@ -120,11 +236,9 @@ Check the state with `fly status`. The Machine must show as `running`.
    }
    ```
 
-   Add one entry in `keys` for every free model provider that you use. The file holds plain secrets. Keep it out of the repo. Write it as one line of JSON.
+   Add one entry in `keys` for every provider you use. Write the file as one line of JSON.
 
-3. Set the host secrets. The command reads the pairs from standard input. Set `WORKER_URL` to `https://sdk2.solarsizer.workers.dev` first.
-
-   On Windows PowerShell:
+8. Store the host secrets. `WORKER_URL` is `https://sdk2.solarsizer.workers.dev`, and `ADMIN_PASSWORD` is the value from Step 1.
 
    ```powershell
    @"
@@ -135,138 +249,115 @@ Check the state with `fly status`. The Machine must show as `running`.
    "@ | fly secrets import -a solar-sizer-gateway
    ```
 
-   On macOS or Linux:
+9. Deploy and check the Machine.
 
-   ```bash
-   printf 'ENCRYPTION_KEY=%s\nFREEAPI_CONFIG_JSON=%s\nADMIN_PASSWORD=%s\nWORKER_URL=%s\n' \
-     "$ENCRYPTION_KEY" "$(cat freellmapi.config.json)" "$ADMIN_PASSWORD" "$WORKER_URL" \
-     | fly secrets import -a solar-sizer-gateway
-   ```
-
-4. Remove the local copy of the configuration file after the secrets are stored.
-
-   ```
-   Remove-Item freellmapi.config.json
-   ```
-
-## Step 4: Set the GitHub Actions secrets
-
-The `gh` command line tool reads each value from standard input.
-
-```
-gh secret set ADMIN_PASSWORD --repo oraekene/Solar_Sizer_SDK2
-gh secret set WORKER_URL --repo oraekene/Solar_Sizer_SDK2
-```
-
-Phase one has no rate source, so the runner archives every price that is not in naira with the reason code `usd_rate_unavailable`. When a source quotes in dollars, add the rate endpoint as the secret `FX_RATE_URL` and convert with the rate in `rates.NGN` and the update time in `time_last_update_utc`.
-
-## Step 5: Set the Worker secrets
-
-Run these commands from the repo root.
-
-```
-npx wrangler secret put ADMIN_PASSWORD
-npx wrangler secret put KAPSO_API_KEY
-npx wrangler secret put KAPSO_PHONE_NUMBER_ID
-npx wrangler secret put KAPSO_ALERT_TO
-npx wrangler secret put KAPSO_TEMPLATE_NAME
-```
-
-The command reads each value from standard input. The `ADMIN_PASSWORD` value must match the value on the host and in GitHub Actions.
-
-## Step 6: Connect WhatsApp through Kapso
-
-1. Log in.
-
-   ```
-   kapso login
-   ```
-
-2. Start the setup and follow the hosted link.
-
-   ```
-   kapso setup
-   ```
-
-3. List the connected numbers and keep the `phone_number_id` of the number that sends the alert.
-
-   ```
-   kapso whatsapp numbers list --output json
-   ```
-
-4. Create a WhatsApp template for the alert text. Use the `create-template.mjs` script from the `integrate-whatsapp` skill. The template needs the `UTILITY` category and two named parameters, `{{reason}}` and `{{details}}`. Meta must approve the template before the alert can use it.
-
-5. Store the template name in the Worker as `KAPSO_TEMPLATE_NAME`.
-
-## Step 7: Confirm the alert path
-
-Send a test message from the Kapso command line tool.
-
-```
-kapso whatsapp messages send --phone-number-id <PHONE_NUMBER_ID> --to <OWNER_NUMBER> --text "Solar Sizer scraper test"
-```
-
-The message arrives when the owner number has started a conversation with the Kapso number. Outside that 24-hour window, WhatsApp only accepts the approved template.
-
-## Step 8: Verify the whole chain
-
-Run these checks after the implementation lands.
-
-1. The gateway answers on the host.
-
-   ```
-   fly ssh console -a solar-sizer-gateway -C "node /app/print-unified-key.mjs"
-   ```
-
-   The command prints the unified key. The drainer reads the same value at startup, so the output is a check and not a step.
-
-2. The Machine logs show the gateway and the drainer.
-
-   ```
+   ```powershell
+   fly deploy
+   fly scale count app=1 --region jnb
+   fly status -a solar-sizer-gateway
    fly logs -a solar-sizer-gateway
    ```
 
-3. The Worker rejects a request without the key and accepts it with the key.
+   The Machine must show as `running`, and the logs must show the gateway and the drainer starting.
 
+10. Remove the local configuration file.
+
+    ```powershell
+    Remove-Item freellmapi.config.json
+    ```
+
+11. Check that the gateway holds a unified key.
+
+    ```powershell
+    fly ssh console -a solar-sizer-gateway -C "node /app/print-unified-key.mjs"
+    ```
+
+    The command prints the key. The drainer reads the same value at startup, so this is a check rather than a setup step.
+
+12. Confirm the drainer loop. The Worker queue is drained every 30 seconds. A queued image gets a result, or an error that names the gateway call. If the gateway rejects the unified key, the drainer refreshes it once.
+
+## Step 6: Connect WhatsApp through Kapso
+
+1. Log in and start the setup.
+
+   ```powershell
+   kapso login
+   kapso setup
    ```
-   curl -i "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
-   curl -i -H "x-admin-key: $ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
+
+2. List the connected numbers and keep the `phone_number_id` of the number that sends the alert.
+
+   ```powershell
+   kapso whatsapp numbers list --output json
    ```
 
-   The first call answers `401`. The second call answers `200`.
+3. Create a WhatsApp template with the `UTILITY` category and one named body parameter, `message`. The Worker sends `parameter_name: "message"`, so a template with two parameters will be refused.
 
-4. The Actions secrets exist.
+4. Store the four Worker secrets.
 
+   ```powershell
+   npx wrangler secret put KAPSO_API_KEY
+   npx wrangler secret put KAPSO_PHONE_NUMBER_ID
+   npx wrangler secret put KAPSO_ALERT_TO
+   npx wrangler secret put KAPSO_TEMPLATE_NAME
    ```
-   gh secret list --repo oraekene/Solar_Sizer_SDK2
+
+5. Send a test through the Worker route. The route returns `{ "success": true }` when Kapso accepts the message.
+
+   ```powershell
+   curl.exe -sS -X POST `
+     -H "x-admin-key: $env:ADMIN_PASSWORD" `
+     -H "content-type: application/json" `
+     -d '{"message":"Solar Sizer scraper test"}' `
+     "https://sdk2.solarsizer.workers.dev/api/scraper/alert"
    ```
 
-5. The review screen works. Open the app with `?admin=true`, unlock it, open the Hardware DB tab and press "Scraper review". The list shows the candidates that wait for a human. Open one to see its offers, then approve, edit, merge or publish it. A candidate that misses a field the calculator reads cannot be published until the field is filled in.
+   If the route answers `503`, a Kapso value is missing. If it answers `502`, Kapso refused the message; the response detail carries the first part of the reason.
 
-## What the implementation adds
+6. The message arrives only when the owner number has an open conversation with the Kapso number, or when the approved template is used. The Worker always uses the template.
 
-| Path | Purpose |
-| --- | --- |
-| `scraper/host/Dockerfile` | Runs the FreeLLMAPI image with the drainer beside it. |
-| `scraper/host/start.mjs` | Starts the gateway and the drainer, and stops the Machine when either one dies. |
-| `scraper/host/drainer.mjs` | Polls the Worker for queued images, calls the gateway and posts the results back. |
-| `scraper/host/print-unified-key.mjs` | Prints the unified key for the check in Step 8. |
-| `scraper/adapters/` | One module for each source. |
-| `scraper/worker-client.ts` | The authenticated calls into the Worker. |
-| `.github/workflows/scraper-sweep.yml` | The daily sweep at 02:00 WAT. |
-| `.github/workflows/scraper-discovery.yml` | The weekly crawl on Sunday at 03:00 WAT. |
-| `.github/workflows/scraper-watchdog.yml` | The daily heartbeat check that opens the `scraper-alert` issue. |
-| `worker/scraper.ts` | The admin routes for the candidates, the offers, the queue, the run reports and the alert. |
-| `src/components/ScraperReview.tsx` | The review queue in the admin Hardware DB tab. |
-| `migrations/0009_scraper.sql` | The staging tables. |
+## Step 7: Verify the review path
+
+1. Open the app with `?admin=true`, unlock it with the admin password, open the Hardware DB tab and press `Scraper review`.
+2. Open a candidate. The modal shows the offers, the risk flags and the provenance.
+3. Approve the candidate, edit a missing field if the screen asks for one, and publish it.
+4. Confirm that the published row appears in the hardware table with `price_source: scraped`, that the candidate becomes `published`, and that a price history row exists when the price changed.
+5. Confirm that a manual row cannot be replaced until the screen asks you to accept the scraped median.
+
+A candidate with no fresh qualified offer is refused with `stale-candidate`. Run the sweep again before publishing in that case.
+
+## Step 8: Confirm the alert path
+
+1. Run the watchdog by hand while the last sweep is fresh. It must pass without opening an issue.
+
+   ```powershell
+   gh workflow run scraper-watchdog.yml --repo oraekene/Solar_Sizer_SDK2
+   gh run list --repo oraekene/Solar_Sizer_SDK2 --limit 3
+   ```
+
+2. Send the Worker alert once with the test in Step 6. This proves the Kapso path without waiting for a stale sweep.
+
+3. If a real stale sweep happens, the watchdog creates one issue titled `Scraper sweep did not run`, adds a comment on later failures, sends the WhatsApp alert and exits red. It never closes the issue automatically; close it by hand after recovery.
 
 ## Rotating a secret
 
 1. Set the new value in every place that holds it.
-2. Restart the Machine if the value belongs to the host.
+2. Restart the host when the value belongs to the host.
 
-   ```
+   ```powershell
    fly machine restart -a solar-sizer-gateway
    ```
 
 3. If you rotate `ENCRYPTION_KEY`, run the rotation tool in the upstream project first. The key encrypts the provider keys at rest, so a plain change makes every provider key unreadable.
+
+## When something fails
+
+| Symptom | Check |
+| --- | --- |
+| Actions deploy says `Invalid access token [code: 9109]` | The token is revoked or lacks Workers Scripts edit and D1 edit. Create a new token and set both secrets. |
+| Migrations still show as pending | Run the manual commands in Step 3. The Workers Builds deployment does not apply migrations. |
+| A source is missing from a run | Read `requests.pause_reasons` in the run report. A spent budget, a 403 or a repeated 429 or 503 pauses that source for the rest of the run. |
+| Sweep publishes nothing | Check that the offers are qualified, in stock, on a piece basis, new and inside the 15 percent band. A manual row always waits for review. |
+| Discovery finds no new offers | Known URLs are skipped by exact `source_url`. Delete a stale offer or wait for the source to publish a new listing. |
+| The queue never drains | Check `fly logs`. The drainer needs `WORKER_URL`, `ADMIN_PASSWORD` and a unified key in the gateway database. |
+| The WhatsApp alert does not arrive | Check the four Worker secrets, the template name and the one `message` body parameter. A `502` carries Kapso's reason. |

@@ -6,7 +6,9 @@ import test from 'node:test';
 import { brandKey, canonicalId, compareIdentity, identityOf, modelFromName } from './identity.ts';
 import { proposeCandidates } from './merge.ts';
 import type { MergeOffer } from './merge.ts';
-import { excludeForeignCurrency } from './rules.ts';
+import { applyFxRate } from './fx.ts';
+import { applyCrossPostSignals } from './run-common.ts';
+import type { OfferPayload } from './run-common.ts';
 
 const aliases = {
   '9solar': ['9solar', 'nine solar', 'nine solar energy', '9 solar'],
@@ -45,21 +47,21 @@ test('the brand folds the alias spellings', () => {
   assert.deepEqual(brandKey('', aliases), { brand: 'unbranded', kind: 'unbranded' });
 });
 
-test('a price in another currency is archived instead of joining the median', () => {
-  const naira = excludeForeignCurrency({
-    currency: 'NGN',
-    status: 'qualified',
-    reason_code: null,
-  });
-  assert.equal(naira.status, 'qualified');
-
-  const dollar = excludeForeignCurrency({
-    currency: 'USD',
-    status: 'qualified',
-    reason_code: null,
-  });
-  assert.equal(dollar.status, 'excluded');
-  assert.equal(dollar.reason_code, 'usd_rate_unavailable');
+test('a dollar price is converted with the stored daily rate', () => {
+  const rate = { rate: 1400, date: '2026-11-14T08:45:01.000Z', source: 'nairadaily.net' };
+  const dollar = applyFxRate(
+    {
+      price: 100,
+      currency: 'USD',
+      status: 'qualified',
+      reason_code: null,
+    },
+    rate,
+  );
+  assert.equal(dollar.status, 'qualified');
+  assert.equal(dollar.price_ngn, 140_000);
+  assert.equal(dollar.price_ngn_rounded, 140_000);
+  assert.equal(dollar.fx_source, 'nairadaily.net');
 });
 
 test('the model drops the brand and the electrical tokens', () => {
@@ -175,6 +177,15 @@ test('a price from unknown sellers alone carries the low confidence flag', () =>
   assert.ok(proposals[0].risk_flags.includes('low confidence price'));
 });
 
+test('a price from unknown sellers alone never auto-publishes a scraped row', () => {
+  const offers = [panel({ id: 'a', price: 100_000, trust_tier: 'unknown' })];
+  const hardware = [{ id: 'sc-9solar-mono', type: 'panel', price: 95_000, price_source: 'scraped' }];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware });
+  assert.equal(proposals[0].status, 'pending_review');
+  assert.ok(proposals[0].risk_flags.includes('low confidence price'));
+});
+
 test('two sources that state different fields still form one candidate', () => {
   const offers = [
     panel({ id: 'a', price: 100_000, trust_tier: 'verified', seller_id: 's1' }),
@@ -229,6 +240,57 @@ test('a weaker match with a catalogue row waits for a human', () => {
   assert.ok(proposals[0].risk_flags.includes('possible duplicate of p-9'));
 });
 
+test('two ads with the same seller, price and image count once', () => {
+  const offers = [
+    panel({ id: 'a', seller_id: 'seller-1', price: 100_000, image_hash: 'photo-1' }),
+    panel({ id: 'b', seller_id: 'seller-1', price: 100_000, image_hash: 'photo-1' }),
+    panel({ id: 'c', seller_id: 'seller-2', price: 100_000, image_hash: 'photo-1' }),
+  ];
+
+  const { proposals, excluded } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.deepEqual(excluded, [{ offer_id: 'b', reason_code: 'duplicate_of_existing_offer' }]);
+  assert.equal(proposals[0].proposed_price, 100_000);
+  assert.equal(proposals[0].low_confidence, false);
+});
+
+test('an official product page wins over a seller statement and the conflict is flagged', () => {
+  const offers = [
+    panel({
+      id: 'a',
+      seller_id: 'seller-1',
+      trust_tier: 'verified',
+      stated_specs: { ...panel().stated_specs, voc: 50 },
+      trading_signals: { spec_source: 'model_parse' },
+    }),
+    panel({
+      id: 'b',
+      seller_id: 'seller-2',
+      trust_tier: 'established',
+      stated_specs: { ...panel().stated_specs, voc: 49 },
+      trading_signals: { spec_source: 'datasheet' },
+    }),
+  ];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.equal(proposals[0].proposed_data.voc, 49);
+  assert.equal(proposals[0].provenance.find((entry) => entry.field === 'voc')?.kind, 'datasheet');
+  assert.ok(proposals[0].risk_flags.includes('sellers disagree on voc'));
+  assert.equal(proposals[0].status, 'pending_review');
+});
+
+test('the same photo at a different price records a cross-post signal', () => {
+  const offers = [
+    panel({ id: 'a', seller_id: 'seller-1', price: 100_000, image_hash: 'photo-1' }),
+    panel({ id: 'b', seller_id: 'seller-1', price: 120_000, image_hash: 'photo-1' }),
+  ];
+
+  const { proposals, cross_posts } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.equal(proposals[0].proposed_price, 110_000);
+  assert.deepEqual(cross_posts, [
+    { offer_id: 'b', existing_offer_id: 'a', image_hash: 'photo-1' },
+  ]);
+});
+
 test('a battery keeps the shape that src/types.ts expects', () => {
   const offers: MergeOffer[] = [
     {
@@ -253,4 +315,37 @@ test('a battery keeps the shape that src/types.ts expects', () => {
   assert.equal(data.max_parallel_strings, 16);
   assert.equal(data.min_c_rate, 0.5);
   assert.equal(data.voltage_v, undefined);
+});
+
+test('a cross-post signal is removed when the current pool no longer has the pair', () => {
+  const offer = (id: string): OfferPayload => ({
+    source_site: 'jumia',
+    source_listing_id: id,
+    source_url: `https://jumia/${id}`,
+    seller_id: 'seller-1',
+    seller_name: 'Seller One',
+    price: 100_000,
+    currency: 'NGN',
+    price_kind: 'cash',
+    unit_basis: 'piece',
+    unit_quantity: null,
+    condition: 'new',
+    in_stock: 'true',
+    trust_tier: 'verified',
+    stated_specs: { watts: 550 },
+    trading_signals: {
+      cross_posted_image_hash: 'old-photo',
+      cross_posted_offer_ids: ['other'],
+    },
+    raw_payload: {},
+    status: 'qualified',
+    reason_code: null,
+    last_checked: '2026-11-14T00:00:00.000Z',
+    scraped_at: '2026-11-14T00:00:00.000Z',
+  });
+
+  const result = applyCrossPostSignals([offer('a'), offer('b')], []);
+  assert.deepEqual(result.pool[0].trading_signals, {});
+  assert.deepEqual(result.pool[1].trading_signals, {});
+  assert.deepEqual([...result.affected].sort(), ['jumia:a', 'jumia:b']);
 });

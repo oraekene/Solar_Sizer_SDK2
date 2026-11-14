@@ -3,8 +3,10 @@
 // price, the stock, the condition and the seller.
 
 import { fetchText } from '../http.ts';
+import { collectImageFacts } from '../image.ts';
 import { identitySpecsMissing, parseTitleSpecs, productTypeFromTitle } from '../specs.ts';
 import type { DiscoveredListing, InStock, PageResult, ScraperOffer, SourceAdapter, TrustTier } from './types.ts';
+import { conditionFromText } from './types.ts';
 
 const SITE = 'https://www.jumia.com.ng';
 const SOURCE = 'jumia';
@@ -83,6 +85,7 @@ type JsonLdProduct = {
   sku?: string;
   url?: string;
   category?: string;
+  image?: string | { url?: string; contentUrl?: string | string[] };
   offers?: {
     availability?: string;
     price?: string | number;
@@ -115,11 +118,7 @@ export function parseJsonLd(html: string): JsonLdProduct | null {
 }
 
 function conditionFrom(itemCondition: string | undefined): string {
-  if (!itemCondition) return 'unknown';
-  if (/new/i.test(itemCondition)) return 'new';
-  if (/refurb/i.test(itemCondition)) return 'refurbished';
-  if (/used/i.test(itemCondition)) return 'used';
-  return 'unknown';
+  return conditionFromText(itemCondition);
 }
 
 function stockFrom(availability: string | undefined): InStock {
@@ -127,6 +126,13 @@ function stockFrom(availability: string | undefined): InStock {
   if (/instock/i.test(availability)) return 'true';
   if (/outofstock|soldout|discontinued/i.test(availability)) return 'false';
   return 'unknown';
+}
+
+export function productImageUrl(product: JsonLdProduct): string | null {
+  if (typeof product.image === 'string') return product.image;
+  if (!product.image) return null;
+  if (Array.isArray(product.image.contentUrl)) return product.image.contentUrl[0] ?? null;
+  return product.image.contentUrl ?? product.image.url ?? null;
 }
 
 function brandName(brand: JsonLdProduct['brand']): string | null {
@@ -232,7 +238,17 @@ export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer
   }
   const product = parseJsonLd(response.html);
   if (!product) return { value: null, status: response.status, error: 'the page has no JSON-LD product' };
-  return { value: buildOffer(product, url), status: response.status };
+  const offer = buildOffer(product, url);
+  const image = await collectImageFacts(response.html, url, SOURCE, productImageUrl(product));
+  return {
+    value: {
+      ...offer,
+      image_url: image.image_url,
+      image_hash: image.image_hash,
+      trading_signals: { ...offer.trading_signals, ...image },
+    },
+    status: response.status,
+  };
 }
 
 export const jumia: SourceAdapter = {

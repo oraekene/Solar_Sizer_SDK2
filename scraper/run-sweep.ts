@@ -5,11 +5,14 @@
 
 import { randomUUID } from 'node:crypto';
 import { adapterFor } from './adapters/index.ts';
+import { loadFxRate } from './fx.ts';
+import { configureRequestBudgets, requestReport, resetRequestState } from './http.ts';
 import { NOT_FOUND_STRIKES } from './rules.ts';
 import { offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
 import type { OfferPayload } from './run-common.ts';
-import { loadWatchlist } from './watchlist.ts';
+import { isBlocked, loadWatchlist } from './watchlist.ts';
 import { WorkerClient } from './worker-client.ts';
+import type { WorkerOfferRow } from './worker-client.ts';
 
 const CHECK_CEILING = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -20,6 +23,30 @@ function isDue(lastChecked: string | null, now: number): boolean {
   const time = Date.parse(lastChecked);
   if (Number.isNaN(time)) return true;
   return now - time >= DAY_MS;
+}
+
+function takeDue(rows: WorkerOfferRow[], max: number): WorkerOfferRow[] {
+  const queues = new Map<string, WorkerOfferRow[]>();
+  for (const row of rows) {
+    const queue = queues.get(row.source_site) ?? [];
+    queue.push(row);
+    queues.set(row.source_site, queue);
+  }
+  const indexes = new Map([...queues.keys()].map((source) => [source, 0]));
+  const selected: WorkerOfferRow[] = [];
+  while (selected.length < max) {
+    let added = false;
+    for (const [source, queue] of queues) {
+      const index = indexes.get(source) ?? 0;
+      if (index >= queue.length) continue;
+      selected.push(queue[index]);
+      indexes.set(source, index + 1);
+      added = true;
+      if (selected.length >= max) break;
+    }
+    if (!added) break;
+  }
+  return selected;
 }
 
 async function main(): Promise<void> {
@@ -40,14 +67,37 @@ async function main(): Promise<void> {
   const client = new WorkerClient(workerUrl, adminKey);
   const watchlist = await loadWatchlist();
   const previous = await client.listOffers();
+  const fx = await loadFxRate();
+  const overrideBudget = Number(process.env.SCRAPER_SOURCE_REQUEST_BUDGET);
+  const fallbackBudget = Number.isFinite(overrideBudget) ? overrideBudget : 250;
+  const sourceBudgets = watchlist.source_budgets?.sweep ?? {
+    jumia: fallbackBudget,
+    jiji: fallbackBudget,
+    solarshopnigeria: fallbackBudget,
+  };
+  resetRequestState();
+  configureRequestBudgets(
+    Number.isFinite(overrideBudget)
+      ? { jumia: overrideBudget, jiji: overrideBudget, solarshopnigeria: overrideBudget }
+      : sourceBudgets,
+  );
   const now = Date.now();
 
-  const due = previous
-    .filter((row) => row.status !== 'excluded' && isDue(row.last_checked, now))
-    .slice(0, maxChecks);
+  const eligible = previous.filter(
+    (row) =>
+      (row.status !== 'excluded' || row.reason_code === 'usd_rate_unavailable') &&
+      isDue(row.last_checked, now),
+  );
+  const due = takeDue(
+    eligible.filter((row) => !isBlocked(watchlist, row.source_site, row.source_url)),
+    maxChecks,
+  );
 
   const changed: OfferPayload[] = [];
   const skipped: Array<{ id: string; reason: string }> = [];
+  for (const row of eligible.filter((entry) => isBlocked(watchlist, entry.source_site, entry.source_url))) {
+    skipped.push({ id: row.id, reason: 'the path is blocked by the site rules' });
+  }
   const strikes: string[] = [];
 
   for (const row of due) {
@@ -57,7 +107,9 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const result = await adapter.crawlProduct(row.source_url);
+    const result = await adapter.crawlProduct(row.source_url, {
+      imageUrl: typeof row.trading_signals.image_url === 'string' ? row.trading_signals.image_url : null,
+    });
     if (result.status === 404) {
       // A gone listing counts as a strike. A block or a timeout does not.
       const count = row.not_found_strikes + 1;
@@ -90,6 +142,7 @@ async function main(): Promise<void> {
     changed,
     pool,
     previous,
+    fx,
   });
 
   const report = {
@@ -99,6 +152,11 @@ async function main(): Promise<void> {
     strikes,
     candidates: rebuilt.candidates,
     published: rebuilt.published,
+    excluded: rebuilt.excluded,
+    collapsed: rebuilt.excluded.filter((entry) => entry.reason_code === 'duplicate_of_existing_offer').length,
+    cross_posts: rebuilt.cross_posts,
+    fx,
+    requests: requestReport(),
     publish_errors: rebuilt.publish_errors,
   };
 

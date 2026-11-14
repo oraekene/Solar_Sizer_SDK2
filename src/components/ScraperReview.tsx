@@ -36,6 +36,8 @@ type Offer = {
   last_checked: string | null;
   status: string;
   reason_code: string | null;
+  collapsed_count: number;
+  trading_signals: Record<string, unknown>;
 };
 
 export type MergeTarget = { id: string; name: string; type: string };
@@ -241,9 +243,13 @@ export default function ScraperReview({
     if (saved) setMessage(`The candidate now points at ${mergeId}.`);
   };
 
-  const selectedOffers = selected
+  const selectedOfferRows = selected
     ? selected.offer_ids.map((id) => offersById.get(id)).filter((offer): offer is Offer => Boolean(offer))
     : [];
+  const representatives = selectedOfferRows.filter(
+    (offer) => offer.reason_code !== 'duplicate_of_existing_offer',
+  );
+  const selectedOffers = representatives.length > 0 ? representatives : selectedOfferRows;
 
   // The calculator reads these fields, so a row without them never goes live.
   const selectedMissing = selected ? missingSpecs(selected.product_type, selected.proposed_data) : [];
@@ -481,6 +487,17 @@ export default function ScraperReview({
                           {offer.reason_code ?? offer.status}
                         </span>
                       )}
+                      {offer.collapsed_count > 0 && (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold">
+                          {offer.collapsed_count} identical {offer.collapsed_count === 1 ? 'ad' : 'ads'} collapsed
+                        </span>
+                      )}
+                      {Array.isArray(offer.trading_signals?.cross_posted_offer_ids) &&
+                        offer.trading_signals.cross_posted_offer_ids.length > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold">
+                            cross-posted
+                          </span>
+                        )}
                       <a
                         href={offer.source_url}
                         target="_blank"

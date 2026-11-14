@@ -3,6 +3,7 @@
 // page on the server, so plain fetch is enough. No browser is used.
 
 import { fetchText } from '../http.ts';
+import { collectImageFacts } from '../image.ts';
 import { identitySpecsMissing, normalizeSpecs, parseSpecLine } from '../specs.ts';
 import type { DiscoveredListing, InStock, PageResult, ScraperOffer, SourceAdapter, TrustTier } from './types.ts';
 
@@ -243,7 +244,8 @@ export function buildOffer(facts: ProductFacts, now = new Date().toISOString()):
       was_price: facts.was_price,
       pack_price: facts.pack_price,
       product_type: productType,
-      spec_source: 'stated',
+      spec_source:
+        facts.brand && OFFICIAL_BRANDS.has(facts.brand.trim().toLowerCase()) ? 'datasheet' : 'stated',
       missing_specs: missing,
       missing_calculation_specs: calculationMissing,
     },
@@ -276,7 +278,17 @@ export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer
   }
   const facts = parseProductPage(response.html, url);
   if (!facts) return { value: null, status: response.status, error: 'the page has no product heading' };
-  return { value: buildOffer(facts), status: response.status };
+  const offer = buildOffer(facts);
+  const image = await collectImageFacts(response.html, url, SOURCE);
+  return {
+    value: {
+      ...offer,
+      image_url: image.image_url,
+      image_hash: image.image_hash,
+      trading_signals: { ...offer.trading_signals, ...image },
+    },
+    status: response.status,
+  };
 }
 
 export const solarShopNigeria: SourceAdapter = {

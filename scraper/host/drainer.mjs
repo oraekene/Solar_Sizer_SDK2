@@ -39,6 +39,7 @@ async function worker(path, init = {}) {
       'content-type': 'application/json',
       ...(init.headers ?? {}),
     },
+    signal: init.signal ?? AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
     throw new Error(`Worker ${path} failed with status ${response.status}.`);
@@ -48,7 +49,10 @@ async function worker(path, init = {}) {
 
 // The image becomes a data URL so the gateway does not fetch it again.
 async function imageAsDataUrl(imageUrl) {
-  const response = await fetch(imageUrl, { headers: { 'user-agent': 'SolarSizerBot/0.1 (+https://solarsizer.com/bot)' } });
+  const response = await fetch(imageUrl, {
+    headers: { 'user-agent': 'SolarSizerBot/0.1 (+https://solarsizer.com/bot)' },
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!response.ok) throw new Error(`the image could not be fetched (status ${response.status})`);
   const type = response.headers.get('content-type') ?? 'image/jpeg';
   const bytes = Buffer.from(await response.arrayBuffer());
@@ -89,6 +93,7 @@ async function readSpecs(imageUrl) {
         },
       ],
     }),
+    signal: AbortSignal.timeout(120_000),
   });
 
   if (response.status === 401) {

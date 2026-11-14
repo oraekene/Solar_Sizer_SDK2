@@ -6,6 +6,12 @@
     "budget": "500 offer checks per day, 200 listing pages per weekly crawl, one request per second (design doc section 3.2)."
   },
 
+  "source_budgets": {
+    "_comment": "Soft request ceilings for one run. Product pages and image downloads count. A source that reaches its ceiling or is refused is paused for the rest of that run.",
+    "sweep": { "jumia": 250, "jiji": 300, "solarshopnigeria": 100 },
+    "discovery": { "jumia": 100, "jiji": 120, "solarshopnigeria": 40 }
+  },
+
   "manual_rows": [
     { "hardware_id": "p-1", "brand": "Kulpower", "model": "100W Mono", "watts": 100 },
     { "hardware_id": "p-2", "brand": "9Solar", "model": "190W Mono", "watts": 190 },

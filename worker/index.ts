@@ -227,7 +227,8 @@ async function tableIsEmpty(db: D1Database, table: 'devices_master' | 'products'
 }
 
 async function ensureBootstrapped(db: D1Database) {
-  // Keep working on a fresh D1 even if the migration has not been applied yet.
+  // The base app tables can start on a fresh D1. The scraper tables and columns
+  // still require migrations 0009 through 0012.
   await db.batch(SCHEMA.map((sql) => db.prepare(sql)));
 
   const statements: D1PreparedStatement[] = [];

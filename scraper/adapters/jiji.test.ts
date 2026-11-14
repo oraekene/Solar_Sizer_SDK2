@@ -33,6 +33,7 @@ test('the feed gives the listings of one category page', () => {
   assert.equal(first.currency, 'NGN');
   assert.equal(first.source_listing_id, 'HsaXSvMaf3xwWzodz57VCkT');
   assert.equal(first.source_url, PRODUCT_URL);
+  assert.equal(first.image_url, 'https://pictures-nigeria.jijistatic.net/164064850_MzAwLTMwMC0zM2MwOGQ1YmYx.webp');
 });
 
 test('the condition comes from the attributes of the advert', () => {
@@ -40,6 +41,8 @@ test('the condition comes from the attributes of the advert', () => {
   assert.equal(conditionFromAttrs([{ name: 'Condition', value: 'Used' }]), 'used');
   assert.equal(conditionFromAttrs([{ name: 'Condition', value: 'Foreign Used' }]), 'foreign_used');
   assert.equal(conditionFromAttrs([{ name: 'Condition', value: 'Refurbished' }]), 'refurbished');
+  assert.equal(conditionFromAttrs([{ name: 'Condition', value: 'Open box' }]), 'refurbished');
+  assert.equal(conditionFromAttrs([{ name: 'Condition', value: 'Swap' }]), 'used');
   assert.equal(conditionFromAttrs(undefined), 'unknown');
 });
 

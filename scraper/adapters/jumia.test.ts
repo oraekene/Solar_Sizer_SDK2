@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { buildOffer, listingIdFromUrl, parseCategoryPage, parseJsonLd } from './jumia.ts';
+import { buildOffer, listingIdFromUrl, parseCategoryPage, parseJsonLd, productImageUrl } from './jumia.ts';
 
 const fixture = (name: string) => fs.readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -121,6 +121,29 @@ test('a used listing is archived with its label', () => {
   assert.equal(offer.status, 'excluded');
   assert.equal(offer.reason_code, 'used');
   assert.equal(offer.condition, 'used');
+});
+
+test('open box and swap listings are archived with their condition label', () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+
+  const openBox = {
+    ...product,
+    offers: { ...product.offers, itemCondition: 'Open box' },
+  };
+  assert.equal(buildOffer(openBox, PANEL_URL).reason_code, 'refurbished');
+
+  const swap = {
+    ...product,
+    offers: { ...product.offers, itemCondition: 'Swap' },
+  };
+  assert.equal(buildOffer(swap, PANEL_URL).reason_code, 'used');
+});
+
+test('the product image comes from the JSON-LD content URL', () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+  assert.match(productImageUrl(product) ?? '', /ng\.jumia\.is/);
 });
 
 test('the listing id comes from the trailing digits of the address', () => {

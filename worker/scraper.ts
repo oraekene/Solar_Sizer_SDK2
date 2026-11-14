@@ -79,6 +79,133 @@ function number(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+const ENRICHMENT_NUMERIC_FIELDS = new Set([
+  'watts',
+  'voc',
+  'isc',
+  'voltage_v',
+  'capacity_ah',
+  'capacity_kwh',
+  'efficiency_pct',
+]);
+const ENRICHMENT_TEXT_FIELDS = new Set(['battery_type', 'cell_type']);
+
+export function validateEnrichmentResult(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('The enrichment result must be one JSON object.');
+  }
+  const result: Record<string, unknown> = {};
+  for (const [field, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!ENRICHMENT_NUMERIC_FIELDS.has(field) && !ENRICHMENT_TEXT_FIELDS.has(field)) {
+      throw new Error(`The enrichment result has an unknown field: ${field}`);
+    }
+    if (raw === null || raw === undefined) continue;
+    if (ENRICHMENT_NUMERIC_FIELDS.has(field)) {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+        throw new Error(`The enrichment field ${field} must be a positive number.`);
+      }
+      result[field] = raw;
+      continue;
+    }
+    if (typeof raw !== 'string' || raw.length > 200) {
+      throw new Error(`The enrichment field ${field} must be short text.`);
+    }
+    if (field === 'battery_type' && !['lithium', 'lead-acid'].includes(raw)) {
+      throw new Error('The enrichment field battery_type must be lithium or lead-acid.');
+    }
+    result[field] = raw;
+  }
+  return result;
+}
+
+async function applyEnrichmentToHashes(
+  db: D1Database,
+  specsByHash: Map<string, Record<string, unknown>>,
+): Promise<void> {
+  const hashes = [...specsByHash.keys()];
+  if (hashes.length === 0) return;
+  const placeholders = hashes.map(() => '?').join(',');
+  const offers = await db
+    .prepare(
+      `SELECT id, image_hash, stated_specs, trading_signals
+       FROM hardware_offers WHERE image_hash IN (${placeholders})`,
+    )
+    .bind(...hashes)
+    .all<{
+      id: string;
+      image_hash: string;
+      stated_specs: string;
+      trading_signals: string;
+    }>();
+  const statements = (offers.results ?? []).map((offer) => {
+    const specs = specsByHash.get(offer.image_hash) ?? {};
+    const known = parseJson(offer.stated_specs) as Record<string, unknown>;
+    const signals = parseJson(offer.trading_signals) as Record<string, unknown>;
+    const fieldSources =
+      signals.spec_sources && typeof signals.spec_sources === 'object'
+        ? (signals.spec_sources as Record<string, unknown>)
+        : {};
+    const merged = { ...known };
+    for (const [field, value] of Object.entries(specs)) {
+      if (merged[field] === undefined || merged[field] === null || merged[field] === '') {
+        merged[field] = value;
+        fieldSources[field] = 'image_enrichment';
+      }
+    }
+    const enrichmentSpecs =
+      signals.enrichment_specs && typeof signals.enrichment_specs === 'object'
+        ? (signals.enrichment_specs as Record<string, unknown>)
+        : {};
+    return db
+      .prepare(
+        `UPDATE hardware_offers
+         SET stated_specs = ?, trading_signals = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .bind(
+        JSON.stringify(merged),
+        JSON.stringify({
+          ...signals,
+          spec_sources: fieldSources,
+          enrichment_specs: { ...enrichmentSpecs, ...specs },
+        }),
+        offer.id,
+      );
+  });
+  if (statements.length > 0) await db.batch(statements);
+}
+
+async function applyEnrichmentToHash(
+  db: D1Database,
+  imageHash: string,
+  specs: Record<string, unknown>,
+): Promise<void> {
+  await applyEnrichmentToHashes(db, new Map([[imageHash, specs]]));
+}
+
+type PublishSupport = {
+  status: string;
+  in_stock: string;
+  unit_basis: string | null;
+  condition: string;
+  price: number | null;
+  last_checked: string | null;
+};
+
+export function isQualifiedPublishSupport(
+  offer: PublishSupport,
+  now = Date.now(),
+): boolean {
+  if (offer.status !== 'qualified' || offer.in_stock !== 'true') return false;
+  if (offer.unit_basis !== 'piece' && offer.unit_basis !== 'derived') return false;
+  if (['used', 'foreign_used', 'refurbished', 'open_box'].includes(offer.condition)) return false;
+  if (typeof offer.price !== 'number' || offer.price <= 0) return false;
+  const checked = Date.parse(offer.last_checked ?? '');
+  if (Number.isNaN(checked)) return false;
+  const age = now - checked;
+  return age >= -24 * 60 * 60 * 1000 && age <= UNVERIFIED_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
 export async function handleScraperRoute(
   request: Request,
   env: ScraperEnv,
@@ -188,9 +315,15 @@ export async function handleScraperRoute(
         template: {
           name: template,
           language: { code: 'en' },
-          components: [{ type: 'body', parameters: [{ type: 'text', text: message }] }],
+          components: [
+            {
+              type: 'body',
+              parameters: [{ type: 'text', parameter_name: 'message', text: message }],
+            },
+          ],
         },
       }),
+      signal: AbortSignal.timeout(15_000),
     });
 
     const result = await response.text();
@@ -198,6 +331,19 @@ export async function handleScraperRoute(
       return json({ error: 'Kapso refused the message.', detail: result.slice(0, 300) }, 502);
     }
     return json({ success: true, detail: result.slice(0, 300) });
+  }
+
+  if (pathname === '/api/scraper/offers/purge' && method === 'POST') {
+    const result = await env.DB
+      .prepare(
+        `UPDATE hardware_offers
+         SET raw_payload = '{}', raw_payload_at = NULL, updated_at = datetime('now')
+         WHERE raw_payload <> '{}'
+           AND julianday(replace(substr(raw_payload_at, 1, 19), 'T', ' '))
+               < julianday('now', '-90 days')`,
+      )
+      .run();
+    return json({ success: true, purged: result.meta?.changes ?? 0 });
   }
 
   if (pathname === '/api/scraper/offers' && method === 'GET') {
@@ -220,9 +366,18 @@ export async function handleScraperRoute(
 
     const columns =
       `id, source_site, source_listing_id, source_url, seller_id, seller_name, price, currency,
+       price_ngn, price_ngn_rounded, fx_rate, fx_rate_date, fx_source,
        price_kind, unit_basis, unit_quantity, condition, in_stock, trust_tier, stated_specs,
-       trading_signals, raw_payload, image_hash, status, reason_code, not_found_strikes, last_checked,
-       canonical_id`;
+       trading_signals, raw_payload, raw_payload_at, image_hash, status, reason_code, not_found_strikes, last_checked,
+       canonical_id,
+       (SELECT COUNT(*) FROM hardware_offers duplicate
+        WHERE duplicate.source_site = hardware_offers.source_site
+          AND duplicate.seller_id = hardware_offers.seller_id
+          AND duplicate.price = hardware_offers.price
+          AND duplicate.currency = hardware_offers.currency
+          AND duplicate.image_hash = hardware_offers.image_hash
+          AND duplicate.status = 'excluded'
+          AND duplicate.reason_code = 'duplicate_of_existing_offer') AS collapsed_count`;
     const rows = source
       ? await env.DB
           .prepare(`SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC LIMIT ?`)
@@ -247,6 +402,7 @@ export async function handleScraperRoute(
     const body = await readBody(request);
     const offers = Array.isArray(body.offers) ? body.offers : [];
     if (offers.length === 0) return badRequest('No offers in the request.');
+    if (offers.length > 12) return badRequest('An offer request can hold at most 12 items.');
 
     for (const raw of offers) {
       const offer = raw as Record<string, unknown>;
@@ -273,23 +429,31 @@ export async function handleScraperRoute(
 
       const id = offerId(sourceSite, sourceListingId);
       const previous = await env.DB
-        .prepare('SELECT price FROM hardware_offers WHERE source_site = ? AND source_listing_id = ?')
+        .prepare(
+          'SELECT price, currency FROM hardware_offers WHERE source_site = ? AND source_listing_id = ?',
+        )
         .bind(sourceSite, sourceListingId)
-        .first<{ price: number | null }>();
+        .first<{ price: number | null; currency: string }>();
 
       await env.DB
         .prepare(
           `INSERT INTO hardware_offers (
              id, canonical_id, bucket_key, source_site, source_url, source_listing_id,
-             seller_id, seller_name, price, currency, price_kind, unit_basis, unit_quantity,
-             condition, in_stock, trust_tier, stated_specs, trading_signals, raw_payload,
+             seller_id, seller_name, price, currency, price_ngn, price_ngn_rounded,
+             fx_rate, fx_rate_date, fx_source, price_kind, unit_basis, unit_quantity,
+             condition, in_stock, trust_tier, stated_specs, trading_signals, raw_payload, raw_payload_at,
              image_hash, status, reason_code, not_found_strikes, last_checked, scraped_at, updated_at
-           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(source_site, source_listing_id) DO UPDATE SET
              canonical_id = COALESCE(excluded.canonical_id, hardware_offers.canonical_id),
              bucket_key = COALESCE(excluded.bucket_key, hardware_offers.bucket_key),
              price = excluded.price,
              currency = excluded.currency,
+             price_ngn = excluded.price_ngn,
+             price_ngn_rounded = excluded.price_ngn_rounded,
+             fx_rate = excluded.fx_rate,
+             fx_rate_date = excluded.fx_rate_date,
+             fx_source = excluded.fx_source,
              price_kind = excluded.price_kind,
              unit_basis = excluded.unit_basis,
              unit_quantity = excluded.unit_quantity,
@@ -299,6 +463,7 @@ export async function handleScraperRoute(
              stated_specs = excluded.stated_specs,
              trading_signals = excluded.trading_signals,
              raw_payload = excluded.raw_payload,
+             raw_payload_at = excluded.raw_payload_at,
              image_hash = COALESCE(excluded.image_hash, hardware_offers.image_hash),
              status = excluded.status,
              reason_code = excluded.reason_code,
@@ -318,6 +483,11 @@ export async function handleScraperRoute(
           text(offer.seller_name) || null,
           number(offer.price),
           text(offer.currency, 'NGN'),
+          number(offer.price_ngn),
+          number(offer.price_ngn_rounded),
+          number(offer.fx_rate),
+          text(offer.fx_rate_date) || null,
+          text(offer.fx_source) || null,
           text(offer.price_kind, 'cash'),
           text(offer.unit_basis) || null,
           number(offer.unit_quantity),
@@ -327,6 +497,7 @@ export async function handleScraperRoute(
           JSON.stringify(parseJson(offer.stated_specs)),
           JSON.stringify(parseJson(offer.trading_signals)),
           JSON.stringify(parseJson(offer.raw_payload)),
+          text(offer.raw_payload_at) || text(offer.scraped_at, new Date().toISOString()) || null,
           text(offer.image_hash) || null,
           status,
           reasonCode,
@@ -337,16 +508,23 @@ export async function handleScraperRoute(
         )
         .run();
 
-      // A changed price leaves a trail. A published price uses the same table
-      // with a hardware row id and no offer id.
+      // A changed raw quote leaves a trail. A published price uses the same
+      // table with a hardware row id and no offer id.
       const nextPrice = number(offer.price);
-      if (previous && previous.price !== null && nextPrice !== null && previous.price !== nextPrice) {
+      const nextCurrency = text(offer.currency, 'NGN').toUpperCase();
+      const previousPrice = previous?.price ?? null;
+      const previousCurrency = (previous?.currency ?? 'NGN').toUpperCase();
+      if (
+        previous &&
+        nextPrice !== null &&
+        (previousPrice !== nextPrice || previousCurrency !== nextCurrency)
+      ) {
         await env.DB
           .prepare(
-            `INSERT INTO price_history (hardware_row_id, offer_id, price, median_at_publish, reason, date)
-             VALUES ('', ?, ?, ?, 'offer_change', datetime('now'))`,
+            `INSERT INTO price_history (hardware_row_id, offer_id, price, median_at_publish, reason, date, currency)
+             VALUES ('', ?, ?, NULL, 'offer_change', datetime('now'), ?)`,
           )
-          .bind(id, nextPrice, nextPrice)
+          .bind(id, nextPrice, nextCurrency)
           .run();
       }
     }
@@ -358,6 +536,7 @@ export async function handleScraperRoute(
     const body = await readBody(request);
     const candidates = Array.isArray(body.candidates) ? body.candidates : [];
     if (candidates.length === 0) return badRequest('No candidates in the request.');
+    if (candidates.length > 40) return badRequest('A candidate request can hold at most 40 items.');
 
     for (const raw of candidates) {
       const candidate = raw as Record<string, unknown>;
@@ -480,6 +659,16 @@ export async function handleScraperRoute(
       .bind(candidateId)
       .first<Record<string, unknown>>();
     if (!candidate) return json({ error: 'Candidate not found.' }, 404);
+    const candidateStatus = text(candidate.status);
+    if (['rejected', 'duplicate'].includes(candidateStatus)) {
+      return json(
+        {
+          error: 'candidate-not-publishable',
+          message: `A ${candidateStatus} candidate cannot be published.`,
+        },
+        409,
+      );
+    }
 
     const hardwareId = text(candidate.current_hardware_row) || text(candidate.canonical_id);
     if (!hardwareId) return badRequest('The candidate has no hardware row id.');
@@ -491,6 +680,9 @@ export async function handleScraperRoute(
 
     const proposedData = parseJson(candidate.proposed_data) as Record<string, unknown>;
     const proposedPrice = number(candidate.proposed_price);
+    if (proposedPrice === null) return badRequest('The candidate has no proposed price.');
+    const existingData = parseJson(existing?.data) as Record<string, unknown>;
+    const existingPrice = number(existingData.price);
 
     // A row that misses a field the calculator reads never goes live. The
     // review screen asks for the missing values first.
@@ -508,42 +700,70 @@ export async function handleScraperRoute(
 
     // A manual row keeps its price until an admin accepts the scraped median.
     if (existing && existing.price_source === 'manual' && body.accept_manual !== true) {
-      const currentData = parseJson(existing.data) as Record<string, unknown>;
       return json(
         {
           error: 'manual-row',
           message: 'This row has a manual price. Accept the scraped median to replace it.',
-          current_price: number(currentData.price),
+          current_price: existingPrice,
           proposed_price: proposedPrice,
         },
         409,
       );
     }
 
-    const offerIds = parseJson(candidate.offer_ids) as string[];
-    const placeholders = offerIds.map(() => '?').join(',');
-    const offers = offerIds.length
-      ? await env.DB
-          .prepare(
-            `SELECT source_site, last_checked FROM hardware_offers WHERE id IN (${placeholders})`,
-          )
-          .bind(...offerIds)
-          .all<{ source_site: string; last_checked: string | null }>()
-      : { results: [] as Array<{ source_site: string; last_checked: string | null }> };
-
-    // A candidate whose offers all left the pool is stale. It never publishes.
-    if (offers.results.length === 0) {
+    const canonicalId = text(candidate.canonical_id);
+    if (!canonicalId) {
       return json(
         {
           error: 'stale-candidate',
-          message: 'No offer supports this candidate any more. Run the sweep again.',
+          message: 'This candidate has no canonical product id.',
+        },
+        409,
+      );
+    }
+    const offers = await env.DB
+      .prepare(
+        `SELECT id, seller_id, source_site, status, in_stock, unit_basis, condition,
+                price, price_ngn_rounded, last_checked
+         FROM hardware_offers WHERE canonical_id = ?`,
+      )
+      .bind(canonicalId)
+      .all<{
+        id: string;
+        seller_id: string | null;
+        source_site: string;
+        status: string;
+        in_stock: string;
+        unit_basis: string | null;
+        condition: string;
+        price: number | null;
+        price_ngn_rounded: number | null;
+        last_checked: string | null;
+      }>();
+
+    const supportingOffers = (offers.results ?? []).filter((offer) =>
+      isQualifiedPublishSupport({
+        ...offer,
+        price: offer.price_ngn_rounded ?? offer.price,
+      }),
+    );
+
+    // A candidate with no fresh qualified offer has no current price evidence.
+    if (supportingOffers.length === 0) {
+      return json(
+        {
+          error: 'stale-candidate',
+          message: 'No fresh qualified offer supports this candidate. Run the sweep again.',
         },
         409,
       );
     }
 
-    const sources = [...new Set((offers.results ?? []).map((offer) => offer.source_site))];
-    const checked = (offers.results ?? [])
+    const sources = [...new Set(supportingOffers.map((offer) => offer.source_site))];
+    const sellerCount = new Set(
+      supportingOffers.map((offer) => offer.seller_id ?? offer.id),
+    ).size;
+    const checked = supportingOffers
       .map((offer) => offer.last_checked)
       .filter((value): value is string => Boolean(value))
       .sort()
@@ -573,15 +793,15 @@ export async function handleScraperRoute(
         text(candidate.product_type, 'panel'),
         JSON.stringify(data),
         JSON.stringify(tags),
-        buildDescription(offerIds.length, checked ?? null, proposedPrice, sources),
+        buildDescription(sellerCount, checked ?? null, proposedPrice, sources),
       )
       .run();
 
-    if (proposedPrice !== null) {
+    if (existingPrice !== proposedPrice) {
       await env.DB
         .prepare(
-          `INSERT INTO price_history (hardware_row_id, price, median_at_publish, reason, date)
-           VALUES (?, ?, ?, 'publish', datetime('now'))`,
+          `INSERT INTO price_history (hardware_row_id, price, median_at_publish, reason, date, currency)
+           VALUES (?, ?, ?, 'publish', datetime('now'), 'NGN')`,
         )
         .bind(hardwareId, proposedPrice, proposedPrice)
         .run();
@@ -599,6 +819,83 @@ export async function handleScraperRoute(
     return json({ success: true, id: hardwareId, price: proposedPrice });
   }
 
+  if (pathname === '/api/scraper/queue' && method === 'POST') {
+    const body = await readBody(request);
+    const rawItems = Array.isArray(body.items) ? body.items : [];
+    if (rawItems.length === 0) return badRequest('No queue items in the request.');
+    if (rawItems.length > 100) return badRequest('A queue request can hold at most 100 items.');
+
+    const items = new Map<string, { offer_id: string; image_url: string; image_hash: string }>();
+    for (const raw of rawItems) {
+      const item = raw as Record<string, unknown>;
+      const offerId = text(item.offer_id);
+      const imageUrl = text(item.image_url);
+      const imageHash = text(item.image_hash).toLowerCase();
+      if (!offerId || !imageUrl || !/^[a-f0-9]{64}$/.test(imageHash)) {
+        return badRequest('A queue item needs an offer id, an image url and a SHA-256 image hash.');
+      }
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(imageUrl);
+      } catch {
+        return badRequest('A queue item has an invalid image url.');
+      }
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return badRequest('A queue item image url must use HTTP or HTTPS.');
+      }
+      if (!items.has(imageHash)) items.set(imageHash, { offer_id: offerId, image_url: imageUrl, image_hash: imageHash });
+    }
+
+    const hashes = [...items.keys()];
+    const placeholders = hashes.map(() => '?').join(',');
+    const existingRows = await env.DB
+      .prepare(
+        `SELECT image_hash, status, result FROM scraper_queue WHERE image_hash IN (${placeholders})`,
+      )
+      .bind(...hashes)
+      .all<{ image_hash: string; status: string; result: string }>();
+    const existing = new Map((existingRows.results ?? []).map((row) => [row.image_hash, row]));
+
+    const statements = [];
+    const cachedSpecs = new Map<string, Record<string, unknown>>();
+    let cached = 0;
+    for (const item of items.values()) {
+      const previous = existing.get(item.image_hash);
+      if (previous?.status === 'done') {
+        cached += 1;
+        try {
+          cachedSpecs.set(
+            item.image_hash,
+            validateEnrichmentResult(parseJson(previous.result)),
+          );
+        } catch {
+          // An old malformed result is ignored. The hash stays cached.
+        }
+        continue;
+      }
+      if (previous && previous.status !== 'failed') continue;
+      statements.push(
+        env.DB
+          .prepare(
+            `INSERT INTO scraper_queue (id, offer_id, image_url, image_hash, status, result, error)
+             VALUES (?, ?, ?, ?, 'pending', '{}', NULL)
+             ON CONFLICT(id) DO UPDATE SET
+               offer_id = excluded.offer_id,
+               image_url = excluded.image_url,
+               status = 'pending',
+               result = '{}',
+               error = NULL,
+               updated_at = datetime('now')
+             WHERE scraper_queue.status = 'failed'`,
+          )
+          .bind(`queue:${item.image_hash}`, item.offer_id, item.image_url, item.image_hash),
+      );
+    }
+    if (statements.length > 0) await env.DB.batch(statements);
+    await applyEnrichmentToHashes(env.DB, cachedSpecs);
+    return json({ success: true, count: statements.length, cached });
+  }
+
   if (pathname === '/api/scraper/queue' && method === 'GET') {
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get('limit') ?? 10) || 10, 50);
@@ -607,6 +904,8 @@ export async function handleScraperRoute(
         `SELECT id, offer_id, image_url, image_hash, attempts
          FROM scraper_queue
          WHERE status = 'pending'
+            OR (status = 'processing'
+                AND julianday(updated_at) < julianday('now', '-15 minutes'))
          ORDER BY created_at ASC
          LIMIT ?`,
       )
@@ -614,14 +913,20 @@ export async function handleScraperRoute(
       .all<{ id: string; offer_id: string; image_url: string; image_hash: string; attempts: number }>();
 
     const items = rows.results ?? [];
-    for (const item of items) {
-      await env.DB
-        .prepare(
-          `UPDATE scraper_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
-           WHERE id = ?`,
-        )
-        .bind(item.id)
-        .run();
+    if (items.length > 0) {
+      await env.DB.batch(
+        items.map((item) =>
+          env.DB
+            .prepare(
+              `UPDATE scraper_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
+               WHERE id = ?
+                 AND (status = 'pending'
+                      OR (status = 'processing'
+                          AND julianday(updated_at) < julianday('now', '-15 minutes')))`,
+            )
+            .bind(item.id),
+        ),
+      );
     }
 
     return json(items);
@@ -631,46 +936,44 @@ export async function handleScraperRoute(
   if (queueMatch && method === 'POST') {
     const queueId = decodeURIComponent(queueMatch[1]);
     const body = await readBody(request);
-    const status = text(body.status, 'done');
+    const status = text(body.status);
+    if (status !== 'done' && status !== 'failed') {
+      return badRequest('A queue result must be done or failed.');
+    }
+
+    const item = await env.DB
+      .prepare('SELECT id, image_hash FROM scraper_queue WHERE id = ?')
+      .bind(queueId)
+      .first<{ id: string; image_hash: string }>();
+    if (!item) return json({ error: 'Queue item not found.' }, 404);
+
+    let result: Record<string, unknown> = {};
+    let error: string | null = null;
+    if (status === 'done') {
+      try {
+        result = validateEnrichmentResult(body.result);
+      } catch (validationError) {
+        return badRequest(
+          validationError instanceof Error ? validationError.message : 'The enrichment result is invalid.',
+        );
+      }
+    } else {
+      error = text(body.error);
+      if (!error) return badRequest('A failed queue result needs an error message.');
+    }
+
     await env.DB
       .prepare(
         `UPDATE scraper_queue
          SET status = ?, result = ?, error = ?, updated_at = datetime('now')
          WHERE id = ?`,
       )
-      .bind(
-        status === 'done' ? 'done' : status === 'failed' ? 'failed' : 'pending',
-        JSON.stringify(parseJson(body.result)),
-        text(body.error) || null,
-        queueId,
-      )
+      .bind(status, JSON.stringify(result), error, queueId)
       .run();
 
-    // The recognised specs belong to the offer, so the next sweep can use them.
-    const specs = parseJson(body.result) as Record<string, unknown>;
-    if (specs && typeof specs === 'object' && Object.keys(specs).length > 0) {
-      const item = await env.DB
-        .prepare('SELECT offer_id FROM scraper_queue WHERE id = ?')
-        .bind(queueId)
-        .first<{ offer_id: string }>();
-      if (item) {
-        const offer = await env.DB
-          .prepare('SELECT stated_specs FROM hardware_offers WHERE id = ?')
-          .bind(item.offer_id)
-          .first<{ stated_specs: string }>();
-        const merged = {
-          ...(parseJson(offer?.stated_specs) as Record<string, unknown>),
-          ...specs,
-        };
-        await env.DB
-          .prepare(
-            `UPDATE hardware_offers SET stated_specs = ?, updated_at = datetime('now') WHERE id = ?`,
-          )
-          .bind(JSON.stringify(merged), item.offer_id)
-          .run();
-      }
+    if (status === 'done') {
+      await applyEnrichmentToHash(env.DB, item.image_hash, result);
     }
-
     return json({ success: true });
   }
 
