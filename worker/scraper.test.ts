@@ -6,6 +6,7 @@ import {
   REASON_CODES,
   TRUST_TIERS,
   buildDescription,
+  handleScraperRoute,
   isCandidateStatus,
   isOfferStatus,
   isReasonCode,
@@ -114,4 +115,23 @@ test('an offer id carries the source site', () => {
 test('the row description states the seller count, the price and the sites', () => {
   const description = buildDescription(3, '2026-11-13', 120000, ['jiji', 'jumia']);
   assert.equal(description, 'Aggregated from 3 sellers, last checked 2026-11-13. Median ₦120,000. Sources: jiji, jumia');
+});
+
+test('the WhatsApp alert refuses to run without its settings', async () => {
+  const request = new Request('https://worker.test/api/scraper/alert', {
+    method: 'POST',
+    body: JSON.stringify({ message: 'the sweep did not run' }),
+  });
+
+  const response = await handleScraperRoute(
+    request,
+    { DB: {} } as any,
+    '/api/scraper/alert',
+    'POST',
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 503);
+  const body = (await response.json()) as { error: string };
+  assert.match(body.error, /not configured/);
 });

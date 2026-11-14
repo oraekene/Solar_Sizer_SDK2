@@ -36,7 +36,13 @@ export {
 
 export type { CandidateStatus, MedianResult, OfferStatus, PriceInput, TrustTier } from '../scraper/rules.ts';
 
-type ScraperEnv = { DB: D1Database };
+type ScraperEnv = {
+  DB: D1Database;
+  KAPSO_API_KEY?: string;
+  KAPSO_PHONE_NUMBER_ID?: string;
+  KAPSO_ALERT_TO?: string;
+  KAPSO_TEMPLATE_NAME?: string;
+};
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -125,6 +131,72 @@ export async function handleScraperRoute(
     }
 
     return json({ run_id: runId, status: 'ok' });
+  }
+
+  if (pathname === '/api/scraper/runs' && method === 'GET') {
+    const url = new URL(request.url);
+    const limit = Math.min(Number(url.searchParams.get('limit') ?? 10) || 10, 100);
+    const kind = url.searchParams.get('kind');
+
+    // The watchdog reads the last runs to see whether the heartbeat is fresh.
+    const rows = kind
+      ? await env.DB
+          .prepare('SELECT * FROM run_report WHERE kind = ? ORDER BY finished_at DESC LIMIT ?')
+          .bind(kind, limit)
+          .all<Record<string, unknown>>()
+      : await env.DB
+          .prepare('SELECT * FROM run_report ORDER BY finished_at DESC LIMIT ?')
+          .bind(limit)
+          .all<Record<string, unknown>>();
+
+    const heartbeat = await env.DB
+      .prepare("SELECT value, updated_at FROM settings WHERE key = 'scraper_heartbeat'")
+      .first<{ value: string | null; updated_at: string | null }>();
+
+    return json({
+      runs: (rows.results ?? []).map((row) => ({
+        ...row,
+        sources: parseJson(row.sources),
+        report: parseJson(row.report),
+      })),
+      heartbeat: heartbeat?.value ? parseJson(heartbeat.value) : null,
+      heartbeat_at: heartbeat?.updated_at ?? null,
+    });
+  }
+
+  if (pathname === '/api/scraper/alert' && method === 'POST') {
+    const body = await readBody(request);
+    const message = text(body.message, 'Solar Sizer scraper alert');
+
+    const apiKey = env.KAPSO_API_KEY;
+    const phoneNumberId = env.KAPSO_PHONE_NUMBER_ID;
+    const to = env.KAPSO_ALERT_TO;
+    const template = env.KAPSO_TEMPLATE_NAME;
+    if (!apiKey || !phoneNumberId || !to || !template) {
+      return json({ error: 'The WhatsApp alert is not configured on this Worker.' }, 503);
+    }
+
+    // The Kapso proxy speaks the Meta WhatsApp message shape.
+    const response = await fetch(`https://api.kapso.ai/meta/whatsapp/v23.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to,
+        type: 'template',
+        template: {
+          name: template,
+          language: { code: 'en' },
+          components: [{ type: 'body', parameters: [{ type: 'text', text: message }] }],
+        },
+      }),
+    });
+
+    const result = await response.text();
+    if (!response.ok) {
+      return json({ error: 'Kapso refused the message.', detail: result.slice(0, 300) }, 502);
+    }
+    return json({ success: true, detail: result.slice(0, 300) });
   }
 
   if (pathname === '/api/scraper/offers' && method === 'GET') {

@@ -1,0 +1,38 @@
+name: Scraper sweep
+
+# The daily sweep re-checks the known offers and publishes the prices that
+# stay inside the 15% band. It runs at 02:00 West Africa time, which is
+# 01:00 UTC. See docs/scraper-design.md section 3.
+
+on:
+  schedule:
+    - cron: '0 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One sweep at a time. A run that is still going is never cancelled.
+concurrency:
+  group: scraper-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The runner uses only the Node standard library, so nothing is
+      # installed.
+      - name: Run the sweep
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          FX_RATE_URL: ${{ secrets.FX_RATE_URL }}
+        run: npm run scraper:sweep

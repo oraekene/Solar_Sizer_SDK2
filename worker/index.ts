@@ -7,6 +7,10 @@ import { seedDevices, seedHardware, seedProducts } from './seed-data';
 type Env = {
   ADMIN_PASSWORD?: string;
   BACHS_API_KEY?: string;
+  KAPSO_API_KEY?: string;
+  KAPSO_PHONE_NUMBER_ID?: string;
+  KAPSO_ALERT_TO?: string;
+  KAPSO_TEMPLATE_NAME?: string;
   ASSETS: Fetcher;
   DB: D1Database;
 };

@@ -1,0 +1,69 @@
+name: Scraper watchdog
+
+# The watchdog checks that the daily sweep wrote a run report. If the last
+# sweep is older than 26 hours, it opens or updates the scraper-alert issue
+# and sends the WhatsApp alert through the Worker. It runs at 06:00 West
+# Africa time, which is 05:00 UTC. See docs/scraper-design.md section 8.
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the last sweep
+        id: check
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUNS=$(curl -sS -H "x-admin-key: ${ADMIN_PASSWORD}" "${WORKER_URL}/api/scraper/runs?kind=sweep&limit=5")
+          LAST=$(echo "${RUNS}" | jq -r '[.runs[] | select(.status == "ok" or .status == "partial")][0].finished_at // empty')
+          NOW=$(date -u +%s)
+          if [ -z "${LAST}" ]; then
+            AGE=999999999
+          else
+            AGE=$(( NOW - $(date -u -d "${LAST}" +%s) ))
+          fi
+          echo "last successful sweep: ${LAST:-never}, age ${AGE} seconds"
+          if [ "${AGE}" -gt 93600 ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "message=No successful sweep since ${LAST:-never}. The Solar Sizer hardware prices are no longer being refreshed." >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Raise the alert
+        if: steps.check.outputs.stale == 'true'
+        env:
+          WORKER_URL: ${{ secrets.WORKER_URL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MESSAGE: ${{ steps.check.outputs.message }}
+        run: |
+          set -euo pipefail
+          ISSUE=$(gh issue list --label scraper-alert --state open --json number --jq '.[0].number // empty')
+          if [ -n "${ISSUE}" ]; then
+            gh issue comment "${ISSUE}" --body "${MESSAGE}"
+          else
+            gh issue create --title "Scraper sweep did not run" --body "${MESSAGE}" --label scraper-alert
+          fi
+          PAYLOAD=$(jq -n --arg message "${MESSAGE}" '{message: $message}')
+          curl -sS -X POST \
+            -H "x-admin-key: ${ADMIN_PASSWORD}" \
+            -H "content-type: application/json" \
+            -d "${PAYLOAD}" \
+            "${WORKER_URL}/api/scraper/alert" || echo "the WhatsApp alert could not be sent"
+          exit 1

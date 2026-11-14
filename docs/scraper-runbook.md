@@ -73,6 +73,7 @@ primary_region = "jnb"
 
 [env]
   PORT = "3001"
+  HOST = "127.0.0.1"
 
 [mounts]
   source = "freellmapi_data"
@@ -234,8 +235,8 @@ Run these checks after the implementation lands.
 3. The Worker rejects a request without the key and accepts it with the key.
 
    ```
-   curl -i https://sdk2.solarsizer.workers.dev/api/scraper/heartbeat
-   curl -i -H "x-admin-key: $ADMIN_PASSWORD" https://sdk2.solarsizer.workers.dev/api/scraper/heartbeat
+   curl -i "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
+   curl -i -H "x-admin-key: $ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/offers?limit=1"
    ```
 
    The first call answers `401`. The second call answers `200`.
@@ -258,9 +259,9 @@ Run these checks after the implementation lands.
 | `scraper/worker-client.ts` | The authenticated calls into the Worker. |
 | `.github/workflows/scraper-sweep.yml` | The daily sweep at 02:00 WAT. |
 | `.github/workflows/scraper-discovery.yml` | The weekly crawl on Sunday at 03:00 WAT. |
-| `worker/scraper/` | The admin routes for candidates, offers, the queue and the heartbeat. |
+| `.github/workflows/scraper-watchdog.yml` | The daily heartbeat check that opens the `scraper-alert` issue. |
+| `worker/scraper.ts` | The admin routes for the candidates, the offers, the queue, the run reports and the alert. |
 | `migrations/0009_scraper.sql` | The staging tables. |
-| `wrangler.jsonc` | The scheduled trigger for the heartbeat watchdog. |
 
 ## Rotating a secret
 
