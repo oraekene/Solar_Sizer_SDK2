@@ -2,7 +2,7 @@
 // rules, the price outlier gate and the 15% band come from scraper/rules.ts.
 // See docs/scraper-design.md sections 2.4, 3.3 and 6.
 
-import { canonicalId, compareIdentity, identityOf } from './identity.ts';
+import { canonicalId, compareIdentity, identityFromHardwareData, identityOf } from './identity.ts';
 import type { AliasTable, Identity, ProductType } from './identity.ts';
 import { PRICE_OUTLIER_SHARE, medianPrice, withinBand } from './rules.ts';
 
@@ -19,6 +19,7 @@ export type MergeOffer = {
   unit_quantity: number | null;
   condition: string;
   stated_specs: Record<string, unknown>;
+  trading_signals?: Record<string, unknown>;
   last_checked: string | null;
 };
 
@@ -27,7 +28,7 @@ export type HardwareRow = {
   type: string;
   price: number | null;
   price_source: string;
-  identity_key?: string | null;
+  data?: Record<string, unknown>;
 };
 
 export type ProvenanceEntry = {
@@ -67,14 +68,19 @@ const isQualified = (offer: MergeOffer) =>
   (offer.unit_basis === 'piece' || offer.unit_basis === 'derived') &&
   offer.condition !== 'used' &&
   offer.condition !== 'foreign_used' &&
+  offer.condition !== 'refurbished' &&
+  offer.condition !== 'open_box' &&
   typeof offer.price === 'number' &&
   offer.price > 0;
 
 const trusted = (offer: MergeOffer) => offer.trust_tier === 'verified' || offer.trust_tier === 'established';
 
+// The type of an offer comes from the facts that identify it. A panel needs
+// its wattage and a battery needs its voltage and its capacity. The other
+// values may still be missing at this point.
 const productTypeOf = (specs: Record<string, unknown>): ProductType | null => {
-  if (typeof specs.watts === 'number' && typeof specs.voc === 'number') return 'panel';
   if (typeof specs.voltage_v === 'number' && typeof specs.capacity_ah === 'number') return 'battery';
+  if (typeof specs.watts === 'number') return 'panel';
   return null;
 };
 
@@ -95,6 +101,36 @@ function fieldValue(
   return null;
 }
 
+// A value read from a listing title is a model parse, so it carries a medium
+// confidence. A value from a specification table is stated, so it carries a
+// high confidence.
+function provenanceKind(offer: MergeOffer): { kind: ProvenanceEntry['kind']; confidence: ProvenanceEntry['confidence'] } {
+  return offer.trading_signals?.spec_source === 'model_parse'
+    ? { kind: 'model_parse', confidence: 'medium' }
+    : { kind: 'stated', confidence: 'high' };
+}
+
+// The peer table for a panel wattage. A guessed open-circuit voltage is
+// biased upward and a guessed short-circuit current is biased downward, so
+// the highest voltage and the lowest current of the peers are used.
+type PanelPeers = { vocs: number[]; iscs: number[] };
+
+function peerTable(offers: MergeOffer[]): Map<string, PanelPeers> {
+  const table = new Map<string, PanelPeers>();
+  for (const offer of offers) {
+    if (!isQualified(offer)) continue;
+    const watts = offer.stated_specs.watts;
+    if (typeof watts !== 'number') continue;
+    const peers = table.get(String(watts)) ?? { vocs: [], iscs: [] };
+    const voc = offer.stated_specs.voc;
+    const isc = offer.stated_specs.isc;
+    if (typeof voc === 'number') peers.vocs.push(voc);
+    if (typeof isc === 'number') peers.iscs.push(isc);
+    table.set(String(watts), peers);
+  }
+  return table;
+}
+
 export function proposeCandidates(
   offers: MergeOffer[],
   options: { aliases: AliasTable; hardware: HardwareRow[] },
@@ -102,18 +138,28 @@ export function proposeCandidates(
   const excluded: Array<{ offer_id: string; reason_code: string }> = [];
   const proposals: Proposal[] = [];
 
-  // Group the offers by their identity key.
+  // Group the offers by their family and model. The group key leaves out the
+  // facts that only one source states, so two listings of the same panel land
+  // in one group even when one of them carries an extra field.
   const groups = new Map<string, { identity: Identity; offers: MergeOffer[] }>();
   for (const offer of offers) {
     const productType = productTypeOf(offer.stated_specs);
     if (!productType) continue;
     const identity = identityOf(productType, offer.stated_specs, offer.stated_specs.name as string | undefined, options.aliases);
-    const existing = groups.get(identity.key);
+    const groupKey = `${identity.family_key}|${identity.model ?? '*'}`;
+    const existing = groups.get(groupKey);
     if (existing) existing.offers.push(offer);
-    else groups.set(identity.key, { identity, offers: [offer] });
+    else groups.set(groupKey, { identity, offers: [offer] });
   }
 
-  for (const [key, group] of groups) {
+  // The catalogue rows that the scraper can attach to.
+  const hardwareIdentities = options.hardware
+    .map((row) => ({ row, identity: identityFromHardwareData(row.type, row.data ?? {}, options.aliases) }))
+    .filter((entry): entry is { row: HardwareRow; identity: Identity } => entry.identity !== null);
+
+  const peersByWatts = peerTable(offers);
+
+  for (const group of groups.values()) {
     const pool = group.offers.filter(isQualified);
 
     // The reference median comes from the trusted pool. An offer below 60% of
@@ -143,13 +189,38 @@ export function proposeCandidates(
         continue;
       }
       proposedData[field] = found.value;
+      const { kind, confidence } = provenanceKind(found.source);
       provenance.push({
         field,
         value: found.value,
         source: found.source.source_site,
-        kind: 'stated',
-        confidence: 'high',
+        kind,
+        confidence,
       });
+    }
+
+    // A panel with no stated voltage or current takes the safe value of its
+    // peers. The row then carries the estimated-specs marker.
+    if (productType === 'panel') {
+      const peers = peersByWatts.get(String(group.identity.facts.watts));
+      if (peers) {
+        if (proposedData.voc === undefined && peers.vocs.length > 0) {
+          const voc = Math.max(...peers.vocs);
+          proposedData.voc = voc;
+          provenance.push({ field: 'voc', value: voc, source: 'peer-pool', kind: 'class_derived', confidence: 'low' });
+          const index = riskFlags.indexOf('missing voc');
+          if (index >= 0) riskFlags.splice(index, 1);
+          riskFlags.push('estimated specs');
+        }
+        if (proposedData.isc === undefined && peers.iscs.length > 0) {
+          const isc = Math.min(...peers.iscs);
+          proposedData.isc = isc;
+          provenance.push({ field: 'isc', value: isc, source: 'peer-pool', kind: 'class_derived', confidence: 'low' });
+          const index = riskFlags.indexOf('missing isc');
+          if (index >= 0) riskFlags.splice(index, 1);
+          riskFlags.push('estimated specs');
+        }
+      }
     }
 
     const nameOffer = [...kept].sort((a, b) => Number(trusted(b)) - Number(trusted(a)))[0];
@@ -171,8 +242,14 @@ export function proposeCandidates(
     const canonical = canonicalId(group.identity);
     const row =
       options.hardware.find((entry) => entry.id === canonical) ??
-      options.hardware.find((entry) => entry.identity_key && entry.identity_key === key) ??
+      hardwareIdentities.find((entry) => compareIdentity(entry.identity, group.identity) === 'same')?.row ??
       null;
+
+    // A weaker match with a catalogue row never merges on its own. It is
+    // flagged so a human decides.
+    const duplicateOf = hardwareIdentities.find(
+      (entry) => compareIdentity(entry.identity, group.identity) === 'possible_duplicate',
+    );
 
     const currentPrice = row?.price ?? null;
     const isManual = row?.price_source === 'manual';
@@ -192,6 +269,10 @@ export function proposeCandidates(
     if (riskFlags.some((flag) => flag.startsWith('missing '))) status = 'pending_review';
     if (median.low_confidence) riskFlags.push('low confidence price');
     if (median.seller_count < 2) riskFlags.push('one seller only');
+    if (duplicateOf) {
+      riskFlags.push(`possible duplicate of ${duplicateOf.row.id}`);
+      status = 'pending_review';
+    }
 
     proposals.push({
       id: `candidate:${canonical}`,

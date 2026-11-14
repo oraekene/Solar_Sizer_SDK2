@@ -49,6 +49,13 @@ test('the model drops the brand and the electrical tokens', () => {
   assert.equal(modelFromName('Jinko Tiger Neo 625W N-type Bifacial Solar Panel', 'jinko'), 'tiger neo n type bifacial');
 });
 
+test('a pack listing keeps the model of the single product', () => {
+  assert.equal(
+    modelFromName('Jinko Solar Eagle 535W Bifacial Solar Module Full Pallet 27 Pieces', 'jinko'),
+    'eagle bifacial',
+  );
+});
+
 test('two listings of the same product share an identity key', () => {
   const left = identityOf('panel', panel().stated_specs, '9Solar 550W Mono Panel', aliases);
   const right = identityOf(
@@ -148,6 +155,60 @@ test('a price from unknown sellers alone carries the low confidence flag', () =>
   const { proposals } = proposeCandidates(offers, { aliases, hardware: [] });
   assert.equal(proposals[0].low_confidence, true);
   assert.ok(proposals[0].risk_flags.includes('low confidence price'));
+});
+
+test('two sources that state different fields still form one candidate', () => {
+  const offers = [
+    panel({ id: 'a', price: 100_000, trust_tier: 'verified', seller_id: 's1' }),
+    panel({
+      id: 'b',
+      price: 120_000,
+      trust_tier: 'established',
+      seller_id: 's2',
+      stated_specs: { ...panel().stated_specs, cell_type: 'P type Mono-crystalline' },
+    }),
+  ];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.equal(proposals.length, 1);
+  assert.equal(proposals[0].proposed_price, 110_000);
+  assert.equal(proposals[0].offer_ids.length, 2);
+});
+
+test('an existing catalogue row matches by its facts and keeps its manual price', () => {
+  const offers = [panel({ id: 'a', price: 100_000 })];
+  const hardware = [
+    {
+      id: 'p-9',
+      type: 'panel',
+      price: 103_000,
+      price_source: 'manual',
+      data: { name: '9Solar 550W Mono', watts: 550, voc: 49.9, isc: 14 },
+    },
+  ];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware });
+  assert.equal(proposals[0].current_hardware_row, 'p-9');
+  assert.equal(proposals[0].status, 'pending_review');
+  assert.ok(proposals[0].risk_flags.includes('manual price'));
+});
+
+test('a weaker match with a catalogue row waits for a human', () => {
+  const offers = [panel({ id: 'a', price: 100_000 })];
+  const hardware = [
+    {
+      id: 'p-9',
+      type: 'panel',
+      price: 103_000,
+      price_source: 'manual',
+      data: { name: '9Solar 550W Half Cut', watts: 550, voc: 49.9, isc: 14 },
+    },
+  ];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware });
+  assert.equal(proposals[0].current_hardware_row, null);
+  assert.equal(proposals[0].status, 'pending_review');
+  assert.ok(proposals[0].risk_flags.includes('possible duplicate of p-9'));
 });
 
 test('a battery keeps the shape that src/types.ts expects', () => {

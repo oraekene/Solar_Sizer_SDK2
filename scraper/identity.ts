@@ -67,7 +67,16 @@ export function modelFromName(
   brand: string,
   aliases: AliasTable = {},
 ): string | null {
-  let text = normalizeText(name);
+  if (!name) return null;
+
+  // The voltage words leave the title first, because a list such as
+  // 24/36V/48V and a decimal such as 358.4V would otherwise leave loose
+  // numbers behind.
+  const raw = name
+    .replace(/\b\d+(?:\.\d+)?\s*(?:v(?:olts?)?\b)?\s*(?:\/\s*\d+(?:\.\d+)?\s*(?:v(?:olts?)?\b)?)+\s*/gi, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*v(?:olts?)?\b/gi, ' ');
+
+  let text = normalizeText(raw);
   if (!text) return null;
 
   // Every spelling of the brand can start the title, so all of them are cut.
@@ -88,7 +97,12 @@ export function modelFromName(
   }
 
   text = text
-    .replace(/\b\d+(?:\.\d+)?\s*(?:wp|w|v|ah|wh|kwh)\b/g, ' ')
+    .replace(/\b\d+(?:\.\d+)?\s*(?:wp|w|v|ah|wh|kwh|kva|kw)\b/g, ' ')
+    // A pack listing is the same product as the single one, so the pack
+    // wording leaves the model.
+    .replace(/\b(?:full )?pallet(?: of \d+)?\b/g, ' ')
+    .replace(/\bbulk pack\b/g, ' ')
+    .replace(/\b\d+ (?:pieces|units|pcs)\b/g, ' ')
     .replace(/\b(?:solar panel|solar module|solar battery|panel|module|battery|solar)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -147,9 +161,20 @@ export function identityOf(
 
 export type Match = 'same' | 'possible_duplicate' | 'different';
 
+// A field that both sides state with different values is a real conflict. A
+// field that only one side states is unknown, not a conflict.
+function conflicts(a: Identity, b: Identity): boolean {
+  for (const [field, value] of Object.entries(a.facts)) {
+    const other = b.facts[field];
+    if (other !== undefined && other !== value) return true;
+  }
+  return false;
+}
+
 export function compareIdentity(a: Identity, b: Identity): Match {
   if (a.product_type !== b.product_type) return 'different';
   if (a.brand !== b.brand) return 'different';
+  if (conflicts(a, b)) return 'different';
   if (a.key === b.key) return 'same';
 
   // One side has no model, so the electrical facts decide.
@@ -157,10 +182,57 @@ export function compareIdentity(a: Identity, b: Identity): Match {
     return a.family_key === b.family_key ? 'same' : 'different';
   }
 
+  // The same model with no conflicting fact is the same product, even when
+  // one side states a field the other side leaves out.
+  if (a.model === b.model) return 'same';
+
   // Same brand and either the same model or the same family means a human
   // decides.
-  if (a.model === b.model || a.family_key === b.family_key) return 'possible_duplicate';
+  if (a.family_key === b.family_key) return 'possible_duplicate';
   return 'different';
+}
+
+// The brand of an existing hardware row comes from its name, because the row
+// has no separate brand field.
+export function brandFromName(name: string | null | undefined, aliases: AliasTable): string | null {
+  const text = normalizeText(name);
+  if (!text) return null;
+  let best: { canonical: string; length: number } | null = null;
+  for (const [canonical, list] of Object.entries(aliases)) {
+    for (const variant of list) {
+      const key = normalizeText(variant);
+      if (!key || !text.startsWith(`${key} `)) continue;
+      if (!best || key.length > best.length) best = { canonical, length: key.length };
+    }
+  }
+  return best?.canonical ?? null;
+}
+
+// The identity of a hardware row that already exists in the catalogue. The
+// row holds the same facts as the calculator uses.
+export function identityFromHardwareData(
+  type: string,
+  data: Record<string, unknown>,
+  aliases: AliasTable,
+): Identity | null {
+  const name = typeof data.name === 'string' ? data.name : '';
+  const brand = brandFromName(name, aliases);
+  if (!brand) return null;
+
+  if (type === 'panel') {
+    if (typeof data.watts !== 'number') return null;
+    return identityOf('panel', { brand, name, watts: data.watts, voc: data.voc, isc: data.isc }, name, aliases);
+  }
+  if (type === 'battery') {
+    if (typeof data.voltage !== 'number' || typeof data.capacity_ah !== 'number') return null;
+    return identityOf(
+      'battery',
+      { brand, name, voltage_v: data.voltage, capacity_ah: data.capacity_ah, battery_type: data.type },
+      name,
+      aliases,
+    );
+  }
+  return null;
 }
 
 // The row id for a new canonical product.

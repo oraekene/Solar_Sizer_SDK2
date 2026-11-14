@@ -3,8 +3,8 @@
 // page on the server, so plain fetch is enough. No browser is used.
 
 import { fetchText } from '../http.ts';
-import { normalizeSpecs, parseSpecLine } from '../specs.ts';
-import type { InStock, ScraperOffer, TrustTier } from './types.ts';
+import { identitySpecsMissing, normalizeSpecs, parseSpecLine } from '../specs.ts';
+import type { DiscoveredListing, InStock, PageResult, ScraperOffer, SourceAdapter, TrustTier } from './types.ts';
 
 const SITE = 'https://solarshopnigeria.com';
 const SOURCE = 'solarshopnigeria';
@@ -26,18 +26,7 @@ const OFFICIAL_BRANDS = new Set([
   'huawei',
 ]);
 
-export type DiscoveredListing = {
-  source_site: string;
-  source_listing_id: string;
-  source_url: string;
-  title: string;
-  price: number | null;
-  currency: string;
-  stock_text: string | null;
-  spec_line: string | null;
-  pack_count: number | null;
-  has_datasheet: boolean;
-};
+export type { DiscoveredListing } from './types.ts';
 
 const stripComments = (html: string) => html.replace(/<!--.*?-->/gs, ' ');
 
@@ -202,9 +191,14 @@ export function detectProductType(specs: Record<string, unknown>): 'panel' | 'ba
   return null;
 }
 
-// A panel needs watts, the open-circuit voltage and the short-circuit current.
-// A battery needs the voltage, the amp-hour rating and the chemistry.
+// A panel needs its wattage to be identified. A battery needs its voltage and
+// its capacity. The other calculator values can come from the pool.
 export function missingRequiredSpecs(productType: 'panel' | 'battery', specs: Record<string, unknown>): string[] {
+  return identitySpecsMissing(productType, specs);
+}
+
+// The values the calculator needs but the page did not state.
+export function missingCalculationSpecs(productType: 'panel' | 'battery', specs: Record<string, unknown>): string[] {
   const needed = productType === 'panel' ? ['watts', 'voc', 'isc'] : ['voltage_v', 'capacity_ah', 'battery_type'];
   return needed.filter((field) => specs[field] === undefined || specs[field] === null);
 }
@@ -215,7 +209,8 @@ export function buildOffer(facts: ProductFacts, now = new Date().toISOString()):
     ...normalizeSpecs(facts.specs),
   };
   const productType = detectProductType(specs);
-  const missing = productType ? missingRequiredSpecs(productType, specs) : ['watts', 'voc', 'isc'];
+  const missing = productType ? missingRequiredSpecs(productType, specs) : ['watts'];
+  const calculationMissing = productType ? missingCalculationSpecs(productType, specs) : ['watts', 'voc', 'isc'];
 
   // A pack price is divided by the count the seller states. The site also
   // prints the per-unit figure, and that figure wins.
@@ -248,7 +243,9 @@ export function buildOffer(facts: ProductFacts, now = new Date().toISOString()):
       was_price: facts.was_price,
       pack_price: facts.pack_price,
       product_type: productType,
+      spec_source: 'stated',
       missing_specs: missing,
+      missing_calculation_specs: calculationMissing,
     },
     raw_payload: {
       title: facts.title,
@@ -264,16 +261,26 @@ export function buildOffer(facts: ProductFacts, now = new Date().toISOString()):
   };
 }
 
-export async function crawlCategory(url: string): Promise<{ listings: DiscoveredListing[]; error?: string }> {
+export async function crawlCategory(url: string): Promise<PageResult<DiscoveredListing[]>> {
   const response = await fetchText(url);
-  if (response.status !== 200) return { listings: [], error: response.error ?? `status ${response.status}` };
-  return { listings: parseCategoryPage(response.html) };
+  if (response.status !== 200) {
+    return { value: null, status: response.status, error: response.error ?? `status ${response.status}` };
+  }
+  return { value: parseCategoryPage(response.html), status: response.status };
 }
 
-export async function crawlProduct(url: string): Promise<{ offer: ScraperOffer | null; error?: string }> {
+export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer>> {
   const response = await fetchText(url);
-  if (response.status !== 200) return { offer: null, error: response.error ?? `status ${response.status}` };
+  if (response.status !== 200) {
+    return { value: null, status: response.status, error: response.error ?? `status ${response.status}` };
+  }
   const facts = parseProductPage(response.html, url);
-  if (!facts) return { offer: null, error: 'the page has no product heading' };
-  return { offer: buildOffer(facts) };
+  if (!facts) return { value: null, status: response.status, error: 'the page has no product heading' };
+  return { value: buildOffer(facts), status: response.status };
 }
+
+export const solarShopNigeria: SourceAdapter = {
+  site: SOURCE,
+  crawlProduct,
+  crawlCategory,
+};

@@ -14,8 +14,10 @@
     "typegen": "wrangler types",
     "check:worker": "wrangler check",
     "test:worker": "node --experimental-strip-types --test worker/enrich.test.ts worker/scraper.test.ts test/wiringSizer.test.ts test/productHardware.test.ts",
-    "test:scraper": "node --experimental-strip-types --test scraper/adapters/solarshopnigeria.test.ts scraper/merge.test.ts",
+    "test:scraper": "node --experimental-strip-types --test scraper/adapters/solarshopnigeria.test.ts scraper/adapters/jumia.test.ts scraper/adapters/jiji.test.ts scraper/merge.test.ts",
     "test": "npm run test:worker && npm run test:scraper",
+    "scraper:sweep": "node --experimental-strip-types scraper/run-sweep.ts",
+    "scraper:discovery": "node --experimental-strip-types scraper/run-discovery.ts",
     "d1:migrate:local": "wrangler d1 migrations apply solar-sizer-sdk2 --local"
   },
   "dependencies": {

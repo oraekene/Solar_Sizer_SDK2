@@ -1,0 +1,612 @@
+{
+  "adverts_list": {
+    "mode_default": "gallery",
+    "count": 10837,
+    "adverts": [
+      {
+        "admin_info": {},
+        "as_top": false,
+        "attrs": [
+          {
+            "value": "Bulk prices",
+            "unit": null
+          },
+          {
+            "name": "Condition",
+            "value": "Brand New",
+            "unit": null
+          }
+        ],
+        "badge_info": {},
+        "category_id": 297,
+        "category_name": "Electrical Equipment",
+        "category_slug": "power-equipments",
+        "count_images": 1,
+        "details": "Dawnice Nigeria Ltd was established in 2024, with a team of 14 years of experience in lithium...",
+        "fb_view_content_data": {
+          "content_name": "Dawnice 358.4V 100KVA High Voltage 280ah Solar Battery",
+          "content_category": "Electrical Equipment",
+          "content_ids": [
+            "HsaXSvMaf3xwWzodz57VCkT"
+          ],
+          "content_type": "product",
+          "value": "0.17",
+          "currency": "USD"
+        },
+        "guid": "HsaXSvMaf3xwWzodz57VCkT",
+        "id": 45549849,
+        "image_obj": {
+          "url": "https://pictures-nigeria.jijistatic.net/164064850_MzAwLTMwMC0zM2MwOGQ1YmYx.webp",
+          "center": null
+        },
+        "images": [
+          {
+            "url": "https://pictures-nigeria.jijistatic.net/164064850_MzAwLTMwMC0zM2MwOGQ1YmYx.webp",
+            "center": null,
+            "size": [
+              300,
+              300
+            ]
+          }
+        ],
+        "images_count": 1,
+        "is_boost": "enterprise",
+        "is_cv": false,
+        "is_inspected": false,
+        "is_job": false,
+        "is_owner": false,
+        "is_top": false,
+        "labels": [],
+        "message_url": "/?auth=Login&type=reply-form&url=%2Fmaitama%2Fpower-equipments%2Fdawnice-358-4v-100kva-high-voltage-280ah-solar-battery-HsaXSvMaf3xwWzodz57VCkT.html",
+        "paid_info": {
+          "text": "Promoted",
+          "package_type": "enterprise",
+          "border": "",
+          "icon": true,
+          "more_photos": false
+        },
+        "price_obj": {
+          "value": 23512499,
+          "view": "₦ 23,512,499",
+          "period": null,
+          "bulk": null,
+          "type": null
+        },
+        "price_title": "₦ 23,512,499",
+        "region": "Abuja (FCT) • Maitama",
+        "region_id": 437,
+        "region_item_text": "Abuja, Maitama",
+        "region_name": "Maitama",
+        "region_parent_name": "Abuja (FCT)",
+        "region_slug": "maitama",
+        "short_description": "Dawnice Nigeria Ltd was established in 2024, with a team of 14 years of experience in lithium...",
+        "slug": "dawnice-358-4v-100kva-high-voltage-280ah-solar-battery",
+        "status": "active",
+        "title": "Dawnice 358.4V 100KVA High Voltage 280ah Solar Battery",
+        "title_labels": [],
+        "tops_count": 0,
+        "url": "/maitama/power-equipments/dawnice-358-4v-100kva-high-voltage-280ah-solar-battery-HsaXSvMaf3xwWzodz57VCkT.html",
+        "user_id": 13933713
+      },
+      {
+        "admin_info": {},
+        "as_top": false,
+        "attrs": [
+          {
+            "name": "Condition",
+            "value": "Brand New",
+            "unit": null
+          }
+        ],
+        "badge_info": {},
+        "category_id": 297,
+        "category_name": "Electrical Equipment",
+        "category_slug": "power-equipments",
+        "count_images": 1,
+        "details": "The 12.5KW large capacity LPBF48250 is a rechargeable battery system and energy storage device....",
+        "fb_view_content_data": {
+          "content_name": "48volt 250ah Lithium Ion Felicity Lithium Ion Battery",
+          "content_category": "Electrical Equipment",
+          "content_ids": [
+            "rKgvo1A3XEGYsopf9jIESWk6"
+          ],
+          "content_type": "product",
+          "value": "0.17",
+          "currency": "USD"
+        },
+        "guid": "rKgvo1A3XEGYsopf9jIESWk6",
+        "id": 44567241,
+        "image_obj": {
+          "url": "https://pictures-nigeria.jijistatic.net/159586923_MzAwLTUwNC02ZDM3N2E1M2MzLTE.webp",
+          "center": null
+        },
+        "images": [
+          {
+            "url": "https://pictures-nigeria.jijistatic.net/159586923_MzAwLTUwNC02ZDM3N2E1M2MzLTE.webp",
+            "center": null,
+            "size": [
+              300,
+              504
+            ]
+          }
+        ],
+        "images_count": 1,
+        "is_boost": "enterprise",
+        "is_cv": false,
+        "is_inspected": false,
+        "is_job": false,
+        "is_owner": false,
+        "is_top": false,
+        "labels": [
+          {
+            "type": "id_verify",
+            "value": "Verified ID"
+          },
+          {
+            "type": "age",
+            "value": "8+ years on Jiji"
+          }
+        ],
+        "message_url": "/?auth=Login&type=reply-form&url=%2Fikeja%2Fpower-equipments%2F48volt-250ah-lithium-ion-felicity-lithium-ion-battery-rKgvo1A3XEGYsopf9jIESWk6.html",
+        "paid_info": {
+          "text": "Promoted",
+          "package_type": "enterprise",
+          "border": "",
+          "icon": true,
+          "more_photos": false
+        },
+        "price_obj": {
+          "value": 4000000,
+          "view": "₦ 4,000,000",
+          "period": null,
+          "bulk": null,
+          "type": null
+        },
+        "price_title": "₦ 4,000,000",
+        "region": "Lagos State • Ikeja",
+        "region_id": 146,
+        "region_item_text": "Lagos, Ikeja",
+        "region_name": "Ikeja",
+        "region_parent_name": "Lagos State",
+        "region_slug": "ikeja",
+        "short_description": "The 12.5KW large capacity LPBF48250 is a rechargeable battery system and energy storage device....",
+        "slug": "48volt-250ah-lithium-ion-felicity-lithium-ion-battery",
+        "status": "active",
+        "title": "48volt 250ah Lithium Ion Felicity Lithium Ion Battery",
+        "title_labels": [],
+        "tops_count": 0,
+        "url": "/ikeja/power-equipments/48volt-250ah-lithium-ion-felicity-lithium-ion-battery-rKgvo1A3XEGYsopf9jIESWk6.html",
+        "user_id": 3184073
+      },
+      {
+        "admin_info": {},
+        "as_top": false,
+        "attrs": [
+          {
+            "value": "Bulk prices",
+            "unit": null
+          },
+          {
+            "name": "Condition",
+            "value": "Brand New",
+            "unit": null
+          }
+        ],
+        "badge_info": {},
+        "category_id": 297,
+        "category_name": "Electrical Equipment",
+        "category_slug": "power-equipments",
+        "count_images": 1,
+        "details": "Yichun Dawnice Manufacture and Trade Co., Ltd established in 2021, it is a professional residential...",
+        "fb_view_content_data": {
+          "content_name": "Dawnice 718.6V 200kilowatt Commercial Solar Battery System",
+          "content_category": "Electrical Equipment",
+          "content_ids": [
+            "uXFomWlNBQWWtY3lCTjNXvbY"
+          ],
+          "content_type": "product",
+          "value": "0.17",
+          "currency": "USD"
+        },
+        "guid": "uXFomWlNBQWWtY3lCTjNXvbY",
+        "id": 45306210,
+        "image_obj": {
+          "url": "https://pictures-nigeria.jijistatic.net/162970076_MzAwLTMwMC05MGM3YTM4ZWY0.webp",
+          "center": null
+        },
+        "images": [
+          {
+            "url": "https://pictures-nigeria.jijistatic.net/162970076_MzAwLTMwMC05MGM3YTM4ZWY0.webp",
+            "center": null,
+            "size": [
+              300,
+              300
+            ]
+          }
+        ],
+        "images_count": 1,
+        "is_boost": "enterprise",
+        "is_cv": false,
+        "is_inspected": false,
+        "is_job": false,
+        "is_owner": false,
+        "is_top": false,
+        "labels": [],
+        "message_url": "/?auth=Login&type=reply-form&url=%2Fmaitama%2Fpower-equipments%2Fdawnice-718-6v-200kilowatt-commercial-solar-battery-system-uXFomWlNBQWWtY3lCTjNXvbY.html",
+        "paid_info": {
+          "text": "Promoted",
+          "package_type": "enterprise",
+          "border": "",
+          "icon": true,
+          "more_photos": false
+        },
+        "price_obj": {
+          "value": 47024999,
+          "view": "₦ 47,024,999",
+          "period": null,
+          "bulk": null,
+          "type": null
+        },
+        "price_title": "₦ 47,024,999",
+        "region": "Abuja (FCT) • Maitama",
+        "region_id": 437,
+        "region_item_text": "Abuja, Maitama",
+        "region_name": "Maitama",
+        "region_parent_name": "Abuja (FCT)",
+        "region_slug": "maitama",
+        "short_description": "Yichun Dawnice Manufacture and Trade Co., Ltd established in 2021, it is a professional residential...",
+        "slug": "dawnice-718-6v-200kilowatt-commercial-solar-battery-system",
+        "status": "active",
+        "title": "Dawnice 718.6V 200kilowatt Commercial Solar Battery System",
+        "title_labels": [],
+        "tops_count": 0,
+        "url": "/maitama/power-equipments/dawnice-718-6v-200kilowatt-commercial-solar-battery-system-uXFomWlNBQWWtY3lCTjNXvbY.html",
+        "user_id": 13933713
+      },
+      {
+        "admin_info": {},
+        "as_top": false,
+        "attrs": [
+          {
+            "value": "Bulk prices",
+            "unit": null
+          },
+          {
+            "name": "Condition",
+            "value": "Brand New",
+            "unit": null
+          }
+        ],
+        "badge_info": {},
+        "category_id": 297,
+        "category_name": "Electrical Equipment",
+        "category_slug": "power-equipments",
+        "count_images": 1,
+        "details": "Yichun Dawnice Manufacture and Trade Co., Ltd established in 2021, it is a professional residential...",
+        "fb_view_content_data": {
+          "content_name": "Dawnice Lifepo4 48v 15kva Wall Mounted Solar Batteries",
+          "content_category": "Electrical Equipment",
+          "content_ids": [
+            "ppuROpVFZoKGLh3kiYDoRJIx"
+          ],
+          "content_type": "product",
+          "value": "0.17",
+          "currency": "USD"
+        },
+        "guid": "ppuROpVFZoKGLh3kiYDoRJIx",
+        "id": 45410910,
+        "image_obj": {
+          "url": "https://pictures-nigeria.jijistatic.net/163460337_MzAwLTMwMC0zY2VjMzc2MDNh.webp",
+          "center": null
+        },
+        "images": [
+          {
+            "url": "https://pictures-nigeria.jijistatic.net/163460337_MzAwLTMwMC0zY2VjMzc2MDNh.webp",
+            "center": null,
+            "size": [
+              300,
+              300
+            ]
+          }
+        ],
+        "images_count": 1,
+        "is_boost": "enterprise",
+        "is_cv": false,
+        "is_inspected": false,
+        "is_job": false,
+        "is_owner": false,
+        "is_top": false,
+        "labels": [],
+        "message_url": "/?auth=Login&type=reply-form&url=%2Fmaitama%2Fpower-equipments%2Fdawnice-lifepo4-48v-15kva-wall-mounted-solar-batteries-ppuROpVFZoKGLh3kiYDoRJIx.html",
+        "paid_info": {
+          "text": "Promoted",
+          "package_type": "enterprise",
+          "border": "",
+          "icon": true,
+          "more_photos": false
+        },
+        "price_obj": {
+          "value": 3200000,
+          "view": "₦ 3,200,000",
+          "period": null,
+          "bulk": null,
+          "type": null
+        },
+        "price_title": "₦ 3,200,000",
+        "region": "Abuja (FCT) • Maitama",
+        "region_id": 437,
+        "region_item_text": "Abuja, Maitama",
+        "region_name": "Maitama",
+        "region_parent_name": "Abuja (FCT)",
+        "region_slug": "maitama",
+        "short_description": "Yichun Dawnice Manufacture and Trade Co., Ltd established in 2021, it is a professional residential...",
+        "slug": "dawnice-lifepo4-48v-15kva-wall-mounted-solar-batteries",
+        "status": "active",
+        "title": "Dawnice Lifepo4 48v 15kva Wall Mounted Solar Batteries",
+        "title_labels": [],
+        "tops_count": 0,
+        "url": "/maitama/power-equipments/dawnice-lifepo4-48v-15kva-wall-mounted-solar-batteries-ppuROpVFZoKGLh3kiYDoRJIx.html",
+        "user_id": 13933713
+      },
+      {
+        "admin_info": {},
+        "as_top": false,
+        "attrs": [
+          {
+            "name": "Condition",
+            "value": "Used",
+            "unit": null
+          }
+        ],
+        "badge_info": {
+          "label": "Enterprise",
+          "slug": "booster_enterprise",
+          "bg_color": "#00B53F",
+          "text_color": "#ffffff",
+          "aside_color": "#229826",
+          "service_type": "boost"
+        },
+        "category_id": 297,
+        "category_name": "Electrical Equipment",
+        "category_slug": "power-equipments",
+        "count_images": 1,
+        "details": "Unused/Dead Solar batteries buyer. Unused/Solar batteries, truck batteries, ups batteries and lift...",
+        "fb_view_content_data": {
+          "content_name": "Unused/Dead Solar Batteries Buyer",
+          "content_category": "Electrical Equipment",
+          "content_ids": [
+            "7xTYZjkGvRXtGXghuuPAqYug"
+          ],
+          "content_type": "product",
+          "value": "0.17",
+          "currency": "USD"
+        },
+        "guid": "7xTYZjkGvRXtGXghuuPAqYug",
+        "id": 44939912,
+        "image_obj": {
+          "url": "https://pictures-nigeria.jijistatic.net/161276730_MzAwLTQwMC0xZGFjZTg0OWUx.webp",
+          "center": null
+        },
+        "images": [
+          {
+            "url": "https://pictures-nigeria.jijistatic.net/161276730_MzAwLTQwMC0xZGFjZTg0OWUx.webp",
+            "center": null,
+            "size": [
+              300,
+              400
+            ]
+          }
+        ],
+        "images_count": 1,
+        "is_boost": "enterprise",
+        "is_cv": false,
+        "is_inspected": false,
+        "is_job": false,
+        "is_owner": false,
+        "is_top": false,
+        "labels": [
+          {
+            "type": "age",
+            "value": "5+ years on Jiji"
+          }
+        ],
+        "message_url": "/?auth=Login&type=reply-form&url=%2Fayobo-ipaja%2Fpower-equipments%2Funused-dead-solar-batteries-buyer-7xTYZjkGvRXtGXghuuPAqYug.html",
+        "paid_info": {
+          "text": "Promoted",
+          "package_type": "enterprise",
+          "border": "#00B53F",
+          "icon": true,
+          "more_photos": false,
+          "package_title": "ENTERPRISE"
+        },
+        "price_obj": {
+          "value": 95000,
+          "view": "₦ 95,000",
+          "period": null,
+          "bulk": null,
+          "type": null
+        },
+        "price_title": "₦ 95,000",
+        "region": "Lagos State • Ipaja",
+        "region_id": 128,
+        "region_item_text": "Lagos, Ipaja",
+        "region_name": "Ipaja",
+        "region_parent_name": "Lagos State",
+        "region_slug": "ipaja",
+        "short_description": "Unused/Dead Solar batteries buyer. Unused/Solar batteries, truck batteries, ups batteries and lift...",
+        "slug": "unused-dead-solar-batteries-buyer",
+        "status": "active",
+        "title": "Unused/Dead Solar Batteries Buyer",
+        "title_labels": [],
+        "tops_count": 0,
+        "url": "/ayobo-ipaja/power-equipments/unused-dead-solar-batteries-buyer-7xTYZjkGvRXtGXghuuPAqYug.html",
+        "user_id": 8342202,
+        "seller": {
+          "user_name": "Franco electronics",
+          "user_avatar_url": "https://pictures-nigeria.jijistatic.net/142902123_MjAwLTIwMC00NTRhYTc0NDIy.jpg",
+          "user_rating": 5
+        }
+      }
+    ],
+    "per_page": 20,
+    "total_pages": 542,
+    "tops_exist": true,
+    "in_day_count": 37,
+    "in_hour_count": 0
+  },
+  "internal_suggests": null,
+  "companies_search": null,
+  "next_url": "https://jiji.ng/api_web/v1/listing?slug=272-solar-batteries&init_page=true&page=2&webp=false&lsmid=1794621530567",
+  "status": "ok",
+  "listing_id": null,
+  "sort_data": {
+    "sort_data": [
+      {
+        "name": "Recommended",
+        "key": "rel",
+        "url": "/api_web/v1/listing?slug=272-solar-batteries&init_page=true&webp=false&sort=rel"
+      },
+      {
+        "name": "Newest",
+        "key": "new",
+        "url": "/api_web/v1/listing?slug=272-solar-batteries&init_page=true&webp=false&sort=new"
+      },
+      {
+        "name": "Lowest price",
+        "key": "price",
+        "url": "/api_web/v1/listing?slug=272-solar-batteries&init_page=true&webp=false&sort=price"
+      },
+      {
+        "name": "Highest price",
+        "key": "price_desc",
+        "url": "/api_web/v1/listing?slug=272-solar-batteries&init_page=true&webp=false&sort=price_desc"
+      }
+    ],
+    "sort_key": "sort"
+  },
+  "search_params": {
+    "sort": "google",
+    "period": null,
+    "query": null
+  },
+  "extra_data": {
+    "message": null
+  },
+  "banners": [],
+  "banners_v2": [],
+  "period": {
+    "key": "period",
+    "types": [
+      {
+        "name": "+0 for hour",
+        "value": "hour"
+      },
+      {
+        "name": "+37 for day",
+        "value": "day"
+      }
+    ]
+  },
+  "seo": {
+    "title": "Solar Batteries in Nigeria for sale ▷ Price on Jiji.ng",
+    "description": "Jiji.ng ✓ 10837+  Solar Batteries for sale in Nigeria ✓ From ₦ 320 ✓ Verified sellers ✓ Residential & industrial ✓ Wire up for less!",
+    "keywords": "Solar Batteries, buy Solar Batteries, Solar Batteries in Nigeria, Solar Batteries ads in Nigeria, sell Solar Batteries in Nigeria",
+    "og_title": null,
+    "og_description": null,
+    "og_image_list": [
+      [
+        "image",
+        "https://assets.jijistatic.net/static/img/category/og/290.jpg"
+      ],
+      [
+        "image:width",
+        800
+      ],
+      [
+        "image:height",
+        800
+      ]
+    ],
+    "og_sitename": "Jiji.ng",
+    "deeplink": "jiji://content/cat/297",
+    "web_url": "https://jiji.ng/api_web/v1/listing",
+    "h1": "Solar Batteries in Nigeria",
+    "canonical_url": "https://jiji.ng/272-solar-batteries",
+    "alternate_href": [
+      "android-app://ng.jiji.app/jiji/content/cat/297"
+    ],
+    "no_index": false,
+    "bot_blocks": {
+      "article": {},
+      "faqs": {},
+      "tags": [
+        {
+          "priority": 1,
+          "title": "Tags:",
+          "list": [
+            {
+              "title": "Felicitysolar Solar Batteries",
+              "items_count": 1390,
+              "url": "/272-solar-batteries/felicitysolar"
+            },
+            {
+              "title": "Cworth Energy Solar Batteries",
+              "items_count": 478,
+              "url": "/272-solar-batteries/cworth-energy"
+            },
+            {
+              "title": "Solar Solar Batteries",
+              "items_count": 465,
+              "url": "/272-solar-batteries/solar"
+            },
+            {
+              "title": "SMS Solar Batteries",
+              "items_count": 274,
+              "url": "/272-solar-batteries/sms"
+            }
+          ]
+        }
+      ],
+      "feature": []
+    }
+  },
+  "seo_node_info": [],
+  "saved_search": {
+    "is_seo_cat": true,
+    "category_id": 6597211
+  },
+  "search": {
+    "saved_search": {
+      "is_seo_cat": true,
+      "category_id": 6597211
+    },
+    "is_search_save": false
+  },
+  "adult_only": false,
+  "has_price_valuation": false,
+  "breadcrumbs": [
+    {
+      "url": "https://jiji.ng/",
+      "title": "Jiji"
+    },
+    {
+      "url": "/repair-and-construction",
+      "title": "Repair & Construction"
+    },
+    {
+      "url": "/power-equipments",
+      "title": "Electrical Equipment"
+    },
+    {
+      "url": "/solar-energy-products",
+      "title": "Solar & Renewable"
+    },
+    {
+      "url": null,
+      "title": "10837 results for <strong>Solar Batteries </strong> in Nigeria"
+    }
+  ],
+  "show_ads": false,
+  "search_categories": [],
+  "adsense_targeting": "297_power-equipments"
+}

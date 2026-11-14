@@ -59,35 +59,27 @@
     },
     {
       "site": "jiji",
-      "type": "panel",
-      "url": "https://jiji.ng/electronics?query=solar%20panel",
-      "listing_count_at_seed": null,
-      "verified": "2026-11-13",
-      "note": "Jiji has no solar subcategory path; /electronics is the parent. The query parameter is the discovery route. Product pages render server-side via window.__NUXT__."
-    },
-    {
-      "site": "jiji",
       "type": "battery",
-      "url": "https://jiji.ng/electronics?query=solar%20battery",
-      "listing_count_at_seed": null,
-      "verified": "2026-11-13",
-      "note": "Same route as panels, different query. Filters for Used and Foreign Used condition are exposed on the category page and must be used to detect condition."
+      "url": "https://jiji.ng/297-inverter-batteries",
+      "listing_count_at_seed": 9979,
+      "verified": "2026-11-14",
+      "note": "The inverter battery subcategory. The JSON feed serves it under this slug."
     },
     {
       "site": "jiji",
       "type": "battery",
       "url": "https://jiji.ng/272-solar-batteries",
-      "listing_count_at_seed": 8835,
-      "verified": "2026-11-13",
-      "note": "The solar battery subcategory. Facets give Brand, Type, Condition and Verified seller. Condition counts were Brand New 6347, Refurbished 15 and Used 710."
+      "listing_count_at_seed": 10830,
+      "verified": "2026-11-14",
+      "note": "The solar battery subcategory. Facets give Brand, Type, Condition and Verified seller. Condition counts were Brand New 6347, Refurbished 15 and Used 710. The JSON feed serves it under this slug."
     },
     {
       "site": "jiji",
       "type": "panel",
       "url": "https://jiji.ng/solar-energy-products",
-      "listing_count_at_seed": null,
-      "verified": "2026-11-13",
-      "note": "The Solar and Renewable parent category under Electrical Equipment. It holds panels and batteries, so it is a secondary crawl path only."
+      "listing_count_at_seed": 66225,
+      "verified": "2026-11-14",
+      "note": "The Solar and Renewable parent category under Electrical Equipment. It holds panels and batteries, so it is a secondary crawl path only. The JSON feed serves it under this slug."
     },
     {
       "site": "solarshopnigeria",

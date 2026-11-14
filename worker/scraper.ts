@@ -14,7 +14,9 @@ import {
   isOfferStatus,
   isReasonCode,
   isTrustTier,
+  NOT_FOUND_STRIKES,
   offerId,
+  UNVERIFIED_AFTER_DAYS,
 } from '../scraper/rules.ts';
 
 export {
@@ -125,6 +127,49 @@ export async function handleScraperRoute(
     return json({ run_id: runId, status: 'ok' });
   }
 
+  if (pathname === '/api/scraper/offers' && method === 'GET') {
+    const url = new URL(request.url);
+    const limit = Math.min(Number(url.searchParams.get('limit') ?? 500) || 500, 5000);
+    const source = url.searchParams.get('source');
+
+    // An offer with no successful check inside the staleness window leaves
+    // the quoted set.
+    await env.DB
+      .prepare(
+        `UPDATE hardware_offers
+         SET status = 'review_required', reason_code = 'unverified_stale', updated_at = datetime('now')
+         WHERE status = 'qualified'
+           AND (last_checked IS NULL
+             OR julianday(replace(substr(last_checked, 1, 19), 'T', ' ')) < julianday('now', ?))`,
+      )
+      .bind(`-${UNVERIFIED_AFTER_DAYS} days`)
+      .run();
+
+    const columns =
+      `id, source_site, source_listing_id, source_url, seller_id, seller_name, price, currency,
+       price_kind, unit_basis, unit_quantity, condition, in_stock, trust_tier, stated_specs,
+       trading_signals, raw_payload, image_hash, status, reason_code, not_found_strikes, last_checked,
+       canonical_id`;
+    const rows = source
+      ? await env.DB
+          .prepare(`SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC LIMIT ?`)
+          .bind(source, limit)
+          .all<Record<string, unknown>>()
+      : await env.DB
+          .prepare(`SELECT ${columns} FROM hardware_offers ORDER BY COALESCE(last_checked, '') ASC LIMIT ?`)
+          .bind(limit)
+          .all<Record<string, unknown>>();
+
+    return json(
+      (rows.results ?? []).map((row) => ({
+        ...row,
+        stated_specs: parseJson(row.stated_specs),
+        trading_signals: parseJson(row.trading_signals),
+        raw_payload: parseJson(row.raw_payload),
+      })),
+    );
+  }
+
   if (pathname === '/api/scraper/offers' && method === 'POST') {
     const body = await readBody(request);
     const offers = Array.isArray(body.offers) ? body.offers : [];
@@ -136,16 +181,22 @@ export async function handleScraperRoute(
       const sourceListingId = text(offer.source_listing_id);
       if (!sourceSite || !sourceListingId) return badRequest('An offer is missing its source site or listing id.');
 
-      const status = text(offer.status, 'review_required');
-      if (!isOfferStatus(status)) return badRequest(`Unknown offer status: ${status}`);
+      const givenStatus = text(offer.status, 'review_required');
+      if (!isOfferStatus(givenStatus)) return badRequest(`Unknown offer status: ${givenStatus}`);
 
       const trustTier = text(offer.trust_tier, 'unknown');
       if (!isTrustTier(trustTier)) return badRequest(`Unknown trust tier: ${trustTier}`);
 
-      const reasonCode = offer.reason_code == null ? null : text(offer.reason_code);
-      if (reasonCode !== null && !isReasonCode(reasonCode)) {
-        return badRequest(`Unknown reason code: ${reasonCode}`);
+      const givenReason = offer.reason_code == null ? null : text(offer.reason_code);
+      if (givenReason !== null && !isReasonCode(givenReason)) {
+        return badRequest(`Unknown reason code: ${givenReason}`);
       }
+
+      // Three genuine not-found checks remove the listing from the catalogue.
+      const strikes = Math.max(0, number(offer.not_found_strikes) ?? 0);
+      const delisted = strikes >= NOT_FOUND_STRIKES;
+      const status = delisted ? 'excluded' : givenStatus;
+      const reasonCode = delisted ? 'listing_not_found' : givenReason;
 
       const id = offerId(sourceSite, sourceListingId);
       const previous = await env.DB
@@ -159,8 +210,8 @@ export async function handleScraperRoute(
              id, canonical_id, bucket_key, source_site, source_url, source_listing_id,
              seller_id, seller_name, price, currency, price_kind, unit_basis, unit_quantity,
              condition, in_stock, trust_tier, stated_specs, trading_signals, raw_payload,
-             image_hash, status, reason_code, last_checked, scraped_at, updated_at
-           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             image_hash, status, reason_code, not_found_strikes, last_checked, scraped_at, updated_at
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(source_site, source_listing_id) DO UPDATE SET
              canonical_id = COALESCE(excluded.canonical_id, hardware_offers.canonical_id),
              bucket_key = COALESCE(excluded.bucket_key, hardware_offers.bucket_key),
@@ -178,6 +229,7 @@ export async function handleScraperRoute(
              image_hash = COALESCE(excluded.image_hash, hardware_offers.image_hash),
              status = excluded.status,
              reason_code = excluded.reason_code,
+             not_found_strikes = excluded.not_found_strikes,
              last_checked = excluded.last_checked,
              scraped_at = excluded.scraped_at,
              updated_at = excluded.updated_at`,
@@ -205,6 +257,7 @@ export async function handleScraperRoute(
           text(offer.image_hash) || null,
           status,
           reasonCode,
+          strikes,
           text(offer.last_checked) || null,
           text(offer.scraped_at, new Date().toISOString()),
           new Date().toISOString(),
@@ -253,7 +306,11 @@ export async function handleScraperRoute(
              bucket_key = excluded.bucket_key,
              current_hardware_row = excluded.current_hardware_row,
              product_type = excluded.product_type,
-             status = excluded.status,
+             status = CASE
+               WHEN hardware_candidates.status IN ('rejected', 'duplicate', 'approved')
+                 THEN hardware_candidates.status
+               ELSE excluded.status
+             END,
              proposed_data = excluded.proposed_data,
              proposed_price = excluded.proposed_price,
              current_price = excluded.current_price,
@@ -356,6 +413,17 @@ export async function handleScraperRoute(
           .bind(...offerIds)
           .all<{ source_site: string; last_checked: string | null }>()
       : { results: [] as Array<{ source_site: string; last_checked: string | null }> };
+
+    // A candidate whose offers all left the pool is stale. It never publishes.
+    if (offers.results.length === 0) {
+      return json(
+        {
+          error: 'stale-candidate',
+          message: 'No offer supports this candidate any more. Run the sweep again.',
+        },
+        409,
+      );
+    }
 
     const sources = [...new Set((offers.results ?? []).map((offer) => offer.source_site))];
     const checked = (offers.results ?? [])

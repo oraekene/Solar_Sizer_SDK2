@@ -105,7 +105,7 @@ test('a missing price sends the offer to review', () => {
   assert.equal(offer.reason_code, 'call_for_price');
 });
 
-test('a missing electrical value sends the offer to review', () => {
+test('a missing electrical value is recorded for the review screen', () => {
   const facts = parseProductPage(fixture('solarshopnigeria-product.html'), PANEL_URL);
   assert.ok(facts);
 
@@ -113,7 +113,8 @@ test('a missing electrical value sends the offer to review', () => {
   delete specs['Short-circuit Current (Isc)'];
   const offer = buildOffer({ ...facts, specs }, '2026-11-13T02:00:00.000Z');
 
-  assert.equal(offer.status, 'review_required');
-  assert.equal(offer.reason_code, 'missing_required_spec');
-  assert.deepEqual(offer.trading_signals.missing_specs, ['isc']);
+  // The wattage still identifies the product, so the offer stays qualified
+  // and the missing value is listed for the row.
+  assert.equal(offer.status, 'qualified');
+  assert.deepEqual(offer.trading_signals.missing_calculation_specs, ['isc']);
 });
