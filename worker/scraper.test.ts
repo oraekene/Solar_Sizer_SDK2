@@ -135,3 +135,29 @@ test('the WhatsApp alert refuses to run without its settings', async () => {
   const body = (await response.json()) as { error: string };
   assert.match(body.error, /not configured/);
 });
+
+test('a review needs candidate ids and a known status', async () => {
+  const env = { DB: {} } as any;
+
+  const noIds = await handleScraperRoute(
+    new Request('https://worker.test/api/scraper/candidates/review', {
+      method: 'POST',
+      body: JSON.stringify({ status: 'approved' }),
+    }),
+    env,
+    '/api/scraper/candidates/review',
+    'POST',
+  );
+  assert.equal(noIds?.status, 400);
+
+  const badStatus = await handleScraperRoute(
+    new Request('https://worker.test/api/scraper/candidates/review', {
+      method: 'POST',
+      body: JSON.stringify({ ids: ['candidate:one'], status: 'weird' }),
+    }),
+    env,
+    '/api/scraper/candidates/review',
+    'POST',
+  );
+  assert.equal(badStatus?.status, 400);
+});

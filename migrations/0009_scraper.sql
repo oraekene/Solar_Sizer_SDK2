@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS hardware_candidates (
   offer_ids TEXT NOT NULL DEFAULT '[]',
   source_urls TEXT NOT NULL DEFAULT '[]',
   provenance TEXT NOT NULL DEFAULT '[]',
+  risk_flags TEXT NOT NULL DEFAULT '[]',
   rejected_with_reason TEXT,
   reviewer TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

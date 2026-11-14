@@ -353,6 +353,9 @@ The admin Database tab is extended:
 - A candidate list page: id, type, brand, watts/Ah, proposed price, sources, freshness, risk flags (low price, low trust, estimated specs).
 - A row detail modal with an **offers section**: per-offer seller, price, unit basis, condition, trust tier, freshness, and a source link.
 - Actions: **approve**, **reject with reason**, **merge into existing product**, **edit**, and **bulk approve** for same-canonical duplicates.
+- The risk flags live on the candidate row, so the list shows the same warnings every time it loads.
+- A row that misses a field the calculator reads never goes live. The publish route refuses it and names the missing fields, and the edit form fills them in. The required fields are a panel wattage, Voc and Isc, and a battery voltage, capacity, type, parallel limit and C-rate.
+- A manual row keeps its price until the admin accepts the scraped median. The publish route refuses the row first and asks for that confirmation.
 
 ### 6.3 Archive
 

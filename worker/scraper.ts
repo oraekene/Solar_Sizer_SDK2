@@ -14,6 +14,7 @@ import {
   isOfferStatus,
   isReasonCode,
   isTrustTier,
+  missingSpecs,
   NOT_FOUND_STRIKES,
   offerId,
   UNVERIFIED_AFTER_DAYS,
@@ -371,8 +372,8 @@ export async function handleScraperRoute(
           `INSERT INTO hardware_candidates (
              id, canonical_id, bucket_key, current_hardware_row, product_type, status,
              proposed_data, proposed_price, current_price, offer_ids, source_urls,
-             provenance, rejected_with_reason, reviewer, reviewed_at, published_hardware_id
-           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             provenance, risk_flags, rejected_with_reason, reviewer, reviewed_at, published_hardware_id
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET
              canonical_id = excluded.canonical_id,
              bucket_key = excluded.bucket_key,
@@ -389,6 +390,7 @@ export async function handleScraperRoute(
              offer_ids = excluded.offer_ids,
              source_urls = excluded.source_urls,
              provenance = excluded.provenance,
+             risk_flags = excluded.risk_flags,
              updated_at = datetime('now')`,
         )
         .bind(
@@ -404,6 +406,7 @@ export async function handleScraperRoute(
           JSON.stringify(Array.isArray(candidate.offer_ids) ? candidate.offer_ids : []),
           JSON.stringify(Array.isArray(candidate.source_urls) ? candidate.source_urls : []),
           JSON.stringify(Array.isArray(candidate.provenance) ? candidate.provenance : []),
+          JSON.stringify(Array.isArray(candidate.risk_flags) ? candidate.risk_flags : []),
           text(candidate.rejected_with_reason) || null,
           text(candidate.reviewer) || null,
           candidate.reviewed_at == null ? null : text(candidate.reviewed_at),
@@ -436,8 +439,36 @@ export async function handleScraperRoute(
         offer_ids: parseJson(row.offer_ids),
         source_urls: parseJson(row.source_urls),
         provenance: parseJson(row.provenance),
+        risk_flags: parseJson(row.risk_flags),
       })),
     );
+  }
+
+  // The review screen approves, rejects and marks duplicates. The route takes
+  // a list of ids so a bulk approval is one call.
+  if (pathname === '/api/scraper/candidates/review' && method === 'POST') {
+    const body = await readBody(request);
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((value) => text(value)).filter(Boolean).slice(0, 50)
+      : [];
+    if (ids.length === 0) return badRequest('No candidate ids in the request.');
+
+    const status = text(body.status);
+    if (!['approved', 'rejected', 'duplicate'].includes(status)) {
+      return badRequest('A review can only set approved, rejected or duplicate.');
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    await env.DB
+      .prepare(
+        `UPDATE hardware_candidates
+         SET status = ?, reviewer = ?, reviewed_at = datetime('now'), rejected_with_reason = ?
+         WHERE id IN (${placeholders})`,
+      )
+      .bind(status, text(body.reviewer, 'admin'), text(body.reason) || null, ...ids)
+      .run();
+
+    return json({ success: true, count: ids.length, status });
   }
 
   const publishMatch = pathname.match(/^\/api\/scraper\/candidates\/([^/]+)\/publish$/);
@@ -460,6 +491,20 @@ export async function handleScraperRoute(
 
     const proposedData = parseJson(candidate.proposed_data) as Record<string, unknown>;
     const proposedPrice = number(candidate.proposed_price);
+
+    // A row that misses a field the calculator reads never goes live. The
+    // review screen asks for the missing values first.
+    const missing = missingSpecs(text(candidate.product_type, 'panel'), proposedData);
+    if (missing.length > 0) {
+      return json(
+        {
+          error: 'missing-specs',
+          message: `The row is missing ${missing.join(', ')}. Fill them in before publishing.`,
+          missing,
+        },
+        409,
+      );
+    }
 
     // A manual row keeps its price until an admin accepts the scraped median.
     if (existing && existing.price_source === 'manual' && body.accept_manual !== true) {

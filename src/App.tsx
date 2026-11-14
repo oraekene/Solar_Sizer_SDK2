@@ -77,6 +77,7 @@ import { productHardware, isAllInOneProduct } from "./utils/productHardware";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
 import { sizeWiring, normalizeWiringSpecs, specNumber, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
+import ScraperReview from "./components/ScraperReview";
 import { sdk } from "./sdk";
 import { storeGet, storeSet, storeRemove, KEY } from "./store/sqlite";
 
@@ -1596,6 +1597,34 @@ export default function App() {
       if (globalPowerstations.length > 0) setPowerstations(prev => mergeById(prev, globalPowerstations));
     }).catch(console.error);
   }, []); // Empty dependency array — runs once on mount
+
+  // The same fetch runs again after the scraper review screen publishes a row,
+  // so the new price shows without a page reload.
+  const refreshHardware = async () => {
+    const data = await sdk.getHardware();
+    const globalPanels = data.filter((h: any) => h.type === 'panel').map((h: any) => h.data);
+    const globalBatteries = data.filter((h: any) => h.type === 'battery').map((h: any) => h.data);
+    setPanels((prev) => {
+      if (globalPanels.length === 0) return prev;
+      const merged = [...prev];
+      for (const item of globalPanels) {
+        const index = merged.findIndex((m) => m.id === item.id);
+        if (index >= 0) merged[index] = item;
+        else merged.push(item);
+      }
+      return merged;
+    });
+    setBatteries((prev) => {
+      if (globalBatteries.length === 0) return prev;
+      const merged = [...prev];
+      for (const item of globalBatteries) {
+        const index = merged.findIndex((m) => m.id === item.id);
+        if (index >= 0) merged[index] = item;
+        else merged.push(item);
+      }
+      return merged;
+    });
+  };
   
   // Hardware State
   const [inverters, setInverters] = useState<Inverter[]>(() => {
@@ -5110,6 +5139,15 @@ const liveWiringPrice = liveSizing
                 })}
               </div>
             </div>
+
+            <ScraperReview
+              adminKey={sessionStorage.getItem("ss_admin_key") ?? ""}
+              targets={[
+                ...panels.map((panel) => ({ id: panel.id, name: panel.name, type: "panel" })),
+                ...batteries.map((battery) => ({ id: battery.id, name: battery.name, type: "battery" })),
+              ]}
+              onPublished={refreshHardware}
+            />
 
             {isDeveloper && (
               <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-100 mb-8">

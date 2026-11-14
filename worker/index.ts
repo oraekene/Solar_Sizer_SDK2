@@ -149,9 +149,12 @@ function normalizeDevice(row: Record<string, unknown>): Record<string, unknown> 
 }
 
 function normalizeHardware(row: Record<string, unknown>): Record<string, unknown> & { data: JsonRecord; tags: string[] } {
+  const data = safeJsonParse<JsonRecord>(row.data, {});
+  // The app reads every hardware row through its data object, so the row id
+  // goes there as well. A row without it cannot be edited or deleted.
   return {
     ...row,
-    data: safeJsonParse<JsonRecord>(row.data, {}),
+    data: { ...data, id: data.id ?? row.id },
     tags: safeJsonParse<string[]>(row.tags, []),
   };
 }

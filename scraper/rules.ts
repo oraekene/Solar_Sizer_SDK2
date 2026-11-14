@@ -136,3 +136,19 @@ export const NOT_FOUND_STRIKES = 3;
 
 // An offer with no successful check for this many days is unverified.
 export const UNVERIFIED_AFTER_DAYS = 14;
+
+// A published row must carry every field the calculator reads. A candidate
+// that misses one waits for a human instead of going live with a blank value.
+export const REQUIRED_SPECS: Record<string, string[]> = {
+  panel: ['watts', 'voc', 'isc'],
+  battery: ['voltage', 'capacity_ah', 'type', 'max_parallel_strings', 'min_c_rate'],
+};
+
+export function missingSpecs(productType: string, data: Record<string, unknown>): string[] {
+  const required = REQUIRED_SPECS[productType] ?? [];
+  return required.filter((field) => {
+    const value = data[field];
+    if (typeof value === 'number') return !Number.isFinite(value) || value <= 0;
+    return value === undefined || value === null || value === '';
+  });
+}

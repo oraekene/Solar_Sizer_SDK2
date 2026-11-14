@@ -247,6 +247,8 @@ Run these checks after the implementation lands.
    gh secret list --repo oraekene/Solar_Sizer_SDK2
    ```
 
+5. The review screen works. Open the app with `?admin=true`, unlock it, open the Hardware DB tab and press "Scraper review". The list shows the candidates that wait for a human. Open one to see its offers, then approve, edit, merge or publish it. A candidate that misses a field the calculator reads cannot be published until the field is filled in.
+
 ## What the implementation adds
 
 | Path | Purpose |
@@ -261,6 +263,7 @@ Run these checks after the implementation lands.
 | `.github/workflows/scraper-discovery.yml` | The weekly crawl on Sunday at 03:00 WAT. |
 | `.github/workflows/scraper-watchdog.yml` | The daily heartbeat check that opens the `scraper-alert` issue. |
 | `worker/scraper.ts` | The admin routes for the candidates, the offers, the queue, the run reports and the alert. |
+| `src/components/ScraperReview.tsx` | The review queue in the admin Hardware DB tab. |
 | `migrations/0009_scraper.sql` | The staging tables. |
 
 ## Rotating a secret

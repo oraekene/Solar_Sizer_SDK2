@@ -154,6 +154,7 @@ export async function rebuildAndPublish(
       offer_ids: proposal.offer_ids,
       source_urls: proposal.source_urls,
       provenance: proposal.provenance,
+      risk_flags: proposal.risk_flags,
     })),
   );
 
