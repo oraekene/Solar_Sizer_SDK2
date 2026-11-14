@@ -31,7 +31,7 @@ Rationale: panels and batteries are the two types that every system must have, a
 | --- | --- | --- | --- |
 | 1 | SolarShopNigeria (specialist retailer with full spec tables and PDF datasheets); Jiji; Jumia | 1 | Price anchors and discovery |
 | 1b | SolarMart, BuySolar.ng | 1b | Immediately after phase 1 proves the pattern |
-| 2 | Konga, CDcare | 2 | Konga blocks its product detail pages and CDcare has no domain, so both need a new decision |
+| 2 | Konga, CDcare | 1b, after the four-week report passes | Konga blocks its product detail pages and CDcare has no domain, so both need a new adapter decision |
 | 3 | AliExpress, Temu | optional, later | Reference/spec only; excluded from price unless landed-cost model exists |
 
 The source inventory and the evidence behind each verdict are in `docs/sources-inventory.md`.
@@ -143,6 +143,7 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 - **Admin endpoint contract**: the runner posts to a single authenticated route using the existing `x-admin-key` header, which the Worker already checks against the `ADMIN_PASSWORD` environment value with a timing-safe compare and a failed-attempt lockout. The same value is stored as a GitHub Actions secret. The response is a small JSON status with a run id, and the runner treats any non-200 as a run failure rather than continuing.
 - Job runs only while the page parses successfully; network-only failures are reported.
 - **First-run backfill**: the initial crawl reads the existing hardware rows and the seeded watchlist only, writes candidates with `manual`-protect flags, and never overwrites a row whose `price_source` is already `manual`. The first successful run writes a heartbeat so the watchdog does not raise a false alert on day one.
+- **The watchlist does not grow itself**: a discovered product becomes an offer and then a candidate, never a watchlist row. A human adds a brand path when a run report shows a brand that the crawl missed.
 
 ### 3.2 Rate discipline
 
@@ -184,9 +185,11 @@ Hard gates (offer excluded):
 
 Tier (controls qualification):
 
-- **verified** — official store, platform-verified badge, or the brand's own distributor page.
-- **established** — rating of 4.0 or higher with at least 10 reviews, or a seller known to stock the brand.
-- **unknown** — everything else.
+- **verified** - official store, platform-verified badge, or the brand's own distributor page.
+- **established** - rating of 4.0 or higher with at least 10 reviews, or a seller known to stock the brand.
+- **unknown** - everything else.
+
+The pages do not expose one shared signal, so each adapter uses the strongest one it has. Jumia publishes no verified-seller flag in its product data, so only Jumia's own store counts as verified there and a marketplace vendor page is not a badge; its product rating stands in for a seller rating. Jiji publishes no rating at all, so a platform badge or two or more years on the platform stands in. SolarShopNigeria is verified for the brands it officially distributes and established for the rest.
 - **Price outlier** for the fake/bait gate is an offer priced below 60% of the current canonical median, which is the typical depth of a missing-zero typo or a bait listing and is far deeper than legitimate discounting. The threshold is configurable per source and is reviewed whenever the unknown-offer rate rises.
 
 The median is computed from verified and established offers. **Unknown offers stay in the pool and are shown, but do not set the median while a trusted offer exists.** If no verified or established offer exists, the median falls back to unknown offers with a low-confidence price flag; the candidate waits for a human and never publishes itself.
@@ -324,7 +327,7 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 
 ### 5.3 Pipeline stages
 
-1. **Discover** (weekly Sunday 03:00 WAT): crawl source categories and saved search URLs; propose candidates.
+1. **Discover** (weekly Sunday 03:00 WAT): crawl the source categories, the Jiji category feed and the brand paths; propose candidates. Saved search terms stay seeded data and are not requested in phase one, because they add pages without a proven gap.
 2. **Sweep** (daily 02:00 WAT): re-check every known offer URL; extract price, condition, seller, stock, specs; apply ambiguity rules; compute candidate medians.
 3. **Enrich** (as needed): queue image hash; OCR; VLM chain; datasheet fetch; alias resolution.
 4. **Merge & propose**: group offers into canonical identities; compute medians; compute proposed `hardware` row; write `hardware_candidates`.
@@ -449,7 +452,7 @@ Everything in this list was discussed and consciously postponed. Nothing here bl
 | --- | --- | --- |
 | Inverters, powerstations, charge controllers, wiring, accessories | 2 | Inverter MPPT ceilings and surge values are the least published specs and the most dangerous to guess. |
 | `products` table, kits, accessories catalogue | 2 | Phase one proves the hardware pipeline first. |
-| Konga and CDcare adapters | 1b | Accepted as "immediately after" the first three sources; Konga disallows `/search` and product detail paths, so its adapter needs a different discovery route. |
+| Konga and CDcare adapters | 1b | Starts only after the four-week phase-one report passes, not on a calendar date. Konga disallows `/search` and product detail paths, so its adapter needs a different discovery route. |
 | AliExpress and Temu price contribution | 3 | Needs a landed-cost model covering shipping, duty and FX before an import price may enter a median. |
 | Social sources (Twitter/X, Facebook, Nairaland, Instagram, WhatsApp) | out of scope | Closed or unstructured graphs needing login, session tracking or image-post analysis. |
 | CDcare installment price as a normal price kind | 1b | An installment total is not comparable to a cash price until its own conversion rule is defined. |

@@ -9,6 +9,7 @@ This file answers one question for each item: is the decision written down, is t
 | Status | Meaning |
 | --- | --- |
 | Built | The decision is written down and the code exists. |
+| Written | The decision is written down. Phase one needs the code, and it is not built yet. |
 | Settled | The decision is written down. The code will come when the phase needs it. |
 | Deferred | The decision is written down and the work belongs to a later phase. |
 | Open | The decision needs the owner, a paid account or a live check that only the owner can do. |
@@ -65,7 +66,7 @@ This file answers one question for each item: is the decision written down, is t
 | Item | Decision | Where | Status |
 | --- | --- | --- | --- |
 | Offer identity and duplicate ads | The listing id is the key. A cross-posted ad with a different photo counts as one offer only when the photo matches. | Design 2.6 | Built for an exact SHA-256 match. A weaker match becomes a review item instead of a merge, so the variant risk is contained. |
-| Trust and seller scoring | Verified means an official store or a platform badge. Established means a rating of 4.0 with at least 10 reviews, or a seller known for the brand. Everything else is unknown. | Design 3.5, the three adapters | Built. The thresholds live in the code, so they are not tunable at runtime. |
+| Trust and seller scoring | Verified means an official store or a platform badge. Established means a rating of 4.0 with at least 10 reviews, or a seller known for the brand. Everything else is unknown. Jumia exposes no verified-seller flag, so only Jumia's own store is verified there and a marketplace vendor page is not a badge; Jiji uses its badge or two or more years on the platform. | Design 3.5, the three adapters | Built. The thresholds live in the code, so they are not tunable at runtime. |
 | Spec conflicts between sellers | The most trusted seller that states a value wins. The datasheet value overrides it. | Design 4.1 and 4.4 | Built. The SolarShopNigeria page for an official brand counts as `datasheet`, and a numeric disagreement over 1 percent adds `sellers disagree on <field>` and waits for a human. |
 | Seller with many ads | Each ad stays in the archive, and the trust score belongs to the seller. | Design 2.6 | Built. The collapsed ads stay in the archive and the offers route reports the collapsed count. |
 | Money rounding | Converted prices are rounded to the nearest hundred naira and keep the raw value. | Design 3.4 | Built. The final naira median is rounded too, so a published price cannot carry kobo. |
@@ -157,12 +158,13 @@ This file answers one question for each item: is the decision written down, is t
 | No thumbnail and no perceptual hash | A re-encoded copy of one photo is not collapsed, and the review screen shows no small image. | Decode the image, store a small thumbnail, and add a perceptual hash behind the same collapse rule. |
 | No acceptance dashboard or audit sampler | The four-week gates cannot be measured without a manual query. | Add a read-only report route that counts products with two offers, freshness and approvals without edits. |
 | No archive promotion action | An ambiguity-coded offer needs a new fetch before it can become a candidate. | Add an admin action that copies the archived offer into a `pending_review` candidate. |
+| No estimated-specs marker in quotes | The design says the quote line marks an estimated row, and the admin sees each estimated field. The tag is written and the raw provenance is shown, but the PDF quote and the per-field list are not built. | Read the row tag in the quote line and render the provenance in the review modal. |
 | Empty run report fields | Trust distribution, approval counts and model calls are not recorded. | Fill them when the review and enrichment paths are live. |
 | The host is not provisioned | Image enrichment never runs, so unknown specs wait for a human. | Complete the Fly.io steps in the runbook. |
 | D1 table sizes are unmeasured | 500 checks a day could grow the offer and history tables past the plan. | Measure after the first four weeks. |
 | Local gateway vision calls fail upstream | The drainer cannot return a spec from an image while the provider call fails. | Fix the provider route or use another model for the drainer. |
 
-The archive promotion, the dashboard and the thumbnail are phase-one follow-ups. None blocks the first live crawl.
+The archive promotion, the dashboard, the thumbnail and the estimated-specs marker are phase-one follow-ups. None blocks the first live crawl.
 
 ---
 
@@ -173,3 +175,39 @@ The archive promotion, the dashboard and the thumbnail are phase-one follow-ups.
 3. A funded host, either Fly.io in Johannesburg at about $3.84 a month or Hetzner at €5.99 a month.
 4. The four Kapso values for the WhatsApp alert: the API key, the phone number id, the alert number and the approved template name. The template needs one named body parameter, `message`.
 5. One live sweep and one live discovery run, so the hosted-runner page and the unconfirmed brand slugs can be checked.
+
+---
+
+## 10. The export checklist, item by item
+
+The tables above answer the twelve decisions, the branches, the big items, the critical items, the not-yet-decided items and the second-pass gaps. This section adds the export items that those tables did not name, so the whole checklist is answered in one place.
+
+| Item | Answer | Where | Status |
+| --- | --- | --- | --- |
+| Spot-check sampling method | Thirty offers by stratified random draw across every phase-one source and trust tier, scored on brand, model and price against the source page and the canonical row. The sampled ids go into the run report. | Design 5.2 | Written. The sampler route is not built, so the week-four audit needs a manual query. |
+| Outlier distance | An offer below 60 percent of the canonical median is a price outlier, removed in two passes. | Design 3.5, `scraper/merge.ts` | Built, with a test. |
+| Brand and model aliases | Aliases live in `docs/scraper-watchlist.json`, so `9Solar`, `9 Solar` and `Nine Solar Energy` share one key. A generic name becomes the `generic` bucket, never a branded key. | Design 3.7, `scraper/identity.ts` | Built, with tests. |
+| Estimated-specs warning in quotes | A row with estimated specs stays selectable, the quote line must show a short marker, and the admin must see each estimated field with its source. | Design 4.1 | Written. The tag is written at publish, but the quote marker and the per-field list are not built. |
+| The seed watchlist after discovery | The watchlist is fixed and curated. Discovered products become offers and candidates, never watchlist rows, and a human adds a brand path when a report shows a gap. | Design 3.1 | Built. Growth is manual on purpose. |
+| The Konga and CDcare phase band | They start after the four-week report passes, not on the first day, so the transition band cannot be read as phase one. | Design 1.3 and 11 | Corrected in this pass. |
+| Cost cap | The Worker and Actions stay inside their free tiers. The host is about $3.84 a month, and the Fly personal-organisation waiver covers a bill below $5. No spend alarm exists. | Design 5.1 | Settled. A bill above $5 needs the owner. |
+| Internet devices in phase two | `products`, internet kits and accessories are out of scope for phase one. | Design 1.1 and 11 | Settled. |
+| The Nigerian retailer inventory | Every shop that was checked, with its verdict and its evidence. | `docs/sources-inventory.md` | Done. |
+| The Kapso message rate | One issue and at most one alert a day, so the alert channel cannot spam. | Design 8.1 | Built, unverified live. |
+| CDcare installment prices | Archived as a separate price kind, not compared to a cash price. | Design 1.3 and 11 | Deferred to 1b by decision. |
+| The deferred list from the export | Inverters, products, imports, social, used series, badge, seller history, reverse image search, VAT and kit promotion all sit in phase two or later. | Design 11 | Deferred. |
+
+---
+
+## 11. The four open items, and why the code came first
+
+The four items in the design's section 12 are provisioning steps and live checks, not design inputs. The code was written and tested before they were answered because each one has a defined behaviour while it stays open, and none of them changes a rule that the pipeline depends on:
+
+| Open item | What it gates | What runs without it | If the check fails |
+| --- | --- | --- | --- |
+| The Fly.io host | Image enrichment and sticker OCR only | The scrape, merge, review and publish paths. Unknown specs stay in review. | Images stay unread and unknown specs wait for the admin. No inferred battery publishes. |
+| The remaining secrets | The live deploy, the remote migration, admin login and the WhatsApp alert | The code reads the secrets and fails closed: a missing `ADMIN_PASSWORD` answers 403 and never authenticates. | Nothing goes live and no route is exposed. |
+| The SolarShopNigeria slugs | Extra brand-filter coverage | The runner reads only `confirmed_slugs`, so `jinko-solar` is the only filter used. The category crawl still finds other brands. | The crawl is narrower, and the report shows fewer offers. |
+| The full Jumia page on a runner | Hosted-runner yield | The adapter and its fixture parse the full page, and the local crawl found offers. | A thin page yields fewer offers and a visible drop in the report, not bad data. |
+
+The item that actually stopped the release is not a decision. The remote D1 daily row-write limit blocked migrations `0010` to `0012`, so the new Worker code cannot deploy until the quota resets or the plan changes. The code and the local schema are ready; only the remote write is waiting.
