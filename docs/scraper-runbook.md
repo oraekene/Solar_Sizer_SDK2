@@ -156,16 +156,9 @@ The `gh` command line tool reads each value from standard input.
 ```
 gh secret set ADMIN_PASSWORD --repo oraekene/Solar_Sizer_SDK2
 gh secret set WORKER_URL --repo oraekene/Solar_Sizer_SDK2
-gh secret set FX_RATE_URL --repo oraekene/Solar_Sizer_SDK2
 ```
 
-Use this value for `FX_RATE_URL`:
-
-```
-https://open.er-api.com/v6/latest/USD
-```
-
-The response holds the rate in `rates.NGN` and the update time in `time_last_update_utc`. The scraper stores both with every converted price.
+Phase one has no rate source, so the runner archives every price that is not in naira with the reason code `usd_rate_unavailable`. When a source quotes in dollars, add the rate endpoint as the secret `FX_RATE_URL` and convert with the rate in `rates.NGN` and the update time in `time_last_update_utc`.
 
 ## Step 5: Set the Worker secrets
 
