@@ -63,7 +63,21 @@ test('a panel offer carries the wattage and the cash price', () => {
   assert.equal(offer.trust_tier, 'unknown');
 });
 
-test('a marketplace seller is a verified seller', () => {
+test("Jumia's own store is a verified seller", () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+
+  const ownStore = {
+    ...product,
+    offers: {
+      ...product.offers,
+      seller: { name: 'Jumia', '@id': '1', url: '/jumia/' },
+    },
+  };
+  assert.equal(buildOffer(ownStore, PANEL_URL).trust_tier, 'verified');
+});
+
+test('a marketplace vendor page is not a verification badge', () => {
   const product = parseJsonLd(fixture('jumia-product.html'));
   assert.ok(product);
 
@@ -71,10 +85,10 @@ test('a marketplace seller is a verified seller', () => {
     ...product,
     offers: {
       ...product.offers,
-      seller: { name: 'Jumia Store', '@id': '999', url: '/marketplace-vendor/' },
+      seller: { name: 'Nossolar Energy System', '@id': '999', url: '/marketplace-vendor/' },
     },
   };
-  assert.equal(buildOffer(vendor, PANEL_URL).trust_tier, 'verified');
+  assert.equal(buildOffer(vendor, PANEL_URL).trust_tier, 'unknown');
 });
 
 test('a rated product with ten reviews is an established seller', () => {

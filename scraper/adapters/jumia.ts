@@ -145,7 +145,10 @@ function brandName(brand: JsonLdProduct['brand']): string | null {
 // the product stands in for the seller rating, because Jumia shows no seller
 // rating on the product page.
 function trustTier(product: JsonLdProduct, sellerUrl: string | null): TrustTier {
-  if (sellerUrl && /marketplace-vendor|mlp-/.test(sellerUrl)) return 'verified';
+  // Jumia's own store is the only seller the page marks as Jumia itself. A
+  // marketplace vendor page is not a verification badge.
+  const sellerName = product.offers?.seller?.name?.trim().toLowerCase() ?? '';
+  if (sellerName === 'jumia' || (sellerUrl && /^\/jumia\/?$/.test(sellerUrl))) return 'verified';
   const rating = product.aggregateRating?.ratingValue ?? 0;
   const reviews = product.aggregateRating?.ratingCount ?? 0;
   if (rating >= 4 && reviews >= 10) return 'established';
