@@ -4,7 +4,10 @@ import { allDiscoveryPaths, isBlocked, loadWatchlist } from './watchlist.ts';
 import type { Watchlist } from './watchlist.ts';
 
 const watchlist: Watchlist = {
-  discovery_paths: [{ site: 'jumia', type: 'panel', url: 'https://www.jumia.com.ng/solar-panels/' }],
+  discovery_paths: [
+    { site: 'jumia', type: 'panel', url: 'https://www.jumia.com.ng/solar-panels/' },
+    { site: 'jiji', type: 'panel', url: 'https://jiji.ng/solar-energy-products' },
+  ],
   brand_paths: {
     jumia_panels: [{ brand: 'Jinko', path: '/solar-panels/jinko/', priority: true }],
     solarshopnigeria: {
@@ -32,6 +35,14 @@ test('the confirmed brand paths join the discovery list', () => {
   const urls = allDiscoveryPaths(watchlist).map((path) => path.url);
   assert.ok(urls.includes('https://www.jumia.com.ng/solar-panels/jinko/'));
   assert.ok(urls.includes('https://solarshopnigeria.com/products?brand=jinko-solar'));
+});
+
+test('a brand path is reached before the second category page', () => {
+  const urls = allDiscoveryPaths(watchlist).map((path) => path.url);
+  assert.ok(
+    urls.indexOf('https://www.jumia.com.ng/solar-panels/jinko/') <
+      urls.indexOf('https://jiji.ng/solar-energy-products'),
+  );
 });
 
 test('the shipped watchlist refuses every path in the robots rules', async () => {

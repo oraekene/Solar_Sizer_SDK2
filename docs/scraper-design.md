@@ -327,7 +327,7 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 
 ### 5.3 Pipeline stages
 
-1. **Discover** (weekly Sunday 03:00 WAT): crawl the source categories, the Jiji category feed and the brand paths; propose candidates. Saved search terms stay seeded data and are not requested in phase one, because they add pages without a proven gap.
+1. **Discover** (weekly Sunday 03:00 WAT): crawl the source categories, the Jiji category feed and the brand paths; propose candidates. Brand paths alternate with the category pages, so a wide category cannot spend the source budget before a brand match is reached. Saved search terms stay seeded data and are not requested in phase one, because they add pages without a proven gap.
 2. **Sweep** (daily 02:00 WAT): re-check every known offer URL; extract price, condition, seller, stock, specs; apply ambiguity rules; compute candidate medians.
 3. **Enrich** (as needed): queue image hash; OCR; VLM chain; datasheet fetch; alias resolution.
 4. **Merge & propose**: group offers into canonical identities; compute medians; compute proposed `hardware` row; write `hardware_candidates`.

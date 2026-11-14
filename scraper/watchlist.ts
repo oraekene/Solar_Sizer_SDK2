@@ -34,18 +34,28 @@ export async function loadWatchlist(): Promise<Watchlist> {
 }
 
 export function allDiscoveryPaths(watchlist: Watchlist): DiscoveryPath[] {
-  const paths = [...watchlist.discovery_paths];
   const brands = watchlist.brand_paths ?? {};
+  // Brand paths alternate with the category pages, so the brand matches for
+  // the manual rows are reached before a broad category spends the budget.
   const jumiaPaths = [...(brands.jumia_panels ?? []), ...(brands.jumia_batteries ?? [])].sort(
     (left, right) => Number(right.priority ?? false) - Number(left.priority ?? false),
   );
-  for (const brand of jumiaPaths) {
-    paths.push({
-      site: 'jumia',
-      type: brands.jumia_panels?.includes(brand) ? 'panel' : 'battery',
-      url: `https://www.jumia.com.ng${brand.path}`,
-      note: `${brand.brand} brand path`,
-    });
+  const brandEntries: DiscoveryPath[] = jumiaPaths.map((brand) => ({
+    site: 'jumia',
+    type: brands.jumia_panels?.includes(brand) ? 'panel' : 'battery',
+    url: `https://www.jumia.com.ng${brand.path}`,
+    note: `${brand.brand} brand path`,
+  }));
+
+  // A broad category page can spend a whole source budget before the next
+  // path is reached, so the category and brand lists alternate.
+  const paths: DiscoveryPath[] = [];
+  const categories = [...watchlist.discovery_paths];
+  while (categories.length > 0 || brandEntries.length > 0) {
+    const category = categories.shift();
+    if (category) paths.push(category);
+    const brand = brandEntries.shift();
+    if (brand) paths.push(brand);
   }
 
   const template = brands.solarshopnigeria?.path_template;

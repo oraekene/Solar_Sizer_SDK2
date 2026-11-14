@@ -154,4 +154,4 @@ The alert body names the last successful sweep time or says `never`. The watchdo
 
 ## 9. Tests
 
-`npm test` runs 32 Worker tests and 69 scraper tests. The scraper tests cover the three adapters, the merge rules, the closed reason codes, FX, pacing and budgets, the watchlist loader and the image hash. All tests use saved fixtures and never touch the network.
+`npm test` runs 32 Worker tests and 70 scraper tests. The scraper tests cover the three adapters, the merge rules, the closed reason codes, FX, pacing and budgets, the watchlist loader and the image hash. All tests use saved fixtures and never touch the network.
