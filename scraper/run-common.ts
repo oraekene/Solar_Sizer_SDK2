@@ -4,6 +4,7 @@
 import { proposeCandidates } from './merge.ts';
 import type { MergeOffer, Proposal } from './merge.ts';
 import type { AliasTable } from './identity.ts';
+import { excludeForeignCurrency } from './rules.ts';
 import type { WorkerClient, WorkerOfferRow } from './worker-client.ts';
 
 export type OfferPayload = {
@@ -101,14 +102,17 @@ export async function rebuildAndPublish(
   },
 ): Promise<RebuildResult> {
   const hardware = await client.listHardware();
-  const { proposals } = proposeCandidates(options.pool.map(toMergeOffer), {
+  // A price in another currency never joins the naira median.
+  const guardedPool = options.pool.map(excludeForeignCurrency);
+  const guardedChanged = options.changed.map(excludeForeignCurrency);
+  const { proposals } = proposeCandidates(guardedPool.map(toMergeOffer), {
     aliases: options.aliases,
     hardware,
   });
 
   // A change of the unit basis or the pack count always waits for a human.
   const previousById = new Map(options.previous.map((row) => [row.id, row]));
-  const poolById = new Map(options.pool.map((offer) => [offerKey(offer), offer]));
+  const poolById = new Map(guardedPool.map((offer) => [offerKey(offer), offer]));
   for (const proposal of proposals) {
     for (const offerId of proposal.offer_ids) {
       const before = previousById.get(offerId);
@@ -134,7 +138,7 @@ export async function rebuildAndPublish(
     }
   }
 
-  const changed = options.changed.map((offer) => {
+  const changed = guardedChanged.map((offer) => {
     const target = canonicalByOffer.get(offerKey(offer));
     return target ? { ...offer, canonical_id: target.canonical_id, bucket_key: target.bucket_key } : offer;
   });

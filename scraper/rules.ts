@@ -152,3 +152,13 @@ export function missingSpecs(productType: string, data: Record<string, unknown>)
     return value === undefined || value === null || value === '';
   });
 }
+
+// Phase one has no rate source, so a price in another currency is archived
+// with the reason code from the closed set instead of joining the naira
+// median.
+export function excludeForeignCurrency<T extends { currency: string; status: string; reason_code: string | null }>(
+  offer: T,
+): T {
+  if (!offer.currency || offer.currency === 'NGN') return offer;
+  return { ...offer, status: 'excluded', reason_code: 'usd_rate_unavailable' };
+}

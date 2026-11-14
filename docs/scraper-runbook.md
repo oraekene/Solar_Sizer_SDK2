@@ -26,7 +26,8 @@ This runbook lists the accounts, hosts and secrets that the hardware scraper nee
 | `KAPSO_PHONE_NUMBER_ID` | Worker environment | Alert cron | The WhatsApp number that sends the alert. |
 | `KAPSO_ALERT_TO` | Worker environment | Alert cron | The owner number in international format, for example `2348012345678`. |
 | `KAPSO_TEMPLATE_NAME` | Worker environment | Alert cron | The approved Meta template for the alert text. |
-| `FX_RATE_URL` | GitHub Actions | Scraper | The JSON endpoint that returns the daily NGN/USD rate. |
+
+Phase one has no rate source, so the runner archives every price that is not in naira with the reason code `usd_rate_unavailable`. The `FX_RATE_URL` secret becomes necessary only when a source quotes in dollars.
 
 The unified FreeLLMAPI key never leaves the host. The drainer reads it from the gateway database at startup.
 

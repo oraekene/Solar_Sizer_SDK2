@@ -34,5 +34,4 @@ jobs:
         env:
           WORKER_URL: ${{ secrets.WORKER_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          FX_RATE_URL: ${{ secrets.FX_RATE_URL }}
         run: npm run scraper:sweep

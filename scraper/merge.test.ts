@@ -6,6 +6,7 @@ import test from 'node:test';
 import { brandKey, canonicalId, compareIdentity, identityOf, modelFromName } from './identity.ts';
 import { proposeCandidates } from './merge.ts';
 import type { MergeOffer } from './merge.ts';
+import { excludeForeignCurrency } from './rules.ts';
 
 const aliases = {
   '9solar': ['9solar', 'nine solar', 'nine solar energy', '9 solar'],
@@ -42,6 +43,23 @@ test('the brand folds the alias spellings', () => {
   assert.deepEqual(brandKey('Cworth Energy', aliases), { brand: 'cworth', kind: 'manufacturer' });
   assert.deepEqual(brandKey('Generic', aliases), { brand: 'generic', kind: 'generic' });
   assert.deepEqual(brandKey('', aliases), { brand: 'unbranded', kind: 'unbranded' });
+});
+
+test('a price in another currency is archived instead of joining the median', () => {
+  const naira = excludeForeignCurrency({
+    currency: 'NGN',
+    status: 'qualified',
+    reason_code: null,
+  });
+  assert.equal(naira.status, 'qualified');
+
+  const dollar = excludeForeignCurrency({
+    currency: 'USD',
+    status: 'qualified',
+    reason_code: null,
+  });
+  assert.equal(dollar.status, 'excluded');
+  assert.equal(dollar.reason_code, 'usd_rate_unavailable');
 });
 
 test('the model drops the brand and the electrical tokens', () => {
