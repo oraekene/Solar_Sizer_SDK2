@@ -64,7 +64,7 @@ Columns (existing): `id`, `user_id`, `type`, `data`, `tags`, `description`, `cre
 
 The scraped row is written by the publish step with:
 
-- `id` — deterministic slug from the identity key, prefixed `sc-` (for *scraped*), e.g. `sc-9solar-550-mono`. This avoids collisions with seeded ids and makes origin obvious.
+- `id` — deterministic slug from the identity key, prefixed `sc-` (for *scraped*), e.g. `sc-9solar-550-mono-1a2b3c4d`. The family facts and model form the readable part, and an eight-character hash of the full identity key keeps two models with the same facts apart. This avoids collisions with seeded ids and between two wattages or capacities of one brand, and makes origin obvious.
 - `user_id` — `system`.
 - `type` — `panel` or `battery`.
 - `data` — the fully typed object (`Panel` or `Battery`), every required field present at one of the sources in Section 4.1.

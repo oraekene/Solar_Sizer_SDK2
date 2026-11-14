@@ -52,6 +52,7 @@ The watchdog counts a `partial` sweep as success. A sweep that skipped one block
 | --- | --- | --- |
 | FX source order | NairaDaily first, then open.er-api.com | `scraper/fx.ts`, `FX_URLS` |
 | FX maximum age | 7 days | `MAX_FX_AGE_DAYS` |
+| FX plausibility band | 100 to 10,000 naira per dollar. A payload outside the band is refused and the next source is tried. | `MIN_FX_RATE` and `MAX_FX_RATE` |
 | FX future tolerance | 24 hours | `isFreshFxRate` |
 | Currencies converted | USD only | `applyFxRate` |
 | Any other currency with a price | `review_required` with `usd_rate_unavailable`, never a median | `applyFxRate` |
@@ -153,4 +154,4 @@ The alert body names the last successful sweep time or says `never`. The watchdo
 
 ## 9. Tests
 
-`npm test` runs 32 Worker tests and 63 scraper tests. The scraper tests cover the three adapters, the merge rules, the closed reason codes, FX, pacing and budgets, the watchlist loader and the image hash. All tests use saved fixtures and never touch the network.
+`npm test` runs 32 Worker tests and 69 scraper tests. The scraper tests cover the three adapters, the merge rules, the closed reason codes, FX, pacing and budgets, the watchlist loader and the image hash. All tests use saved fixtures and never touch the network.

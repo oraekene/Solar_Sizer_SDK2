@@ -40,6 +40,8 @@ const panel = (overrides: Partial<MergeOffer> = {}): MergeOffer => ({
   ...overrides,
 });
 
+const panelId = canonicalId(identityOf('panel', panel().stated_specs, '9Solar 550W Mono Panel', aliases));
+
 test('the brand folds the alias spellings', () => {
   assert.deepEqual(brandKey('Nine Solar Energy', aliases), { brand: '9solar', kind: 'manufacturer' });
   assert.deepEqual(brandKey('Cworth Energy', aliases), { brand: 'cworth', kind: 'manufacturer' });
@@ -143,7 +145,7 @@ test('an offer below 60% of the median is excluded as a price outlier', () => {
 
 test('a manual row keeps its price and waits for a human', () => {
   const offers = [panel({ id: 'a', price: 100_000 })];
-  const hardware = [{ id: 'sc-9solar-mono', type: 'panel', price: 95_000, price_source: 'manual' }];
+  const hardware = [{ id: panelId, type: 'panel', price: 95_000, price_source: 'manual' }];
 
   const { proposals } = proposeCandidates(offers, { aliases, hardware });
   assert.equal(proposals[0].status, 'pending_review');
@@ -154,7 +156,7 @@ test('a manual row keeps its price and waits for a human', () => {
 
 test('a scraped row inside the 15% band publishes itself', () => {
   const offers = [panel({ id: 'a', price: 100_000 })];
-  const hardware = [{ id: 'sc-9solar-mono', type: 'panel', price: 95_000, price_source: 'scraped' }];
+  const hardware = [{ id: panelId, type: 'panel', price: 95_000, price_source: 'scraped' }];
 
   const { proposals } = proposeCandidates(offers, { aliases, hardware });
   assert.equal(proposals[0].status, 'suggested');
@@ -162,7 +164,7 @@ test('a scraped row inside the 15% band publishes itself', () => {
 
 test('a scraped row outside the band waits for a human', () => {
   const offers = [panel({ id: 'a', price: 100_000 })];
-  const hardware = [{ id: 'sc-9solar-mono', type: 'panel', price: 70_000, price_source: 'scraped' }];
+  const hardware = [{ id: panelId, type: 'panel', price: 70_000, price_source: 'scraped' }];
 
   const { proposals } = proposeCandidates(offers, { aliases, hardware });
   assert.equal(proposals[0].status, 'pending_review');
@@ -179,7 +181,7 @@ test('a price from unknown sellers alone carries the low confidence flag', () =>
 
 test('a price from unknown sellers alone never auto-publishes a scraped row', () => {
   const offers = [panel({ id: 'a', price: 100_000, trust_tier: 'unknown' })];
-  const hardware = [{ id: 'sc-9solar-mono', type: 'panel', price: 95_000, price_source: 'scraped' }];
+  const hardware = [{ id: panelId, type: 'panel', price: 95_000, price_source: 'scraped' }];
 
   const { proposals } = proposeCandidates(offers, { aliases, hardware });
   assert.equal(proposals[0].status, 'pending_review');
@@ -348,4 +350,36 @@ test('a cross-post signal is removed when the current pool no longer has the pai
   assert.deepEqual(result.pool[0].trading_signals, {});
   assert.deepEqual(result.pool[1].trading_signals, {});
   assert.deepEqual([...result.affected].sort(), ['jumia:a', 'jumia:b']);
+});
+
+test('two wattages of one panel brand get different canonical ids', () => {
+  const small = identityOf('panel', { ...panel().stated_specs, watts: 450 }, '9Solar 450W Mono Panel', aliases);
+  const large = identityOf('panel', { ...panel().stated_specs, watts: 550 }, '9Solar 550W Mono Panel', aliases);
+
+  assert.notEqual(canonicalId(small), canonicalId(large));
+});
+
+test('two capacities of one battery brand get different canonical ids', () => {
+  const specs = { brand: 'Cworth', battery_type: 'lithium', voltage_v: 12 };
+  const small = identityOf('battery', { ...specs, capacity_ah: 100 }, 'Cworth 12V 100Ah LiFePO4', aliases);
+  const large = identityOf('battery', { ...specs, capacity_ah: 200 }, 'Cworth 12V 200Ah LiFePO4', aliases);
+
+  assert.notEqual(canonicalId(small), canonicalId(large));
+});
+
+test('a sweep keeps the admin fields of an existing row', () => {
+  const offers = [panel({ id: 'a', price: 100_000 })];
+  const hardware = [
+    {
+      id: panelId,
+      type: 'panel',
+      price: 95_000,
+      price_source: 'scraped',
+      data: { id: panelId, name: '9Solar 550W Mono Panel (admin name)', brand: '9Solar', watts: 550, price: 95_000 },
+    },
+  ];
+
+  const { proposals } = proposeCandidates(offers, { aliases, hardware });
+  assert.equal(proposals[0].proposed_data.name, '9Solar 550W Mono Panel (admin name)');
+  assert.equal(proposals[0].proposed_data.price, 100_000);
 });

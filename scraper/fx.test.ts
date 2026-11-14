@@ -27,6 +27,17 @@ test('the fallback rate shape is parsed with its date', () => {
   assert.equal(parsed.rate, 1352.36);
 });
 
+test('a rate outside the market band is refused', () => {
+  const time = '2026-11-14T08:45:01+0000';
+  assert.equal(parseFxPayload([{ rate: 1_000_000_000, source: 'USD', target: 'NGN', time }]), null);
+  assert.equal(parseFxPayload([{ rate: 99, source: 'USD', target: 'NGN', time }]), null);
+  assert.equal(parseFxPayload([{ rate: 100, source: 'USD', target: 'NGN', time }])?.rate, 100);
+  assert.equal(
+    parseFxPayload({ rates: { NGN: 0.01 }, time_last_update_utc: 'Sat, 14 Nov 2026 00:02:31 +0000' }),
+    null,
+  );
+});
+
 test('a rate older than seven days is refused', () => {
   assert.equal(
     isFreshFxRate(

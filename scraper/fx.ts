@@ -8,6 +8,10 @@ export const NAIRADAILY_FX_URL = 'https://nairadaily.net/api/rates?source=USD&ta
 export const FALLBACK_FX_URL = 'https://open.er-api.com/v6/latest/USD';
 export const FX_URLS = [NAIRADAILY_FX_URL, FALLBACK_FX_URL] as const;
 export const MAX_FX_AGE_DAYS = 7;
+// A naira rate outside this band is a broken payload, not a market move.
+// The second source is tried instead of converting with it.
+export const MIN_FX_RATE = 100;
+export const MAX_FX_RATE = 10_000;
 
 export type FxRate = {
   rate: number;
@@ -42,13 +46,17 @@ function parseDate(value: unknown): string | null {
   return Number.isNaN(time) ? null : new Date(time).toISOString();
 }
 
+export function isPlausibleFxRate(rate: number): boolean {
+  return Number.isFinite(rate) && rate >= MIN_FX_RATE && rate <= MAX_FX_RATE;
+}
+
 export function parseFxPayload(payload: unknown): { rate: number; date: string } | null {
   if (Array.isArray(payload)) {
     const row = payload.find((item) => {
       const value = item as { source?: string; target?: string };
       return value?.source?.toUpperCase() === 'USD' && value?.target?.toUpperCase() === 'NGN';
     }) as { rate?: number; time?: string } | undefined;
-    if (!row || typeof row.rate !== 'number' || !Number.isFinite(row.rate) || row.rate <= 0) return null;
+    if (!row || typeof row.rate !== 'number' || !isPlausibleFxRate(row.rate)) return null;
     const date = parseDate(row.time);
     return date ? { rate: row.rate, date } : null;
   }
@@ -57,7 +65,7 @@ export function parseFxPayload(payload: unknown): { rate: number; date: string }
     const value = payload as { rates?: { NGN?: number }; time_last_update_utc?: string };
     const rate = value.rates?.NGN;
     const date = parseDate(value.time_last_update_utc);
-    if (typeof rate === 'number' && Number.isFinite(rate) && rate > 0 && date) return { rate, date };
+    if (typeof rate === 'number' && isPlausibleFxRate(rate) && date) return { rate, date };
   }
   return null;
 }

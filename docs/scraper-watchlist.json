@@ -163,8 +163,22 @@
       { "path_pattern": "/*wattage=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*capacity=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*battery=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*power=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*tag=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*sort=", "rule": "Facet query paths are blocked" },
-      { "path_pattern": "/*q=", "rule": "Site search is blocked" }
+      { "path_pattern": "/*q=", "rule": "Site search is blocked" },
+      { "path_pattern": "*/brands/*", "rule": "Brand index paths are blocked" },
+      { "path_pattern": "*/seller/*", "rule": "Seller paths are blocked" },
+      { "path_pattern": "*/top-sellers/*", "rule": "Top seller paths are blocked" },
+      { "path_pattern": "*/new-products/*", "rule": "New product paths are blocked" },
+      { "path_pattern": "*/special-price/*", "rule": "Special price paths are blocked" },
+      { "path_pattern": "/*/*/*/", "rule": "Three-level paths are blocked" }
+    ],
+    "jiji": [
+      { "path_pattern": "/test*", "rule": "Disallow: /test/*" },
+      { "path_pattern": "/admin*", "rule": "Disallow: /admin/*" },
+      { "path_pattern": "/crm*", "rule": "Disallow: /crm/*" },
+      { "path_pattern": "*auth/facebook*", "rule": "Disallow: /auth/facebook*" }
     ],
     "konga": [
       { "path_pattern": "/product/*/details", "rule": "Product detail pages are blocked for every crawler" },

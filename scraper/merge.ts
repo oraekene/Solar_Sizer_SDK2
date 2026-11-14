@@ -373,6 +373,15 @@ export function proposeCandidates(
       (entry) => compareIdentity(entry.identity, group.identity) === 'possible_duplicate',
     );
 
+    // A row that already exists is the golden record. A sweep may move the
+    // price, but it must not overwrite a field that an admin corrected by hand.
+    if (row) {
+      for (const [field, value] of Object.entries(row.data ?? {})) {
+        if (field === 'id' || field === 'price') continue;
+        proposedData[field] = value;
+      }
+    }
+
     const currentPrice = row?.price ?? null;
     const isManual = row?.price_source === 'manual';
 

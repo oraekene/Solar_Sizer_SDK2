@@ -430,10 +430,10 @@ export async function handleScraperRoute(
       const id = offerId(sourceSite, sourceListingId);
       const previous = await env.DB
         .prepare(
-          'SELECT price, currency FROM hardware_offers WHERE source_site = ? AND source_listing_id = ?',
+          'SELECT price, currency, price_ngn_rounded FROM hardware_offers WHERE source_site = ? AND source_listing_id = ?',
         )
         .bind(sourceSite, sourceListingId)
-        .first<{ price: number | null; currency: string }>();
+        .first<{ price: number | null; currency: string; price_ngn_rounded: number | null }>();
 
       await env.DB
         .prepare(
@@ -514,18 +514,30 @@ export async function handleScraperRoute(
       const nextCurrency = text(offer.currency, 'NGN').toUpperCase();
       const previousPrice = previous?.price ?? null;
       const previousCurrency = (previous?.currency ?? 'NGN').toUpperCase();
-      if (
-        previous &&
-        nextPrice !== null &&
-        (previousPrice !== nextPrice || previousCurrency !== nextCurrency)
-      ) {
-        await env.DB
-          .prepare(
-            `INSERT INTO price_history (hardware_row_id, offer_id, price, median_at_publish, reason, date, currency)
-             VALUES ('', ?, ?, NULL, 'offer_change', datetime('now'), ?)`,
-          )
-          .bind(id, nextPrice, nextCurrency)
-          .run();
+      const nextNgn = number(offer.price_ngn_rounded);
+      // Rows written before the FX columns existed have no stored naira value.
+      // A naira row's raw price is its naira value, so it is the baseline.
+      const previousNgn = previous
+        ? previous.price_ngn_rounded ?? (previousCurrency === 'NGN' ? previous.price : null)
+        : null;
+      if (previous && nextPrice !== null) {
+        const rawChanged = previousPrice !== nextPrice || previousCurrency !== nextCurrency;
+        // A dollar quote can keep its raw price while the naira value moves.
+        const ngnChanged = nextNgn !== null && nextNgn !== previousNgn;
+        if (rawChanged || ngnChanged) {
+          await env.DB
+            .prepare(
+              `INSERT INTO price_history (hardware_row_id, offer_id, price, median_at_publish, reason, date, currency)
+               VALUES ('', ?, ?, NULL, ?, datetime('now'), ?)`,
+            )
+            .bind(
+              id,
+              rawChanged ? nextPrice : nextNgn,
+              rawChanged ? 'offer_change' : 'fx_change',
+              rawChanged ? nextCurrency : 'NGN',
+            )
+            .run();
+        }
       }
     }
 
@@ -559,7 +571,7 @@ export async function handleScraperRoute(
              current_hardware_row = excluded.current_hardware_row,
              product_type = excluded.product_type,
              status = CASE
-               WHEN hardware_candidates.status IN ('rejected', 'duplicate', 'approved')
+               WHEN hardware_candidates.status IN ('rejected', 'duplicate', 'approved', 'published')
                  THEN hardware_candidates.status
                ELSE excluded.status
              END,
@@ -721,13 +733,27 @@ export async function handleScraperRoute(
         409,
       );
     }
+    const candidateOffers = parseJson(candidate.offer_ids);
+    const offerIds = Array.isArray(candidateOffers)
+      ? candidateOffers.filter((value): value is string => typeof value === 'string').slice(0, 500)
+      : [];
+    if (offerIds.length === 0) {
+      return json(
+        {
+          error: 'stale-candidate',
+          message: 'This candidate has no offers. Run the sweep again.',
+        },
+        409,
+      );
+    }
+    const offerPlaceholders = offerIds.map(() => '?').join(',');
     const offers = await env.DB
       .prepare(
         `SELECT id, seller_id, source_site, status, in_stock, unit_basis, condition,
                 price, price_ngn_rounded, last_checked
-         FROM hardware_offers WHERE canonical_id = ?`,
+         FROM hardware_offers WHERE id IN (${offerPlaceholders}) AND canonical_id = ?`,
       )
-      .bind(canonicalId)
+      .bind(...offerIds, canonicalId)
       .all<{
         id: string;
         seller_id: string | null;
