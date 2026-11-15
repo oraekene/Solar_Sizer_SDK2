@@ -17,5 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v4
+
       - name: Probe the Jiji paths
         run: bash .github/workflows/jiji-probe.sh
