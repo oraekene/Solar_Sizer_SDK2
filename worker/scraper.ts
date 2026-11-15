@@ -53,6 +53,11 @@ const json = (body: unknown, status = 200) =>
 
 const badRequest = (message: string) => json({ error: message }, 400);
 
+// A failed image is tried again after a wait, up to this many attempts. A
+// row that used them all stays failed until a human looks at it.
+export const MAX_QUEUE_ATTEMPTS = 3;
+export const QUEUE_RETRY_WAIT_MINUTES = 15;
+
 function parseJson(value: unknown): unknown {
   if (typeof value !== 'string') return value ?? {};
   try {
@@ -931,31 +936,39 @@ export async function handleScraperRoute(
          FROM scraper_queue
          WHERE status = 'pending'
             OR (status = 'processing'
-                AND julianday(updated_at) < julianday('now', '-15 minutes'))
+                AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
+            OR (status = 'failed'
+                AND attempts < ?
+                AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
          ORDER BY created_at ASC
          LIMIT ?`,
       )
-      .bind(limit)
+      .bind(MAX_QUEUE_ATTEMPTS, limit)
       .all<{ id: string; offer_id: string; image_url: string; image_hash: string; attempts: number }>();
 
     const items = rows.results ?? [];
-    if (items.length > 0) {
-      await env.DB.batch(
-        items.map((item) =>
-          env.DB
-            .prepare(
-              `UPDATE scraper_queue SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
-               WHERE id = ?
-                 AND (status = 'pending'
-                      OR (status = 'processing'
-                          AND julianday(updated_at) < julianday('now', '-15 minutes')))`,
-            )
-            .bind(item.id),
-        ),
-      );
-    }
+    if (items.length === 0) return json([]);
 
-    return json(items);
+    // The claim and the read are one statement, so two drainers cannot take
+    // the same row. The rows this call did not claim are not returned.
+    const placeholders = items.map(() => '?').join(',');
+    const claimed = await env.DB
+      .prepare(
+        `UPDATE scraper_queue
+         SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
+         WHERE id IN (${placeholders})
+           AND attempts < ?
+           AND (status = 'pending'
+                OR (status = 'processing'
+                    AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
+                OR (status = 'failed'
+                    AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes')))
+         RETURNING id, offer_id, image_url, image_hash, attempts`,
+      )
+      .bind(...items.map((item) => item.id), MAX_QUEUE_ATTEMPTS)
+      .all<{ id: string; offer_id: string; image_url: string; image_hash: string; attempts: number }>();
+
+    return json(claimed.results ?? []);
   }
 
   const queueMatch = pathname.match(/^\/api\/scraper\/queue\/([^/]+)$/);

@@ -321,6 +321,7 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 - No model call can change a row unilaterally; all enrichment answers are suggestions or evidence.
 - Calls are **queued by image hash and result-cached**, so the same photo never pays for a model twice.
 - A failed model call never blocks publishing; the row keeps its highest-available provenance.
+- A failed image is tried again after 15 minutes, up to three attempts, and the claim and the read are one statement so two drainers cannot take the same row.
 - The queue is drained by the always-on FreeLLMAPI host itself. The GitHub Actions scraper enqueues unknown images in the `scraper_queue` table and moves on, so scraping never depends on model latency.
 - **Test strategy**: scraper tests run against saved golden-page HTML snapshots stored in the repo with no live network access, enrichment tests run against a deterministic mock model that returns fixed, schema-valid responses, and a CI stage asserts that every offer reason code and every status value has a documented definition.
 - **Spot-check sampling method**: for the 30-offer audit, take 30 offers by stratified random draw across all phase-one sources and all trust tiers, and score each on brand match, model match and price match against the offer's source page and its canonical product; the raw list of sampled offers is written to the run report so the audit is reproducible.
@@ -386,7 +387,7 @@ If all four fail, the ad falls into the unbranded bucket.
 
 - **GitHub issue `scraper-alert`** is the record. The watchdog creates it when no open alert issue exists and adds a comment to the open issue on later failures. It leaves the issue open after recovery so the failure history stays visible; a human closes it.
 - **WhatsApp via Kapso** wakes the owner.
-- A separate **heartbeat watchdog** checks that yesterday's sweep wrote its heartbeat and raises the same issue if not.
+- A separate **heartbeat watchdog** checks that yesterday's sweep wrote its heartbeat and raises the same issue if not. Only a complete sweep counts. A partial sweep means one source did not finish, so it raises the issue with the run id of the partial run and the run report holds the pause reason.
 
 ### 8.2 Run report
 
