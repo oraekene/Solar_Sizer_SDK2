@@ -41,6 +41,7 @@ The run report carries `requests.requests`, `requests.budgets`, `requests.paused
 | Blocked paths | Skipped before any request, and the skip appears in the report | `isBlocked` in `scraper/watchlist.ts` |
 | Known discovery URLs | Skipped by exact `source_url` | `run-discovery.ts` |
 | Discovery path order | Category and brand paths alternate, priority brand paths first among the brands, then the confirmed SolarShopNigeria slugs | `allDiscoveryPaths` |
+| Products per discovery path | 20 new products per path, so a wide category cannot spend the whole source budget and the next path gets a turn | `SCRAPER_PRODUCTS_PER_PATH` in `scraper/run-discovery.ts` |
 | Alert threshold | No complete sweep for 26 hours (`93600` seconds), or a partial sweep newer than the last complete one | `scraper-watchdog.yml` |
 | Alert success test | Only a run with status `ok` counts as a complete sweep | `run_report` write in `worker/scraper.ts` |
 
