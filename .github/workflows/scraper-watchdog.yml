@@ -29,17 +29,24 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          RUNS=$(curl -sS -H "x-admin-key: ${ADMIN_PASSWORD}" "${WORKER_URL}/api/scraper/runs?kind=sweep&limit=5")
-          LAST=$(echo "${RUNS}" | jq -r '[.runs[] | select(.status == "ok")][0].finished_at // empty')
-          PARTIAL=$(echo "${RUNS}" | jq -r --arg ok "${LAST}" '[.runs[] | select(.status == "partial" and (.finished_at > $ok))][0].run_id // empty')
+          # The Worker may answer with an error, for example when the admin
+          # password is wrong. The watchdog must raise the alert in that case
+          # instead of stopping on a broken answer.
+          HTTP=$(curl -sS -o runs.json -w '%{http_code}' -H "x-admin-key: ${ADMIN_PASSWORD}" "${WORKER_URL}/api/scraper/runs?kind=sweep&limit=5" || true)
+          RUNS=$(cat runs.json 2>/dev/null || echo '{}')
+          LAST=$(echo "${RUNS}" | jq -r '[(.runs // [])[] | select(.status == "ok")][0].finished_at // empty' 2>/dev/null || echo '')
+          PARTIAL=$(echo "${RUNS}" | jq -r --arg ok "${LAST}" '[(.runs // [])[] | select(.status == "partial" and (.finished_at > $ok))][0].run_id // empty' 2>/dev/null || echo '')
           NOW=$(date -u +%s)
           if [ -z "${LAST}" ]; then
             AGE=999999999
           else
             AGE=$(( NOW - $(date -u -d "${LAST}" +%s) ))
           fi
-          echo "last complete sweep: ${LAST:-never}, age ${AGE} seconds"
-          if [ "${AGE}" -gt 93600 ]; then
+          echo "last complete sweep: ${LAST:-never}, age ${AGE} seconds, route status ${HTTP}"
+          if [ "${HTTP}" != "200" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "message=The Worker answered the run list with status ${HTTP}, so the last complete sweep cannot be confirmed. Check WORKER_URL and ADMIN_PASSWORD." >> "$GITHUB_OUTPUT"
+          elif [ "${AGE}" -gt 93600 ]; then
             echo "stale=true" >> "$GITHUB_OUTPUT"
             echo "message=No complete sweep since ${LAST:-never}. The Solar Sizer hardware prices are no longer being refreshed." >> "$GITHUB_OUTPUT"
           elif [ -n "${PARTIAL}" ]; then
