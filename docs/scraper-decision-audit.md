@@ -146,7 +146,7 @@ This file answers one question for each item: is the decision written down, is t
 | Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets. | Open. The owner must add a card and pick the host. The Fly command line tool is not installed on this machine. The host files are ready in `scraper/host/`. |
 | Store the remaining secrets. | Partly done. The Worker and the Actions hold the same `ADMIN_PASSWORD`, and the Actions hold `WORKER_URL`, the Cloudflare token and the account id. The Worker holds `KAPSO_API_KEY` and `KAPSO_PHONE_NUMBER_ID`. `KAPSO_ALERT_TO` is missing, and `KAPSO_TEMPLATE_NAME` is optional. `FX_RATE_URL` is no longer needed. |
 | Apply remote migrations `0010` to `0012`. | Done on 2026-11-15. The deploy workflow now applies any pending migration before it deploys. |
-| Redeploy the Worker with the current code. | Done on 2026-11-15. The deploy workflow published version `bd608d7f`. |
+| Redeploy the Worker with the current code. | Done on 2026-11-15. The deploy workflow published the alert path from PR #16. |
 | Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed. | Open. The runner reads only `jinko-solar`; the other labels stay in the watchlist as unconfirmed. |
 | Confirm that a GitHub Actions runner can read the full Jumia page. | Answered on 2026-11-15. The runner reads the pages and the live crawl stored 97 Jumia offers. |
 | Read Jiji from the GitHub runner. | Open. Cloudflare challenges every path from the runner address, so Jiji needs permission from Jiji or a crawl from the always-on host. |
