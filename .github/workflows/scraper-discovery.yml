@@ -8,6 +8,23 @@ on:
   schedule:
     - cron: '0 2 * * 0'
   workflow_dispatch:
+    inputs:
+      source_request_budget:
+        description: 'Request ceiling for every source in this run. Leave empty for the watchlist.'
+        required: false
+        type: string
+      page_budget:
+        description: 'Page ceiling for this run. Leave empty for the normal 200.'
+        required: false
+        type: string
+      products_per_path:
+        description: 'New products per discovery path. Leave empty for the normal 20.'
+        required: false
+        type: string
+      start_delay_ms:
+        description: 'Start delay in milliseconds. Use 0 to start now.'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -19,7 +36,7 @@ concurrency:
 jobs:
   discovery:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
 
@@ -33,4 +50,8 @@ jobs:
         env:
           WORKER_URL: ${{ secrets.WORKER_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          SCRAPER_SOURCE_REQUEST_BUDGET: ${{ inputs.source_request_budget }}
+          SCRAPER_PAGE_BUDGET: ${{ inputs.page_budget }}
+          SCRAPER_PRODUCTS_PER_PATH: ${{ inputs.products_per_path }}
+          SCRAPER_START_DELAY_MS: ${{ inputs.start_delay_ms }}
         run: npm run scraper:discovery

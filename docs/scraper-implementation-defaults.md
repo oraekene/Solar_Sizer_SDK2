@@ -23,6 +23,8 @@ The design remains the source of truth for behaviour. This file only records the
 | Daily sweep ceiling | 500 offer checks | `scraper/run-sweep.ts`, `CHECK_CEILING` | `SCRAPER_MAX_CHECKS`. |
 | Weekly discovery page ceiling | 200 pages | `scraper/run-discovery.ts`, `PAGE_CEILING` | `SCRAPER_PAGE_BUDGET`. Category and product pages both count. |
 | Start delay | A random wait from 0 to 15 minutes | Both runners | `SCRAPER_START_DELAY_MS`. Set `0` for a manual run. |
+| Manual run inputs | The discovery workflow takes `source_request_budget`, `page_budget`, `products_per_path` and `start_delay_ms` | `.github/workflows/scraper-discovery.yml` | `gh workflow run scraper-discovery.yml -f source_request_budget=8000`. An empty input keeps the code default. |
+| Discovery job time | 350 minutes, the most a GitHub runner job may run | `.github/workflows/scraper-discovery.yml` | The weekly run still stops at its own budget long before the limit. |
 | FX fetch | 15 second timeout, no pacing, no source budget | `scraper/fx.ts` | The FX call is a direct fetch outside the shared client. Edit the timeout in `fetchRate`. |
 | Crawler user agent | `SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)` | `scraper/adapters/types.ts`, `CRAWLER_UA` | Edit the constant. The contact address must stay real. |
 
@@ -133,7 +135,7 @@ Condition mapping is shared by the two marketplace adapters. `foreign` becomes `
 | Offer save chunk | 12 offers per Worker request | `WorkerClient.saveOffers` |
 | Candidate save chunk | 40 candidates per Worker request | `WorkerClient.saveCandidates` |
 | Worker client timeout | 30 seconds per request | `WorkerClient.request` |
-| Offer list ceiling | 5000 rows | `/api/scraper/offers` |
+| Offer list | Pages of 1000 rows until the pool is empty, so the pool has no 5000 row ceiling | `WorkerClient.listOffers` and `/api/scraper/offers` | The route takes `limit` and `offset`. |
 | Run list default | 10 rows, at most 100 | `/api/scraper/runs` |
 | Candidate list default | 100 rows, at most 500 | `/api/scraper/candidates` |
 | Drainer poll | 30 seconds | `DRAINER_POLL_MS` |

@@ -46,6 +46,13 @@ export function offerKey(offer: { source_site: string; source_listing_id: string
   return `${offer.source_site}:${offer.source_listing_id}`;
 }
 
+// An empty value means the setting was not given, so the code default stays.
+export function envNumber(name: string): number {
+  const raw = process.env[name];
+  if (!raw) return Number.NaN;
+  return Number(raw);
+}
+
 export function toMergeOffer(offer: OfferPayload): MergeOffer {
   return {
     id: offerKey(offer),

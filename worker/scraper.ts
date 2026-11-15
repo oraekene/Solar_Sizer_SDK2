@@ -354,6 +354,7 @@ export async function handleScraperRoute(
   if (pathname === '/api/scraper/offers' && method === 'GET') {
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get('limit') ?? 500) || 500, 5000);
+    const offset = Math.max(Number(url.searchParams.get('offset') ?? 0) || 0, 0);
     const source = url.searchParams.get('source');
 
     // An offer with no successful check inside the staleness window leaves
@@ -385,12 +386,16 @@ export async function handleScraperRoute(
           AND duplicate.reason_code = 'duplicate_of_existing_offer') AS collapsed_count`;
     const rows = source
       ? await env.DB
-          .prepare(`SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC LIMIT ?`)
-          .bind(source, limit)
+          .prepare(
+            `SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
+          )
+          .bind(source, limit, offset)
           .all<Record<string, unknown>>()
       : await env.DB
-          .prepare(`SELECT ${columns} FROM hardware_offers ORDER BY COALESCE(last_checked, '') ASC LIMIT ?`)
-          .bind(limit)
+          .prepare(
+            `SELECT ${columns} FROM hardware_offers ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
+          )
+          .bind(limit, offset)
           .all<Record<string, unknown>>();
 
     return json(

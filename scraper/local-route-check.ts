@@ -185,6 +185,21 @@ async function main() {
   });
   assert.equal(saved.status, 200);
 
+  // The offer list pages through the pool, so a pool larger than one page
+  // still reaches every offer and never repeats a row.
+  const pageSize = 1;
+  const ids: string[] = [];
+  for (let offset = 0; offset < 500; offset += 1) {
+    const page = await api(`/api/scraper/offers?limit=${pageSize}&offset=${offset}`);
+    assert.equal(page.status, 200);
+    if (page.body.length === 0) break;
+    ids.push(...page.body.map((offer: { id: string }) => offer.id));
+    if (page.body.length < pageSize) break;
+  }
+  assert.ok(ids.includes('jumia:route-check-listed'), 'the paged list must reach the saved offer');
+  assert.equal(new Set(ids).size, ids.length, 'the pages must not repeat a row');
+  pass('the offer list pages through the whole pool');
+
   const candidateId = 'candidate:route-check';
   const candidate = {
     id: candidateId,
