@@ -140,10 +140,25 @@ test('the WhatsApp alert refuses to run without its settings', async () => {
 
 test('the WhatsApp alert sends text without a template and a template with one', async () => {
   const calls: { url: string; body: any }[] = [];
+  let deliveryStatus = 'sent';
   const original = globalThis.fetch;
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
-    calls.push({ url, body: JSON.parse(String(init?.body)) });
-    return new Response('{"messaging_product":"whatsapp"}', { status: 200 });
+    if (init?.method === 'POST') {
+      calls.push({ url, body: JSON.parse(String(init?.body)) });
+      return new Response(
+        JSON.stringify({ messaging_product: 'whatsapp', messages: [{ id: 'wamid.1' }] }),
+        { status: 200 },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        kapso: {
+          status: deliveryStatus,
+          statuses: [{ errors: [{ message: 'Re-engagement message' }] }],
+        },
+      }),
+      { status: 200 },
+    );
   };
 
   const env = {
@@ -181,6 +196,12 @@ test('the WhatsApp alert sends text without a template and a template with one',
     assert.equal(calls[1].body.template.name, 'solar_sizer_alert');
     assert.equal(calls[1].body.template.language.code, 'en');
     assert.equal(calls[1].body.template.components[0].parameters[0].parameter_name, 'message');
+
+    deliveryStatus = 'failed';
+    const rejected = await alert('the sweep did not run');
+    assert.equal(rejected?.status, 502);
+    const rejectedBody = (await rejected?.json()) as { error: string; detail: string };
+    assert.match(rejectedBody.detail, /Re-engagement message/);
   } finally {
     (globalThis as any).fetch = original;
   }
