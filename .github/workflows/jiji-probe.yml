@@ -1,0 +1,21 @@
+name: Jiji path probe
+
+# A one-off diagnostic. It checks which Jiji paths a GitHub runner can reach,
+# so the crawler can use a path that works instead of guessing. It only reads
+# public pages and writes nothing.
+
+on:
+  push:
+    branches: [chore/jiji-probe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Probe the Jiji paths
+        run: bash .github/workflows/jiji-probe.sh
