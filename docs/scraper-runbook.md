@@ -4,22 +4,21 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 ## What exists now
 
-| Item | Where | State on 2026-11-14 |
+| Item | Where | State on 2026-11-15 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running, but not yet redeployed with the current scraper changes. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0009` applied. `0010` to `0012` are pending. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code, deployed by hand as version `b7b450b1`. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | Fly.io account and Machine | Fly.io | Not created. |
-| GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL` is set. `CLOUDFLARE_API_TOKEN` is invalid. `CLOUDFLARE_ACCOUNT_ID` and `ADMIN_PASSWORD` are missing. |
-| Worker secrets | Cloudflare | `ADMIN_PASSWORD` exists, but its value is not known locally. The four Kapso values are missing. |
+| GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL` and `ADMIN_PASSWORD` are set. `CLOUDFLARE_API_TOKEN` is invalid. `CLOUDFLARE_ACCOUNT_ID` is missing. |
+| Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. The four Kapso values are missing. |
 
 ## What blocks the first live run
 
 1. The Cloudflare token fails with `Invalid access token [code: 9109]` and `Authentication error [code: 10000]`. Replace it, and store the account id beside it.
-2. The Worker `ADMIN_PASSWORD` value is unknown. Rotate it to a known value and store the same value in GitHub Actions and on the host.
-3. The four Kapso values are missing, so the WhatsApp alert cannot send.
-4. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
+2. The four Kapso values are missing, so the WhatsApp alert cannot send.
+3. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
 
 ## Secret inventory
 
@@ -41,6 +40,8 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 The unified FreeLLMAPI key never leaves the host. The drainer reads it from the gateway database at startup.
 
 ## Step 1: Rotate the Worker admin password
+
+Done on 2026-11-15. The value the owner chose is stored in the Worker and in GitHub Actions. The host still needs the same value in Step 5.
 
 The existing value cannot be read back, so replace it with a value you keep.
 
@@ -96,7 +97,7 @@ The deploy workflow applies remote D1 migrations before it deploys the Worker, s
 
 ## Step 3: Apply the migrations and deploy the Worker
 
-Do this once now if you do not want to wait for the next push. Run the commands from the repository root with the Cloudflare values in the environment, or after `npx wrangler login`.
+Done on 2026-11-15. The migrations were applied with the local Wrangler login and the Worker was deployed by hand, so the live Worker serves the current code. The deploy workflow will do the same work on the next push once the token works.
 
 ```powershell
 npx wrangler d1 migrations apply solar-sizer-sdk2 --remote
