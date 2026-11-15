@@ -71,8 +71,16 @@ export class WorkerClient {
     return response.json();
   }
 
-  async listOffers(limit = 5000): Promise<WorkerOfferRow[]> {
-    return (await this.request(`/api/scraper/offers?limit=${limit}`)) as WorkerOfferRow[];
+  async listOffers(pageSize = 1000): Promise<WorkerOfferRow[]> {
+    const rows: WorkerOfferRow[] = [];
+    for (let offset = 0; ; offset += pageSize) {
+      const page = (await this.request(
+        `/api/scraper/offers?limit=${pageSize}&offset=${offset}`,
+      )) as WorkerOfferRow[];
+      rows.push(...page);
+      // A short page is the last page, so the list has no 5000 row ceiling.
+      if (page.length < pageSize) return rows;
+    }
   }
 
   async saveOffers(offers: unknown[]): Promise<void> {

@@ -19,6 +19,25 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 1. The Cloudflare token fails with `Invalid access token [code: 9109]` and `Authentication error [code: 10000]`. Replace it, and store the account id beside it.
 2. The four Kapso values are missing, so the WhatsApp alert cannot send.
 3. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
+4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. The runner keeps Jumia and SolarShopNigeria.
+
+## The first live crawl
+
+The live state on 2026-11-15: three discovery runs and one sweep passed, the database holds 110 offers and 44 candidates, nothing was published and the 40 manual rows are untouched. Jiji holds no offer because the runner is refused. The weekly crawl still uses the normal budgets.
+
+## A manual backfill run
+
+The owner wants every new listing, not a sample. The weekly crawl keeps its normal ceilings, and a manual run raises them for one run. The run resumes where the last one stopped, because a listing that is already known is skipped by its exact URL.
+
+```powershell
+gh workflow run scraper-discovery.yml `
+  -f source_request_budget=8000 `
+  -f page_budget=8000 `
+  -f products_per_path=8000 `
+  -f start_delay_ms=0
+```
+
+One request per second still applies, so 8000 requests per source takes about 2 hours 15 minutes. The job may run up to 350 minutes. The free D1 plan writes 100,000 rows a day, so a backfill of about 23,000 listings needs the paid plan or two or three daily batches.
 
 ## Secret inventory
 

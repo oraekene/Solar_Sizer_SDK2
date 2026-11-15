@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { adapterFor } from './adapters/index.ts';
 import { loadFxRate } from './fx.ts';
 import { configureRequestBudgets, requestReport, resetRequestState } from './http.ts';
-import { offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
+import { envNumber, offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
 import type { OfferPayload } from './run-common.ts';
 import { allDiscoveryPaths, isBlocked, loadWatchlist } from './watchlist.ts';
 import { WorkerClient } from './worker-client.ts';
@@ -25,9 +25,12 @@ async function main(): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
-  const pageBudget = Number(process.env.SCRAPER_PAGE_BUDGET ?? PAGE_CEILING);
-  const productsPerPath = Number(process.env.SCRAPER_PRODUCTS_PER_PATH ?? 20);
-  const delayMax = Number(process.env.SCRAPER_START_DELAY_MS ?? 15 * 60 * 1000);
+  const pageBudget = envNumber('SCRAPER_PAGE_BUDGET');
+  const pagesAllowed = Number.isFinite(pageBudget) ? pageBudget : PAGE_CEILING;
+  const productsPerPathSetting = envNumber('SCRAPER_PRODUCTS_PER_PATH');
+  const productsPerPath = Number.isFinite(productsPerPathSetting) ? productsPerPathSetting : 20;
+  const delaySetting = envNumber('SCRAPER_START_DELAY_MS');
+  const delayMax = Number.isFinite(delaySetting) ? delaySetting : 15 * 60 * 1000;
 
   if (delayMax > 0) await sleep(Math.floor(Math.random() * delayMax));
 
@@ -35,7 +38,7 @@ async function main(): Promise<void> {
   const watchlist = await loadWatchlist();
   const previous = await client.listOffers();
   const fx = await loadFxRate();
-  const overrideBudget = Number(process.env.SCRAPER_SOURCE_REQUEST_BUDGET);
+  const overrideBudget = envNumber('SCRAPER_SOURCE_REQUEST_BUDGET');
   const fallbackBudget = Number.isFinite(overrideBudget) ? overrideBudget : 100;
   const sourceBudgets = watchlist.source_budgets?.discovery ?? {
     jumia: fallbackBudget,
@@ -65,7 +68,7 @@ async function main(): Promise<void> {
       skipped.push({ id: path.url, reason: `no adapter for ${path.site}` });
       continue;
     }
-    if (pages >= pageBudget) {
+    if (pages >= pagesAllowed) {
       skipped.push({ id: path.url, reason: 'the page budget was spent' });
       continue;
     }
@@ -79,7 +82,7 @@ async function main(): Promise<void> {
 
     let productsForPath = 0;
     for (const listing of category.value) {
-      if (pages >= pageBudget) {
+      if (pages >= pagesAllowed) {
         skipped.push({ id: listing.source_url, reason: 'the page budget was spent' });
         break;
       }
