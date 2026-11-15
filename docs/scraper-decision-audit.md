@@ -20,7 +20,7 @@ This file answers one question for each item: is the decision written down, is t
 
 | Item | Decision | Where | Status |
 | --- | --- | --- | --- |
-| Where the scrapers run | GitHub Actions runs the scrape. The Worker stores the data and serves the admin routes. The always-on host only enriches images, and it pulls from the Worker. | Design 3.1 and 5.1 | Built. The three workflows exist in `.github/workflows/`. They have never run on a runner, because the stored Cloudflare token is invalid. |
+| Where the scrapers run | GitHub Actions runs the scrape. The Worker stores the data and serves the admin routes. The always-on host only enriches images, and it pulls from the Worker. | Design 3.1 and 5.1 | Built. The three workflows exist in `.github/workflows/` and all of them have run on a runner. The deploy workflow passed on 2026-11-15 with the new Cloudflare token. |
 | Extraction method | Plain HTTP fetches with HTML and JSON parsing. No headless browser, because the three phase-one sites send server-rendered pages. | Design 3.1 | Built. `scraper/http.ts` and the three adapters under `scraper/adapters/`. Jiji reads its JSON feed. |
 | Discovery | Category crawls on Jumia and SolarShopNigeria, the category feed on Jiji, brand paths for the branded panels and batteries, and the blocked paths listed so the crawler never asks for them. | Design 5.3 stage 1, `docs/scraper-watchlist.json` | Built. The runner reads `discovery_paths`, `brand_paths`, `excluded_paths`, `aliases` and `manual_rows`. Jumia brand paths join the crawl, and only the confirmed SolarShopNigeria slug `jinko-solar` is used. `search_terms` is still data only. |
 | Approval workflow | One admin works in the Hardware DB tab. The admin approves, rejects, marks duplicates, merges, edits and publishes. The admin is never a robot. | Design 6.2 | Built. `src/components/ScraperReview.tsx` and the route `/api/scraper/candidates/review`. The browser check passed locally. |
@@ -52,7 +52,7 @@ This file answers one question for each item: is the decision written down, is t
 | Rate limits, user agent and contact | The crawler sends `SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)`. | Design 3.2, `scraper/adapters/types.ts` | Built. |
 | Schedule and jitter | The cron times are fixed and each run waits up to 15 minutes at random. | Design 3.2 | Built. |
 | Alert channels | The GitHub issue is the record and the WhatsApp message is the wake-up call. Email was never chosen. | Design 8.1 | Built, with the Kapso call unverified. |
-| Secrets | One admin password for the Worker, GitHub Actions and the host. The gateway key never leaves the host. | Runbook secret inventory | Open. The Worker holds a password whose value is unknown, the Actions copy is missing, the Cloudflare token is invalid and the Kapso values are missing. |
+| Secrets | One admin password for the Worker, GitHub Actions and the host. The gateway key never leaves the host. | Runbook secret inventory | Open. The admin password, the Cloudflare token and the account id are stored in the Worker and in Actions. The four Kapso values and the host values are missing. |
 | Backfill | The first crawl reads the existing hardware rows and the seeded watchlist. It never changes a manual row. | Design 3.1 | Built inside the normal discovery run. There is no separate backfill command. |
 | Test plan | The tests use saved fixtures and never touch the network. | Design 5.2 | Built. The three adapters have fixtures and the suite has 32 Worker tests plus 63 scraper tests. |
 | Acceptance criteria | After four weeks, 150 products with two offers, a 30-offer audit at 90 percent, 95 percent of prices fresh within 48 hours and 80 percent of candidates approved without edits. | Design 1.4 | Settled. The audit sampling tool is not built. |
@@ -141,14 +141,15 @@ This file answers one question for each item: is the decision written down, is t
 
 ## 7. The open items in section 12 of the design, with today's status
 
-| Open item | Status on 2026-11-14 |
+| Open item | Status on 2026-11-15 |
 | --- | --- |
 | Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets. | Open. The owner must add a card and pick the host. The Fly command line tool is not installed on this machine. The host files are ready in `scraper/host/`. |
-| Store the remaining secrets. | Partly done. The Worker holds an `ADMIN_PASSWORD` whose value is unknown. The Actions hold `WORKER_URL`, but the token is invalid, the account id is missing and the admin password copy is missing. The four Kapso values are missing. `FX_RATE_URL` is no longer needed. |
-| Apply remote migrations `0010` to `0012`. | Open. They are applied locally and pending on the remote D1. |
-| Redeploy the Worker with the current code. | Open. The live Worker predates the FX, retention, image and Kapso changes. |
+| Store the remaining secrets. | Partly done. The Worker and the Actions hold the same `ADMIN_PASSWORD`, and the Actions hold `WORKER_URL`, the Cloudflare token and the account id. The four Kapso values are missing. `FX_RATE_URL` is no longer needed. |
+| Apply remote migrations `0010` to `0012`. | Done on 2026-11-15. The deploy workflow now applies any pending migration before it deploys. |
+| Redeploy the Worker with the current code. | Done on 2026-11-15. The deploy workflow published version `bd608d7f`. |
 | Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed. | Open. The runner reads only `jinko-solar`; the other labels stay in the watchlist as unconfirmed. |
-| Confirm that a GitHub Actions runner can read the full Jumia page. | Open. A Node fetch on this machine read the pages and the local crawl found offers, but a hosted runner may see a thinner page. The first workflow run will answer it. |
+| Confirm that a GitHub Actions runner can read the full Jumia page. | Answered on 2026-11-15. The runner reads the pages and the live crawl stored 97 Jumia offers. |
+| Read Jiji from the GitHub runner. | Open. Cloudflare challenges every path from the runner address, so Jiji needs permission from Jiji or a crawl from the always-on host. |
 
 ---
 

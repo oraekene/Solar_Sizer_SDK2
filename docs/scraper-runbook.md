@@ -6,20 +6,19 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 | Item | Where | State on 2026-11-15 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code, deployed by hand as version `b7b450b1`. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code, deployed by the push workflow as version `bd608d7f`. |
 | D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | Fly.io account and Machine | Fly.io | Not created. |
-| GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL` and `ADMIN_PASSWORD` are set. `CLOUDFLARE_API_TOKEN` is invalid. `CLOUDFLARE_ACCOUNT_ID` is missing. |
+| GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
 | Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. The four Kapso values are missing. |
 
 ## What blocks the first live run
 
-1. The Cloudflare token fails with `Invalid access token [code: 9109]` and `Authentication error [code: 10000]`. Replace it, and store the account id beside it.
-2. The four Kapso values are missing, so the WhatsApp alert cannot send.
-3. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
-4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. The runner keeps Jumia and SolarShopNigeria.
+1. The four Kapso values are missing, so the WhatsApp alert cannot send.
+2. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
+3. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. The runner keeps Jumia and SolarShopNigeria.
 
 ## The first live crawl
 
@@ -86,6 +85,8 @@ The existing value cannot be read back, so replace it with a value you keep.
 
 ## Step 2: Replace the Cloudflare token
 
+Done on 2026-11-15. The new token and the account id are stored in GitHub Actions, and the deploy workflow passed with them.
+
 1. Open `dash.cloudflare.com/profile/api-tokens` and create a token with these account permissions:
    - Workers Scripts: Edit.
    - D1: Edit.
@@ -116,7 +117,7 @@ The deploy workflow applies remote D1 migrations before it deploys the Worker, s
 
 ## Step 3: Apply the migrations and deploy the Worker
 
-Done on 2026-11-15. The migrations were applied with the local Wrangler login and the Worker was deployed by hand, so the live Worker serves the current code. The deploy workflow will do the same work on the next push once the token works.
+Done on 2026-11-15. The migrations were applied with the local Wrangler login, and the deploy workflow now applies them and deploys the Worker on every push to main with the stored token. The last run published version `bd608d7f`.
 
 ```powershell
 npx wrangler d1 migrations apply solar-sizer-sdk2 --remote
