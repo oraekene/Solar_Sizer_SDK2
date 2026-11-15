@@ -305,29 +305,35 @@ export async function handleScraperRoute(
     const phoneNumberId = env.KAPSO_PHONE_NUMBER_ID;
     const to = env.KAPSO_ALERT_TO;
     const template = env.KAPSO_TEMPLATE_NAME;
-    if (!apiKey || !phoneNumberId || !to || !template) {
+    if (!apiKey || !phoneNumberId || !to) {
       return json({ error: 'The WhatsApp alert is not configured on this Worker.' }, 503);
     }
 
-    // The Kapso proxy speaks the Meta WhatsApp message shape.
+    // The Kapso proxy speaks the Meta WhatsApp message shape. An approved
+    // template needs a production number. The Kapso sandbox number cannot
+    // send templates, so a missing template name sends plain text.
+    const payload = template
+      ? {
+          messaging_product: 'whatsapp',
+          to,
+          type: 'template',
+          template: {
+            name: template,
+            language: { code: 'en' },
+            components: [
+              {
+                type: 'body',
+                parameters: [{ type: 'text', parameter_name: 'message', text: message }],
+              },
+            ],
+          },
+        }
+      : { messaging_product: 'whatsapp', to, type: 'text', text: { body: message } };
+
     const response = await fetch(`https://api.kapso.ai/meta/whatsapp/v23.0/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: { 'X-API-Key': apiKey, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        messaging_product: 'whatsapp',
-        to,
-        type: 'template',
-        template: {
-          name: template,
-          language: { code: 'en' },
-          components: [
-            {
-              type: 'body',
-              parameters: [{ type: 'text', parameter_name: 'message', text: message }],
-            },
-          ],
-        },
-      }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(15_000),
     });
 

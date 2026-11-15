@@ -148,6 +148,7 @@ Condition mapping is shared by the two marketplace adapters. `foreign` becomes `
 | Default | Value | Where |
 | --- | --- | --- |
 | Kapso endpoint | `https://api.kapso.ai/meta/whatsapp/v23.0/<phone number id>/messages` | `worker/scraper.ts` |
+| Alert message type | A template when `KAPSO_TEMPLATE_NAME` is set, plain text otherwise | Same route |
 | Template language | `en` | Same route |
 | Template body parameters | One named parameter, `message` | Same route |
 | Missing Kapso secret | The route answers `503` and the watchdog continues | Same route |

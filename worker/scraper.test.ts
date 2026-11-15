@@ -138,6 +138,54 @@ test('the WhatsApp alert refuses to run without its settings', async () => {
   assert.match(body.error, /not configured/);
 });
 
+test('the WhatsApp alert sends text without a template and a template with one', async () => {
+  const calls: { url: string; body: any }[] = [];
+  const original = globalThis.fetch;
+  (globalThis as any).fetch = async (url: string, init: RequestInit) => {
+    calls.push({ url, body: JSON.parse(String(init?.body)) });
+    return new Response('{"messaging_product":"whatsapp"}', { status: 200 });
+  };
+
+  const env = {
+    KAPSO_API_KEY: 'key',
+    KAPSO_PHONE_NUMBER_ID: '597907523413541',
+    KAPSO_ALERT_TO: '2348000000000',
+    DB: {},
+  } as any;
+
+  const alert = (message: string, routeEnv: any = env) =>
+    handleScraperRoute(
+      new Request('https://worker.test/api/scraper/alert', {
+        method: 'POST',
+        body: JSON.stringify({ message }),
+      }),
+      routeEnv,
+      '/api/scraper/alert',
+      'POST',
+    );
+
+  try {
+    const textResponse = await alert('the sweep did not run');
+    assert.equal(textResponse?.status, 200);
+    assert.equal(calls[0].url, 'https://api.kapso.ai/meta/whatsapp/v23.0/597907523413541/messages');
+    assert.equal(calls[0].body.type, 'text');
+    assert.equal(calls[0].body.text.body, 'the sweep did not run');
+    assert.equal(calls[0].body.to, '2348000000000');
+
+    const templateResponse = await alert(
+      'the sweep did not run',
+      { ...env, KAPSO_TEMPLATE_NAME: 'solar_sizer_alert' },
+    );
+    assert.equal(templateResponse?.status, 200);
+    assert.equal(calls[1].body.type, 'template');
+    assert.equal(calls[1].body.template.name, 'solar_sizer_alert');
+    assert.equal(calls[1].body.template.language.code, 'en');
+    assert.equal(calls[1].body.template.components[0].parameters[0].parameter_name, 'message');
+  } finally {
+    (globalThis as any).fetch = original;
+  }
+});
+
 test('a review needs candidate ids and a known status', async () => {
   const env = { DB: {} } as any;
 
