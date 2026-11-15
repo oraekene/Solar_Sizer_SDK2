@@ -51,10 +51,10 @@ This file answers one question for each item: is the decision written down, is t
 | Raw page storage | The page JSON goes into the offer row. | Design 9 | Built. The 90-day purge empties the payload and keeps the offer. |
 | Rate limits, user agent and contact | The crawler sends `SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)`. | Design 3.2, `scraper/adapters/types.ts` | Built. |
 | Schedule and jitter | The cron times are fixed and each run waits up to 15 minutes at random. | Design 3.2 | Built. |
-| Alert channels | The GitHub issue is the record and the WhatsApp message is the wake-up call. Email was never chosen. | Design 8.1 | Built, with the Kapso call unverified. |
-| Secrets | One admin password for the Worker, GitHub Actions and the host. The gateway key never leaves the host. | Runbook secret inventory | Open. The admin password, the Cloudflare token and the account id are stored in the Worker and in Actions. The four Kapso values and the host values are missing. |
+| Alert channels | The GitHub issue is the record and the WhatsApp message is the wake-up call. Email was never chosen. | Design 8.1 | Built, with the Kapso call unverified live. The route sends a template when `KAPSO_TEMPLATE_NAME` is set and plain text when it is not, because the Kapso Sandbox number cannot send templates. |
+| Secrets | One admin password for the Worker, GitHub Actions and the host. The gateway key never leaves the host. | Runbook secret inventory | Open. The admin password, the Cloudflare token and the account id are stored in the Worker and in Actions. `KAPSO_API_KEY` and `KAPSO_PHONE_NUMBER_ID` are stored in the Worker. `KAPSO_ALERT_TO` and the host values are missing. |
 | Backfill | The first crawl reads the existing hardware rows and the seeded watchlist. It never changes a manual row. | Design 3.1 | Built inside the normal discovery run. There is no separate backfill command. |
-| Test plan | The tests use saved fixtures and never touch the network. | Design 5.2 | Built. The three adapters have fixtures and the suite has 32 Worker tests plus 63 scraper tests. |
+| Test plan | The tests use saved fixtures and never touch the network. | Design 5.2 | Built. The three adapters have fixtures and the suite has 33 Worker tests plus 63 scraper tests. |
 | Acceptance criteria | After four weeks, 150 products with two offers, a 30-offer audit at 90 percent, 95 percent of prices fresh within 48 hours and 80 percent of candidates approved without edits. | Design 1.4 | Settled. The audit sampling tool is not built. |
 | Cost | The Worker and the Actions are free. The host costs about $3.84 a month on Fly.io. | Design 5.1 | Settled. The host is not reserved yet. |
 | The first publish and the old seed prices | A manual row keeps its price and shows the scraped median beside it. The admin accepts the median, which then flips the row to `scraped`. A bulk conversion of many rows is a phase-one decision without a button. | Design 6.1 | Built except for the bulk button. |
@@ -144,7 +144,7 @@ This file answers one question for each item: is the decision written down, is t
 | Open item | Status on 2026-11-15 |
 | --- | --- |
 | Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets. | Open. The owner must add a card and pick the host. The Fly command line tool is not installed on this machine. The host files are ready in `scraper/host/`. |
-| Store the remaining secrets. | Partly done. The Worker and the Actions hold the same `ADMIN_PASSWORD`, and the Actions hold `WORKER_URL`, the Cloudflare token and the account id. The four Kapso values are missing. `FX_RATE_URL` is no longer needed. |
+| Store the remaining secrets. | Partly done. The Worker and the Actions hold the same `ADMIN_PASSWORD`, and the Actions hold `WORKER_URL`, the Cloudflare token and the account id. The Worker holds `KAPSO_API_KEY` and `KAPSO_PHONE_NUMBER_ID`. `KAPSO_ALERT_TO` is missing, and `KAPSO_TEMPLATE_NAME` is optional. `FX_RATE_URL` is no longer needed. |
 | Apply remote migrations `0010` to `0012`. | Done on 2026-11-15. The deploy workflow now applies any pending migration before it deploys. |
 | Redeploy the Worker with the current code. | Done on 2026-11-15. The deploy workflow published version `bd608d7f`. |
 | Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed. | Open. The runner reads only `jinko-solar`; the other labels stay in the watchlist as unconfirmed. |
@@ -176,7 +176,7 @@ The archive promotion, the dashboard, the thumbnail and the estimated-specs mark
 1. A known admin password: rotate the Worker secret, then store the same value in GitHub Actions and on the host.
 2. A valid `CLOUDFLARE_API_TOKEN` with Workers Scripts edit and D1 edit, plus `CLOUDFLARE_ACCOUNT_ID`.
 3. A funded host, either Fly.io in Johannesburg at about $3.84 a month or Hetzner at €5.99 a month.
-4. The four Kapso values for the WhatsApp alert: the API key, the phone number id, the alert number and the approved template name. The template needs one named body parameter, `message`.
+4. The Kapso values for the WhatsApp alert: the API key and the phone number id are stored. The alert number is still needed. The approved template name is optional, because the Kapso Sandbox number sends plain text only. A template needs one named body parameter, `message`.
 5. One live sweep and one live discovery run, so the hosted-runner page and the unconfirmed brand slugs can be checked.
 
 ---
