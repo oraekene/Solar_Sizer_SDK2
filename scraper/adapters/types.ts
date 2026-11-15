@@ -22,6 +22,8 @@ export type ScraperOffer = {
   stated_specs: Record<string, unknown>;
   trading_signals: Record<string, unknown>;
   raw_payload: Record<string, unknown>;
+  image_url?: string | null;
+  image_hash?: string | null;
   status: OfferStatus;
   reason_code: string | null;
   last_checked: string;
@@ -40,6 +42,7 @@ export type DiscoveredListing = {
   spec_line: string | null;
   pack_count: number | null;
   has_datasheet: boolean;
+  image_url?: string | null;
 };
 
 // The result of one page fetch. The status decides whether a listing is gone
@@ -53,8 +56,20 @@ export type PageResult<T> = {
 
 export type SourceAdapter = {
   site: string;
-  crawlProduct(url: string): Promise<PageResult<ScraperOffer>>;
+  crawlProduct(url: string, options?: { imageUrl?: string | null }): Promise<PageResult<ScraperOffer>>;
   crawlCategory(url: string): Promise<PageResult<DiscoveredListing[]>>;
 };
 
 export const CRAWLER_UA = 'SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)';
+
+// The condition names are shared by the marketplace adapters. Open box is
+// treated as refurbished and a swap is treated as used, so neither can set a
+// price for a new product.
+export function conditionFromText(value: string | null | undefined): string {
+  const text = value ?? '';
+  if (/foreign/i.test(text)) return 'foreign_used';
+  if (/refurb|open\s*box/i.test(text)) return 'refurbished';
+  if (/used|swap|slightly\s*used/i.test(text)) return 'used';
+  if (/new/i.test(text)) return 'new';
+  return 'unknown';
+}

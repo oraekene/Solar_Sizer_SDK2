@@ -7,8 +7,10 @@
 // auth path.
 
 import { fetchText } from '../http.ts';
+import { collectImageFacts } from '../image.ts';
 import { identitySpecsMissing, parseTitleSpecs, productTypeFromTitle } from '../specs.ts';
 import type { DiscoveredListing, InStock, PageResult, ScraperOffer, SourceAdapter, TrustTier } from './types.ts';
+import { conditionFromText } from './types.ts';
 
 const SITE = 'https://jiji.ng';
 const SOURCE = 'jiji';
@@ -52,6 +54,7 @@ type FeedAdvert = {
   labels?: Array<{ type: string; value: string }>;
   is_boost?: string;
   region_name?: string;
+  image_obj?: { url?: string };
 };
 
 export type FeedResult = { adverts: FeedAdvert[]; total: number };
@@ -65,11 +68,7 @@ export function parseFeed(json: unknown): FeedResult {
 // The condition sits in the attributes of the advert.
 export function conditionFromAttrs(attrs: FeedAdvert['attrs']): string {
   const value = attrs?.find((attr) => (attr.name ?? '').toLowerCase() === 'condition')?.value ?? '';
-  if (/foreign/i.test(value)) return 'foreign_used';
-  if (/refurb/i.test(value)) return 'refurbished';
-  if (/used/i.test(value)) return 'used';
-  if (/new/i.test(value)) return 'new';
-  return 'unknown';
+  return conditionFromText(value);
 }
 
 export function parseCategoryFeed(json: unknown): DiscoveredListing[] {
@@ -89,6 +88,7 @@ export function parseCategoryFeed(json: unknown): DiscoveredListing[] {
       spec_line: conditionFromAttrs(advert.attrs),
       pack_count: null,
       has_datasheet: false,
+      image_url: advert.image_obj?.url ?? null,
     });
   }
 
@@ -142,12 +142,8 @@ export function parseProductPage(html: string): ProductFacts | null {
 
   const attributes = parseAttributes(html);
 
-  let condition = 'unknown';
   const conditionSource = conditionText || attributes.Condition || '';
-  if (/foreign/i.test(conditionSource)) condition = 'foreign_used';
-  else if (/refurb/i.test(conditionSource)) condition = 'refurbished';
-  else if (/used/i.test(conditionSource)) condition = 'used';
-  else if (/new/i.test(conditionSource)) condition = 'new';
+  const condition = conditionFromText(conditionSource);
 
   const inStock: InStock = /instock/i.test(availability)
     ? 'true'
@@ -279,7 +275,10 @@ export async function crawlCategory(url: string): Promise<PageResult<DiscoveredL
   }
 }
 
-export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer>> {
+export async function crawlProduct(
+  url: string,
+  options: { imageUrl?: string | null } = {},
+): Promise<PageResult<ScraperOffer>> {
   const response = await fetchText(url);
   if (response.status !== 200) {
     return { value: null, status: response.status, error: response.error ?? `status ${response.status}` };
@@ -288,7 +287,17 @@ export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer
   if (!facts) return { value: null, status: response.status, error: 'the page has no advert details' };
 
   const listingId = url.match(/-([A-Za-z0-9_-]{8,})\.html/)?.[1] ?? url;
-  return { value: buildOffer(facts, url, listingId), status: response.status };
+  const offer = buildOffer(facts, url, listingId);
+  const image = await collectImageFacts(response.html, url, SOURCE, options.imageUrl);
+  return {
+    value: {
+      ...offer,
+      image_url: image.image_url,
+      image_hash: image.image_hash,
+      trading_signals: { ...offer.trading_signals, ...image },
+    },
+    status: response.status,
+  };
 }
 
 export const jiji: SourceAdapter = {

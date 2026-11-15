@@ -6,6 +6,12 @@
     "budget": "500 offer checks per day, 200 listing pages per weekly crawl, one request per second (design doc section 3.2)."
   },
 
+  "source_budgets": {
+    "_comment": "Soft request ceilings for one run. Product pages and image downloads count. A source that reaches its ceiling or is refused is paused for the rest of that run.",
+    "sweep": { "jumia": 250, "jiji": 300, "solarshopnigeria": 100 },
+    "discovery": { "jumia": 100, "jiji": 120, "solarshopnigeria": 40 }
+  },
+
   "manual_rows": [
     { "hardware_id": "p-1", "brand": "Kulpower", "model": "100W Mono", "watts": 100 },
     { "hardware_id": "p-2", "brand": "9Solar", "model": "190W Mono", "watts": 190 },
@@ -157,8 +163,22 @@
       { "path_pattern": "/*wattage=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*capacity=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*battery=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*power=", "rule": "Facet query paths are blocked" },
+      { "path_pattern": "/*tag=", "rule": "Facet query paths are blocked" },
       { "path_pattern": "/*sort=", "rule": "Facet query paths are blocked" },
-      { "path_pattern": "/*q=", "rule": "Site search is blocked" }
+      { "path_pattern": "/*q=", "rule": "Site search is blocked" },
+      { "path_pattern": "*/brands/*", "rule": "Brand index paths are blocked" },
+      { "path_pattern": "*/seller/*", "rule": "Seller paths are blocked" },
+      { "path_pattern": "*/top-sellers/*", "rule": "Top seller paths are blocked" },
+      { "path_pattern": "*/new-products/*", "rule": "New product paths are blocked" },
+      { "path_pattern": "*/special-price/*", "rule": "Special price paths are blocked" },
+      { "path_pattern": "/*/*/*/", "rule": "Three-level paths are blocked" }
+    ],
+    "jiji": [
+      { "path_pattern": "/test*", "rule": "Disallow: /test/*" },
+      { "path_pattern": "/admin*", "rule": "Disallow: /admin/*" },
+      { "path_pattern": "/crm*", "rule": "Disallow: /crm/*" },
+      { "path_pattern": "*auth/facebook*", "rule": "Disallow: /auth/facebook*" }
     ],
     "konga": [
       { "path_pattern": "/product/*/details", "rule": "Product detail pages are blocked for every crawler" },

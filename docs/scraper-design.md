@@ -1,6 +1,6 @@
 # Hardware Scraping System — Design v1 (phase one)
 
-**Status:** v1, gaps closed, awaiting implementation. **Owner:** Kenechukwu Oraelosi. **Last updated:** 2026-11-13.
+**Status:** v1, implemented with the owner and live-run items still open. **Owner:** Kenechukwu Oraelosi. **Last updated:** 2026-11-14.
 
 This document captures every decision made in the engineering-grill session for the system that auto-populates the Solar Sizer hardware database from Nigerian e-commerce and solar-product sources. It is written so an agent can implement phase one from it, and so decisions can be reviewed, amended and versioned.
 
@@ -31,7 +31,7 @@ Rationale: panels and batteries are the two types that every system must have, a
 | --- | --- | --- | --- |
 | 1 | SolarShopNigeria (specialist retailer with full spec tables and PDF datasheets); Jiji; Jumia | 1 | Price anchors and discovery |
 | 1b | SolarMart, BuySolar.ng | 1b | Immediately after phase 1 proves the pattern |
-| 2 | Konga, CDcare | 2 | Konga blocks its product detail pages and CDcare has no domain, so both need a new decision |
+| 2 | Konga, CDcare | 1b, after the four-week report passes | Konga blocks its product detail pages and CDcare has no domain, so both need a new adapter decision |
 | 3 | AliExpress, Temu | optional, later | Reference/spec only; excluded from price unless landed-cost model exists |
 
 The source inventory and the evidence behind each verdict are in `docs/sources-inventory.md`.
@@ -64,7 +64,7 @@ Columns (existing): `id`, `user_id`, `type`, `data`, `tags`, `description`, `cre
 
 The scraped row is written by the publish step with:
 
-- `id` — deterministic slug from the identity key, prefixed `sc-` (for *scraped*), e.g. `sc-9solar-550-mono`. This avoids collisions with seeded ids and makes origin obvious.
+- `id` — deterministic slug from the identity key, prefixed `sc-` (for *scraped*), e.g. `sc-9solar-550-mono-1a2b3c4d`. The family facts and model form the readable part, and an eight-character hash of the full identity key keeps two models with the same facts apart. This avoids collisions with seeded ids and between two wattages or capacities of one brand, and makes origin obvious.
 - `user_id` — `system`.
 - `type` — `panel` or `battery`.
 - `data` — the fully typed object (`Panel` or `Battery`), every required field present at one of the sources in Section 4.1.
@@ -86,7 +86,7 @@ An offer is one seller listing of one canonical product. The table is `hardware_
 - `price_kind` — `cash`, `installment_total`, `usd_landed`, `per_piece`
 - `unit_basis` — `piece`, `pair`, `pallet`, `set`, `kw`, `carton`
 - `unit_quantity` — quantity stated by the seller that the price covers; null if not stated
-- `condition` — `new`, `used`, `foreign_used`, `refurbished`, `open_box`, `unknown`
+- `condition` — `new`, `used`, `foreign_used`, `refurbished`, `unknown`. Open box is stored as `refurbished`, and a swap is stored as `used`, so neither can quote a new product.
 - `in_stock` — `true`, `false`, `unknown`, plus `last_checked`
 - `stated_specs` — `{watts, voc, isc, voltage, capacity_ah, type, ...}` as literally present
 - `raw_payload` — extracted JSON from the page (90-day retention, Section 9)
@@ -143,12 +143,14 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 - **Admin endpoint contract**: the runner posts to a single authenticated route using the existing `x-admin-key` header, which the Worker already checks against the `ADMIN_PASSWORD` environment value with a timing-safe compare and a failed-attempt lockout. The same value is stored as a GitHub Actions secret. The response is a small JSON status with a run id, and the runner treats any non-200 as a run failure rather than continuing.
 - Job runs only while the page parses successfully; network-only failures are reported.
 - **First-run backfill**: the initial crawl reads the existing hardware rows and the seeded watchlist only, writes candidates with `manual`-protect flags, and never overwrites a row whose `price_source` is already `manual`. The first successful run writes a heartbeat so the watchdog does not raise a false alert on day one.
+- **The watchlist does not grow itself**: a discovered product becomes an offer and then a candidate, never a watchlist row. A human adds a brand path when a run report shows a brand that the crawl missed.
 
 ### 3.2 Rate discipline
 
 - Daily sweep: **one request per offer**, total ceiling **500 checks/day**.
 - Weekly Sunday discovery crawl: **ceiling 200 listing pages**.
 - Global pacing: **one request per second**, with a random delay up to 15 minutes on each run start, so the schedule is not a predictable clock.
+- Each source also has a soft request budget in `docs/scraper-watchlist.json`. Product pages and image downloads count toward it. A source that reaches its budget, returns a sustained 403, 429 or 503, or keeps failing is paused for the rest of that run; the other sources continue.
 - Jumia respects its robots.txt permission for bots that identify themselves, stay under 200 requests/minute and give an owner contact. Jiji leaves product pages open and only disallows admin/crm/test paths and `/test`. Konga disallows `/search` and `/product/*/details`, so phase 1b uses its listing roots and sitemap.
 - The crawler UA identifies the bot: `SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)`.
 
@@ -167,8 +169,8 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 - **Qualified offers must be `piece`-basis.** A pallet, pair, carton or set price is divided by the **seller's stated** count, never an assumed one, and only when the count is explicit and matches the product.
 - **Derived per-piece prices** are allowed and labelled, so a pallet of 31 at ₦3,100,000 publishes as ₦100,000 per piece with `unit_basis: derived`, `unit_quantity: 31`.
 - **Ambiguous ads are excluded, not averaged:** price ranges, "price depends on quantity", bundles, and installation-inclusive prices are dropped with a reason code and archived.
-- **USD listings** are converted using a daily NGN/USD rate fetched from a single configured reference and stored with the rate date; a conversion is allowed only when the stored rate is less than seven days old. The rate source is a repository secret so it can be rotated without a redeploy. Phase one has no rate source, so the runner archives every price that is not in naira with the reason code `usd_rate_unavailable` instead of converting it.
-- Converted prices are rounded to the nearest hundred naira before entering the pool, and the raw converted value is kept alongside the rounded figure for audit.
+- **USD listings** are converted using one daily NGN/USD rate fetched from a fixed reference order and stored with the rate date; a conversion is allowed only when the rate is less than seven days old. The order is `https://nairadaily.net/api/rates?source=USD&target=NGN` first, then `https://open.er-api.com/v6/latest/USD`. The order is fixed in code, so a secret cannot replace it; a source change is a code change with a test. The original price and currency stay on the offer, and the rate, rate date and source stay beside the converted value. A foreign offer with no fresh rate is held with the reason code `usd_rate_unavailable` and never enters a median.
+- Converted prices are rounded to the nearest hundred naira before entering the pool, and the raw converted value is kept alongside the rounded figure for audit. The final naira median is also rounded to the nearest hundred naira.
 - **Rate-limit handling**: each source keeps its own soft budget below the global ceiling, a jittered backoff on a 429 or throttle response, and a mid-run pause that reports the skipped offers; a sustained challenge from one source pauses that source adapter rather than failing the whole run.
 - **VAT** stays as quoted with a `vat_included` flag. The calculator ranks on shelf price, and no silent VAT adjustment is applied.
 
@@ -176,19 +178,21 @@ Every published hardware price is appended to a `price_history` log (`hardware_r
 
 Hard gates (offer excluded):
 
-- `used` or `foreign_used` condition.
+- `used`, `foreign_used` or `refurbished` condition.
 - Dead listing (not found).
 - Missing a required spec.
 - Price far below the canonical median (a fake/bait signal).
 
 Tier (controls qualification):
 
-- **verified** — official store, platform-verified badge, or the brand's own distributor page.
-- **established** — rating of 4.0 or higher with at least 10 reviews, or a seller known to stock the brand.
-- **unknown** — everything else.
+- **verified** - official store, platform-verified badge, or the brand's own distributor page.
+- **established** - rating of 4.0 or higher with at least 10 reviews, or a seller known to stock the brand.
+- **unknown** - everything else.
+
+The pages do not expose one shared signal, so each adapter uses the strongest one it has. Jumia publishes no verified-seller flag in its product data, so only Jumia's own store counts as verified there and a marketplace vendor page is not a badge; its product rating stands in for a seller rating. Jiji publishes no rating at all, so a platform badge or two or more years on the platform stands in. SolarShopNigeria is verified for the brands it officially distributes and established for the rest.
 - **Price outlier** for the fake/bait gate is an offer priced below 60% of the current canonical median, which is the typical depth of a missing-zero typo or a bait listing and is far deeper than legitimate discounting. The threshold is configurable per source and is reviewed whenever the unknown-offer rate rises.
 
-The median is computed from verified and established offers. **Unknown offers are archived and shown, but do not set the median.** If no verified or established offer exists, the median falls back to unknown offers with a `low-confidence-price` flag on the row; it is never dropped for want of a better offer.
+The median is computed from verified and established offers. **Unknown offers stay in the pool and are shown, but do not set the median while a trusted offer exists.** If no verified or established offer exists, the median falls back to unknown offers with a low-confidence price flag; the candidate waits for a human and never publishes itself.
 
 Used/foreign-used listings are **kept with a condition label in the archive** and never shown in displays or quoted, and they feed a separate used-price series for later.
 
@@ -251,16 +255,16 @@ OCR brand claims require a second-signal agreement before promoting out of the b
 
 ### 4.4 Datasheet sourcing
 
-Datasheets are looked up by manufacturer + model family, starting with the brand's Nigerian distributor pages, then the global site, then a general web search by model. The datasheet is treated as `datasheet` provenance, not `stated`, and its values override offer-stated values for the same field.
+Datasheets are looked up by manufacturer + model family, starting with the brand's Nigerian distributor pages, then the global site, then a general web search by model. The datasheet is treated as `datasheet` provenance, not `stated`, and its values override offer-stated values for the same field. The SolarShopNigeria product page for a brand it officially distributes counts as an official product page under this rule, and its manufacturer PDF link remains on the offer for audit. When two sellers state a numeric field more than 1 percent apart, the candidate carries a `sellers disagree on <field>` risk flag and waits for a human.
 
 ### 4.5 Image analysis and dedupe
 
 For each new listing:
 
-1. Compute a perceptual hash; fall back to a small CLIP embedding when hashes collide.
-2. **Hash hit** → the photo is proposed as belonging to an existing canonical product. A hash hit **proposes** identity and is rejected on disagreement with the title/spec; it never renames a row silently.
+1. Download the primary product image through the shared paced client and compute a SHA-256 content hash. Phase one does not decode images, so a re-encoded copy of the same photo receives a different hash. Perceptual hashing and CLIP fallback remain later work.
+2. **Hash hit** → two ads from the same seller on the same platform with the same price and the same content hash count once. A different price is a different offer. The collapsed ad stays in the archive with `duplicate_of_existing_offer`.
 3. **Hash miss** → continue the enrichment ladder.
-4. **Stored assets:** a content-addressed hash and a small thumbnail only; never the full image by default. Full images are fetched on demand in review. Hash index and thumbnails are retained until enrichment completes, then the raw image is discarded; hashes persist.
+4. **Stored assets:** the content-addressed hash persists. Full images are fetched on demand by the enrichment host and are not stored in D1 or R2. A small thumbnail is later work.
 
 ---
 
@@ -323,7 +327,7 @@ Because the free gateway rotates, rate-limits and can return nonsense:
 
 ### 5.3 Pipeline stages
 
-1. **Discover** (weekly Sunday 03:00 WAT): crawl source categories and saved search URLs; propose candidates.
+1. **Discover** (weekly Sunday 03:00 WAT): crawl the source categories, the Jiji category feed and the brand paths; propose candidates. Brand paths alternate with the category pages, so a wide category cannot spend the source budget before a brand match is reached. Saved search terms stay seeded data and are not requested in phase one, because they add pages without a proven gap.
 2. **Sweep** (daily 02:00 WAT): re-check every known offer URL; extract price, condition, seller, stock, specs; apply ambiguity rules; compute candidate medians.
 3. **Enrich** (as needed): queue image hash; OCR; VLM chain; datasheet fetch; alias resolution.
 4. **Merge & propose**: group offers into canonical identities; compute medians; compute proposed `hardware` row; write `hardware_candidates`.
@@ -380,7 +384,7 @@ If all four fail, the ad falls into the unbranded bucket.
 
 ### 8.1 Channels
 
-- **GitHub issue `scraper-alert`** is the record: reopened on each failure, closed after a clean run. It carries the source, the failing URL, the error type, the run link, and whether prices are still fresh.
+- **GitHub issue `scraper-alert`** is the record. The watchdog creates it when no open alert issue exists and adds a comment to the open issue on later failures. It leaves the issue open after recovery so the failure history stays visible; a human closes it.
 - **WhatsApp via Kapso** wakes the owner.
 - A separate **heartbeat watchdog** checks that yesterday's sweep wrote its heartbeat and raises the same issue if not.
 
@@ -423,8 +427,8 @@ An archived offer is never deleted and can be promoted without re-fetching the p
 ## 9. Retention
 
 - Offer records and `price_history` are retained indefinitely in compressed form.
-- `raw_payload` (the page JSON) is retained for **90 days**.
-- Images: hash and thumbnail persist; full images are discarded after enrichment completes.
+- `raw_payload` (the page JSON) is retained for **90 days**. The weekly discovery run empties the payload of older offers while keeping the offer, price, status and hash.
+- Images: the content hash persists; full images are fetched on demand and never stored in D1 or R2. A small thumbnail is later work.
 - **No full HTML pages are stored.**
 
 ---
@@ -448,7 +452,7 @@ Everything in this list was discussed and consciously postponed. Nothing here bl
 | --- | --- | --- |
 | Inverters, powerstations, charge controllers, wiring, accessories | 2 | Inverter MPPT ceilings and surge values are the least published specs and the most dangerous to guess. |
 | `products` table, kits, accessories catalogue | 2 | Phase one proves the hardware pipeline first. |
-| Konga and CDcare adapters | 1b | Accepted as "immediately after" the first three sources; Konga disallows `/search` and product detail paths, so its adapter needs a different discovery route. |
+| Konga and CDcare adapters | 1b | Starts only after the four-week phase-one report passes, not on a calendar date. Konga disallows `/search` and product detail paths, so its adapter needs a different discovery route. |
 | AliExpress and Temu price contribution | 3 | Needs a landed-cost model covering shipping, duty and FX before an import price may enter a median. |
 | Social sources (Twitter/X, Facebook, Nairaland, Instagram, WhatsApp) | out of scope | Closed or unstructured graphs needing login, session tracking or image-post analysis. |
 | CDcare installment price as a normal price kind | 1b | An installment total is not comparable to a cash price until its own conversion rule is defined. |
@@ -463,6 +467,7 @@ Everything in this list was discussed and consciously postponed. Nothing here bl
 ## 12. Open items before implementation
 
 - Create the Fly.io account, the `jnb` Machine with its 1 GB volume, and the host secrets, following `docs/scraper-runbook.md`.
-- Store the remaining secrets: the Worker `ADMIN_PASSWORD`, the GitHub Actions copies of `ADMIN_PASSWORD`, `WORKER_URL` and `FX_RATE_URL`, and the Kapso values for the alert.
-- Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed.
+- Store the remaining secrets: a known Worker `ADMIN_PASSWORD` with copies in GitHub Actions and on the host, a valid `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and the four Kapso values for the alert. `FX_RATE_URL` is no longer read.
+- Apply remote D1 migrations `0010` through `0012` before the first live run. `deploy.yml` applies them on every deployment once the Cloudflare token works.
+- Confirm the SolarShopNigeria brand filter slugs on the first crawl. Only `jinko-solar` was confirmed; that slug is the only one the runner uses.
 - Confirm that a GitHub Actions runner can read the full Jumia page. A Node fetch returned a reduced page while another client returned the full page, so the runner may see a thinner page than expected.

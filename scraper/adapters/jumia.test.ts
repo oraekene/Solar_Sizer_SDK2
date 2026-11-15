@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { buildOffer, listingIdFromUrl, parseCategoryPage, parseJsonLd } from './jumia.ts';
+import { buildOffer, listingIdFromUrl, parseCategoryPage, parseJsonLd, productImageUrl } from './jumia.ts';
 
 const fixture = (name: string) => fs.readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -63,7 +63,21 @@ test('a panel offer carries the wattage and the cash price', () => {
   assert.equal(offer.trust_tier, 'unknown');
 });
 
-test('a marketplace seller is a verified seller', () => {
+test("Jumia's own store is a verified seller", () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+
+  const ownStore = {
+    ...product,
+    offers: {
+      ...product.offers,
+      seller: { name: 'Jumia', '@id': '1', url: '/jumia/' },
+    },
+  };
+  assert.equal(buildOffer(ownStore, PANEL_URL).trust_tier, 'verified');
+});
+
+test('a marketplace vendor page is not a verification badge', () => {
   const product = parseJsonLd(fixture('jumia-product.html'));
   assert.ok(product);
 
@@ -71,10 +85,10 @@ test('a marketplace seller is a verified seller', () => {
     ...product,
     offers: {
       ...product.offers,
-      seller: { name: 'Jumia Store', '@id': '999', url: '/marketplace-vendor/' },
+      seller: { name: 'Nossolar Energy System', '@id': '999', url: '/marketplace-vendor/' },
     },
   };
-  assert.equal(buildOffer(vendor, PANEL_URL).trust_tier, 'verified');
+  assert.equal(buildOffer(vendor, PANEL_URL).trust_tier, 'unknown');
 });
 
 test('a rated product with ten reviews is an established seller', () => {
@@ -121,6 +135,29 @@ test('a used listing is archived with its label', () => {
   assert.equal(offer.status, 'excluded');
   assert.equal(offer.reason_code, 'used');
   assert.equal(offer.condition, 'used');
+});
+
+test('open box and swap listings are archived with their condition label', () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+
+  const openBox = {
+    ...product,
+    offers: { ...product.offers, itemCondition: 'Open box' },
+  };
+  assert.equal(buildOffer(openBox, PANEL_URL).reason_code, 'refurbished');
+
+  const swap = {
+    ...product,
+    offers: { ...product.offers, itemCondition: 'Swap' },
+  };
+  assert.equal(buildOffer(swap, PANEL_URL).reason_code, 'used');
+});
+
+test('the product image comes from the JSON-LD content URL', () => {
+  const product = parseJsonLd(fixture('jumia-product.html'));
+  assert.ok(product);
+  assert.match(productImageUrl(product) ?? '', /ng\.jumia\.is/);
 });
 
 test('the listing id comes from the trailing digits of the address', () => {

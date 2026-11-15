@@ -2,6 +2,8 @@
 // after normalisation. A weaker match becomes a reviewed possible duplicate,
 // never an automatic merge. See docs/scraper-design.md section 2.4.
 
+import { createHash } from 'node:crypto';
+
 export type AliasTable = Record<string, string[]>;
 
 export type BrandKind = 'manufacturer' | 'generic' | 'unbranded';
@@ -235,8 +237,17 @@ export function identityFromHardwareData(
   return null;
 }
 
-// The row id for a new canonical product.
+// The row id for a new canonical product. The family values keep two wattages
+// or two capacities apart, and the hash keeps two models with the same family
+// facts apart after the readable part is cut to length.
 export function canonicalId(identity: Identity): string {
-  const parts = [identity.brand, identity.model ?? identity.family_key.replace(/\|/g, '-')];
-  return `sc-${slug(parts.filter(Boolean).join('-'))}`.slice(0, 80);
+  const family = identity.family_key.split('|')[1] ?? '';
+  const values = family
+    .split(';')
+    .filter(Boolean)
+    .map((pair) => pair.split('=')[1])
+    .filter(Boolean);
+  const base = slug([identity.brand, ...values, identity.model].filter(Boolean).join('-')) || 'product';
+  const hash = createHash('sha256').update(identity.key).digest('hex').slice(0, 8);
+  return `sc-${base.slice(0, 71)}-${hash}`;
 }

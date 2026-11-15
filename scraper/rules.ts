@@ -78,6 +78,11 @@ export function isTrustTier(value: unknown): value is TrustTier {
 // The median comes from qualified offers that are in stock. A verified or
 // established seller sets the price. When only unknown sellers remain, the
 // median falls back to them and the row carries a low confidence flag.
+export function roundPrice(value: number): number {
+  if (!Number.isFinite(value)) return value;
+  return Math.round(value / 100) * 100;
+}
+
 export function medianPrice(offers: PriceInput[]): MedianResult {
   const usable = offers.filter(
     (offer) =>
@@ -94,8 +99,9 @@ export function medianPrice(offers: PriceInput[]): MedianResult {
 
   const prices = pool.map((offer) => offer.price as number).sort((a, b) => a - b);
   const middle = Math.floor(prices.length / 2);
-  const price =
-    prices.length % 2 === 1 ? prices[middle] : Math.round((prices[middle - 1] + prices[middle]) / 2);
+  const rawMedian =
+    prices.length % 2 === 1 ? prices[middle] : (prices[middle - 1] + prices[middle]) / 2;
+  const price = roundPrice(rawMedian);
 
   return {
     price,
@@ -151,14 +157,4 @@ export function missingSpecs(productType: string, data: Record<string, unknown>)
     if (typeof value === 'number') return !Number.isFinite(value) || value <= 0;
     return value === undefined || value === null || value === '';
   });
-}
-
-// Phase one has no rate source, so a price in another currency is archived
-// with the reason code from the closed set instead of joining the naira
-// median.
-export function excludeForeignCurrency<T extends { currency: string; status: string; reason_code: string | null }>(
-  offer: T,
-): T {
-  if (!offer.currency || offer.currency === 'NGN') return offer;
-  return { ...offer, status: 'excluded', reason_code: 'usd_rate_unavailable' };
 }

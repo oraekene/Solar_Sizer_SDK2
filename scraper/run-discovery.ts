@@ -5,9 +5,11 @@
 
 import { randomUUID } from 'node:crypto';
 import { adapterFor } from './adapters/index.ts';
+import { loadFxRate } from './fx.ts';
+import { configureRequestBudgets, requestReport, resetRequestState } from './http.ts';
 import { offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
 import type { OfferPayload } from './run-common.ts';
-import { loadWatchlist } from './watchlist.ts';
+import { allDiscoveryPaths, isBlocked, loadWatchlist } from './watchlist.ts';
 import { WorkerClient } from './worker-client.ts';
 
 const PAGE_CEILING = 200;
@@ -31,13 +33,32 @@ async function main(): Promise<void> {
   const client = new WorkerClient(workerUrl, adminKey);
   const watchlist = await loadWatchlist();
   const previous = await client.listOffers();
+  const fx = await loadFxRate();
+  const overrideBudget = Number(process.env.SCRAPER_SOURCE_REQUEST_BUDGET);
+  const fallbackBudget = Number.isFinite(overrideBudget) ? overrideBudget : 100;
+  const sourceBudgets = watchlist.source_budgets?.discovery ?? {
+    jumia: fallbackBudget,
+    jiji: fallbackBudget,
+    solarshopnigeria: fallbackBudget,
+  };
+  resetRequestState();
+  configureRequestBudgets(
+    Number.isFinite(overrideBudget)
+      ? { jumia: overrideBudget, jiji: overrideBudget, solarshopnigeria: overrideBudget }
+      : sourceBudgets,
+  );
+  const paths = allDiscoveryPaths(watchlist);
   const known = new Set(previous.map((row) => row.source_url));
 
   const changed: OfferPayload[] = [];
   const skipped: Array<{ id: string; reason: string }> = [];
   let pages = 0;
 
-  for (const path of watchlist.discovery_paths) {
+  for (const path of paths) {
+    if (isBlocked(watchlist, path.site, path.url)) {
+      skipped.push({ id: path.url, reason: 'the path is blocked by the site rules' });
+      continue;
+    }
     const adapter = adapterFor(path.site);
     if (!adapter) {
       skipped.push({ id: path.url, reason: `no adapter for ${path.site}` });
@@ -61,8 +82,12 @@ async function main(): Promise<void> {
         break;
       }
       if (known.has(listing.source_url)) continue;
+      if (isBlocked(watchlist, listing.source_site, listing.source_url)) {
+        skipped.push({ id: listing.source_url, reason: 'the path is blocked by the site rules' });
+        continue;
+      }
 
-      const result = await adapter.crawlProduct(listing.source_url);
+      const result = await adapter.crawlProduct(listing.source_url, { imageUrl: listing.image_url });
       pages += 1;
       if (!result.value) {
         skipped.push({ id: listing.source_url, reason: result.error ?? `status ${result.status}` });
@@ -84,7 +109,16 @@ async function main(): Promise<void> {
     changed,
     pool,
     previous,
+    fx,
   });
+
+  let purged = 0;
+  let purgeError: string | null = null;
+  try {
+    purged = await client.purgeOldOffers();
+  } catch (error) {
+    purgeError = error instanceof Error ? error.message : String(error);
+  }
 
   const report = {
     pages,
@@ -92,14 +126,24 @@ async function main(): Promise<void> {
     skipped,
     candidates: rebuilt.candidates,
     published: rebuilt.published,
+    excluded: rebuilt.excluded,
+    collapsed: rebuilt.excluded.filter((entry) => entry.reason_code === 'duplicate_of_existing_offer').length,
+    cross_posts: rebuilt.cross_posts,
+    fx,
+    requests: requestReport(),
+    purged,
+    purge_error: purgeError,
     publish_errors: rebuilt.publish_errors,
   };
 
   await client.reportRun({
     run_id: runId,
     kind: 'discovery',
-    status: skipped.length > 0 || rebuilt.publish_errors.length > 0 ? 'partial' : 'ok',
-    sources: [...new Set(watchlist.discovery_paths.map((path) => path.site))],
+    status:
+      skipped.length > 0 || rebuilt.publish_errors.length > 0 || purgeError
+        ? 'partial'
+        : 'ok',
+    sources: [...new Set(paths.map((path) => path.site))],
     report,
     started_at: startedAt,
     finished_at: new Date().toISOString(),

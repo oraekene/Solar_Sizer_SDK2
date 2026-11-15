@@ -12,6 +12,11 @@ export type WorkerOfferRow = {
   seller_name: string | null;
   price: number | null;
   currency: string;
+  price_ngn: number | null;
+  price_ngn_rounded: number | null;
+  fx_rate: number | null;
+  fx_rate_date: string | null;
+  fx_source: string | null;
   price_kind: string;
   unit_basis: string | null;
   unit_quantity: number | null;
@@ -21,6 +26,7 @@ export type WorkerOfferRow = {
   stated_specs: Record<string, unknown>;
   trading_signals: Record<string, unknown>;
   raw_payload: Record<string, unknown>;
+  raw_payload_at: string | null;
   image_hash: string | null;
   status: string;
   reason_code: string | null;
@@ -56,6 +62,7 @@ export class WorkerClient {
         'content-type': 'application/json',
         ...(init.headers ?? {}),
       },
+      signal: init.signal ?? AbortSignal.timeout(30_000),
     });
     if (!response.ok) {
       const body = (await response.text()).slice(0, 300);
@@ -69,19 +76,38 @@ export class WorkerClient {
   }
 
   async saveOffers(offers: unknown[]): Promise<void> {
-    if (offers.length === 0) return;
-    await this.request('/api/scraper/offers', {
-      method: 'POST',
-      body: JSON.stringify({ offers }),
-    });
+    for (let start = 0; start < offers.length; start += 12) {
+      await this.request('/api/scraper/offers', {
+        method: 'POST',
+        body: JSON.stringify({ offers: offers.slice(start, start + 12) }),
+      });
+    }
   }
 
   async saveCandidates(candidates: unknown[]): Promise<void> {
-    if (candidates.length === 0) return;
-    await this.request('/api/scraper/candidates', {
+    for (let start = 0; start < candidates.length; start += 40) {
+      await this.request('/api/scraper/candidates', {
+        method: 'POST',
+        body: JSON.stringify({ candidates: candidates.slice(start, start + 40) }),
+      });
+    }
+  }
+
+  async enqueueImages(items: Array<{ offer_id: string; image_url: string; image_hash: string }>): Promise<void> {
+    for (let start = 0; start < items.length; start += 100) {
+      await this.request('/api/scraper/queue', {
+        method: 'POST',
+        body: JSON.stringify({ items: items.slice(start, start + 100) }),
+      });
+    }
+  }
+
+  async purgeOldOffers(): Promise<number> {
+    const response = (await this.request('/api/scraper/offers/purge', {
       method: 'POST',
-      body: JSON.stringify({ candidates }),
-    });
+      body: JSON.stringify({}),
+    })) as { purged?: number };
+    return response.purged ?? 0;
   }
 
   async publishCandidate(candidateId: string): Promise<void> {
@@ -94,6 +120,7 @@ export class WorkerClient {
   async listHardware(): Promise<HardwareRow[]> {
     const response = await fetch(`${this.workerUrl}/api/hardware`, {
       headers: { 'x-admin-key': this.adminKey },
+      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw new Error(`Worker /api/hardware failed with status ${response.status}.`);
     const rows = (await response.json()) as Array<Record<string, unknown>>;
