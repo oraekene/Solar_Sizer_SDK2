@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
   const pageBudget = Number(process.env.SCRAPER_PAGE_BUDGET ?? PAGE_CEILING);
+  const productsPerPath = Number(process.env.SCRAPER_PRODUCTS_PER_PATH ?? 20);
   const delayMax = Number(process.env.SCRAPER_START_DELAY_MS ?? 15 * 60 * 1000);
 
   if (delayMax > 0) await sleep(Math.floor(Math.random() * delayMax));
@@ -76,6 +77,7 @@ async function main(): Promise<void> {
       continue;
     }
 
+    let productsForPath = 0;
     for (const listing of category.value) {
       if (pages >= pageBudget) {
         skipped.push({ id: listing.source_url, reason: 'the page budget was spent' });
@@ -86,9 +88,20 @@ async function main(): Promise<void> {
         skipped.push({ id: listing.source_url, reason: 'the path is blocked by the site rules' });
         continue;
       }
+      // A wide category holds hundreds of listings. The cap gives the next
+      // path a turn inside the source budget, and the next run continues
+      // where this one stopped.
+      if (productsForPath >= productsPerPath) {
+        skipped.push({
+          id: path.url,
+          reason: `the path product cap of ${productsPerPath} was reached`,
+        });
+        break;
+      }
 
       const result = await adapter.crawlProduct(listing.source_url, { imageUrl: listing.image_url });
       pages += 1;
+      productsForPath += 1;
       if (!result.value) {
         skipped.push({ id: listing.source_url, reason: result.error ?? `status ${result.status}` });
         continue;
