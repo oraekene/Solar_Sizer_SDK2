@@ -6,7 +6,7 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 | Item | Where | State on 2026-11-15 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code, deployed by the push workflow as version `bd608d7f`. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #16, the plain text alert path. |
 | D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
@@ -117,7 +117,7 @@ The deploy workflow applies remote D1 migrations before it deploys the Worker, s
 
 ## Step 3: Apply the migrations and deploy the Worker
 
-Done on 2026-11-15. The migrations were applied with the local Wrangler login, and the deploy workflow now applies them and deploys the Worker on every push to main with the stored token. The last run published version `bd608d7f`.
+Done on 2026-11-15. The migrations were applied with the local Wrangler login, and the deploy workflow now applies them and deploys the Worker on every push to main with the stored token. The last deploy published the alert path from PR #16.
 
 ```powershell
 npx wrangler d1 migrations apply solar-sizer-sdk2 --remote
