@@ -1,9 +1,9 @@
 name: Scraper watchdog
 
-# The watchdog checks that the daily sweep wrote a run report. If the last
-# sweep is older than 26 hours, it opens or updates the scraper-alert issue
-# and sends the WhatsApp alert through the Worker. It runs at 06:00 West
-# Africa time, which is 05:00 UTC. See docs/scraper-design.md section 8.
+# The watchdog checks that the daily sweep wrote a full run report. A sweep
+# that was partial leaves a source unfinished, so it raises the alert as well.
+# It runs at 06:00 West Africa time, which is 05:00 UTC. See
+# docs/scraper-design.md section 8.
 
 on:
   schedule:
@@ -30,17 +30,21 @@ jobs:
         run: |
           set -euo pipefail
           RUNS=$(curl -sS -H "x-admin-key: ${ADMIN_PASSWORD}" "${WORKER_URL}/api/scraper/runs?kind=sweep&limit=5")
-          LAST=$(echo "${RUNS}" | jq -r '[.runs[] | select(.status == "ok" or .status == "partial")][0].finished_at // empty')
+          LAST=$(echo "${RUNS}" | jq -r '[.runs[] | select(.status == "ok")][0].finished_at // empty')
+          PARTIAL=$(echo "${RUNS}" | jq -r --arg ok "${LAST}" '[.runs[] | select(.status == "partial" and (.finished_at > $ok))][0].run_id // empty')
           NOW=$(date -u +%s)
           if [ -z "${LAST}" ]; then
             AGE=999999999
           else
             AGE=$(( NOW - $(date -u -d "${LAST}" +%s) ))
           fi
-          echo "last successful sweep: ${LAST:-never}, age ${AGE} seconds"
+          echo "last complete sweep: ${LAST:-never}, age ${AGE} seconds"
           if [ "${AGE}" -gt 93600 ]; then
             echo "stale=true" >> "$GITHUB_OUTPUT"
-            echo "message=No successful sweep since ${LAST:-never}. The Solar Sizer hardware prices are no longer being refreshed." >> "$GITHUB_OUTPUT"
+            echo "message=No complete sweep since ${LAST:-never}. The Solar Sizer hardware prices are no longer being refreshed." >> "$GITHUB_OUTPUT"
+          elif [ -n "${PARTIAL}" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "message=The last sweep ${PARTIAL} was partial, so one source did not finish. Check the run report for the pause reason." >> "$GITHUB_OUTPUT"
           else
             echo "stale=false" >> "$GITHUB_OUTPUT"
           fi

@@ -40,11 +40,11 @@ The run report carries `requests.requests`, `requests.budgets`, `requests.paused
 | Excluded offers | Skipped by the sweep, except `usd_rate_unavailable`, which is retried so a recovered rate can qualify it | `scraper/run-sweep.ts` |
 | Blocked paths | Skipped before any request, and the skip appears in the report | `isBlocked` in `scraper/watchlist.ts` |
 | Known discovery URLs | Skipped by exact `source_url` | `run-discovery.ts` |
-| Discovery path order | Watchlist order first, then Jumia brand paths with priority first, then the confirmed SolarShopNigeria slugs | `allDiscoveryPaths` |
-| Alert threshold | No successful sweep for 26 hours (`93600` seconds) | `scraper-watchdog.yml` |
-| Alert success test | A run with status `ok` or `partial` keeps the heartbeat fresh | `run_report` write in `worker/scraper.ts` |
+| Discovery path order | Category and brand paths alternate, priority brand paths first among the brands, then the confirmed SolarShopNigeria slugs | `allDiscoveryPaths` |
+| Alert threshold | No complete sweep for 26 hours (`93600` seconds), or a partial sweep newer than the last complete one | `scraper-watchdog.yml` |
+| Alert success test | Only a run with status `ok` counts as a complete sweep | `run_report` write in `worker/scraper.ts` |
 
-The watchdog counts a `partial` sweep as success. A sweep that skipped one blocked listing still refreshes the heartbeat.
+A `partial` sweep leaves a source unfinished, so it raises the alert with the run id of the partial run. The run report holds the pause reason.
 
 ## 3. Money, FX and the publish band
 
@@ -127,6 +127,8 @@ Condition mapping is shared by the two marketplace adapters. `foreign` becomes `
 | Queue item validation | Offer id, HTTP or HTTPS image URL, 64 character hex hash | `/api/scraper/queue` |
 | Queue deduplication | One row per image hash | Same route |
 | Queue request size | At most 100 items | Same route |
+| Queue claim | The read and the claim are one statement, so two drainers cannot take the same row | Same route |
+| Queue retry | A failed row is tried again after 15 minutes, up to 3 attempts | `MAX_QUEUE_ATTEMPTS` and `QUEUE_RETRY_WAIT_MINUTES` |
 | Offer save chunk | 12 offers per Worker request | `WorkerClient.saveOffers` |
 | Candidate save chunk | 40 candidates per Worker request | `WorkerClient.saveCandidates` |
 | Worker client timeout | 30 seconds per request | `WorkerClient.request` |
