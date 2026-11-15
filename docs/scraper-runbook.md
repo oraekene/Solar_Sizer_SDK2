@@ -12,11 +12,11 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 | Kapso command line tool | This machine | Installed, not logged in. |
 | Fly.io account and Machine | Fly.io | Not created. |
 | GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
-| Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY` and `KAPSO_PHONE_NUMBER_ID` are set. `KAPSO_ALERT_TO` is missing, and `KAPSO_TEMPLATE_NAME` is optional. |
+| Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO` are set. `KAPSO_TEMPLATE_NAME` is optional. |
 
 ## What blocks the first live run
 
-1. `KAPSO_ALERT_TO` is missing, so the WhatsApp alert cannot send. The owner number and a Sandbox session are the only steps left. See Step 6.
+1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
 3. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. The runner keeps Jumia and SolarShopNigeria.
 
@@ -50,7 +50,7 @@ One request per second still applies, so 8000 requests per source takes about 2 
 | `FREEAPI_CONFIG_JSON` | Host | FreeLLMAPI gateway | Provider keys, routing and the dashboard account. It holds plain secrets. |
 | `KAPSO_API_KEY` | Worker | Alert route | Sends the WhatsApp alert. Set on 2026-11-15. |
 | `KAPSO_PHONE_NUMBER_ID` | Worker | Alert route | The WhatsApp number that sends the alert. Set on 2026-11-15 to the Sandbox number `597907523413541`. |
-| `KAPSO_ALERT_TO` | Worker | Alert route | The owner number in international format, for example `2348012345678`. Still missing. |
+| `KAPSO_ALERT_TO` | Worker | Alert route | The owner number in international format, for example `2348012345678`. Set on 2026-11-16. |
 | `KAPSO_TEMPLATE_NAME` | Worker | Alert route | An approved Meta template with one named body parameter, `message`. Optional. Without it the Worker sends plain text, which the Sandbox number supports. |
 
 `FX_RATE_URL` is no longer read. The rate order is fixed in `scraper/fx.ts`: NairaDaily first, then open.er-api.com.
@@ -299,7 +299,7 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
 
 ## Step 6: Connect WhatsApp through Kapso
 
-The project `opportunities whatsapp` has one number. It is the Kapso Sandbox number `597907523413541`, and the API key and that number id are already stored as Worker secrets. Kapso does not issue `KAPSO_ALERT_TO`. That value is the owner number in international format, with the country code and no plus sign or spaces, for example `2348012345678`.
+The project `opportunities whatsapp` has one number. It is the Kapso Sandbox number `597907523413541`, and the API key, that number id and the owner number are stored as Worker secrets. Kapso does not issue `KAPSO_ALERT_TO`. That value is the owner number in international format, with the country code and no plus sign or spaces, for example `2348012345678`.
 
 The Sandbox number cannot send templates. Kapso refuses every template endpoint on it with `Sandbox WhatsApp configurations only support messaging endpoints`. It can send plain text, but only to a number that has an active Sandbox session. Use one of the two paths below.
 
@@ -314,6 +314,8 @@ The Sandbox number cannot send templates. Kapso refuses every template endpoint 
    ```
 
 4. Send the test in step 5 below. The Worker sends plain text when no template name is set.
+
+5. Keep the customer service window open. WhatsApp refuses a text message that the owner did not ask for when the owner has not replied to the Sandbox number in the last 24 hours. The refusal is error `131047`, called `Re-engagement message`. A reply to the Sandbox number opens the window again for 24 hours. A production number with an approved template does not have this limit, because Path B sends outside the window.
 
 ### Path B: Production number with a template
 
@@ -350,7 +352,7 @@ curl.exe -sS -X POST `
   "https://sdk2.solarsizer.workers.dev/api/scraper/alert"
 ```
 
-If the route answers `503`, a Kapso value is missing. If it answers `502`, Kapso refused the message; the response detail carries the first part of the reason. The Sandbox refuses a send with `Active sandbox session required to send messages` when the `to` number has no active session.
+If the route answers `503`, a Kapso value is missing. If it answers `502`, Kapso refused the message; the response detail carries the first part of the reason. The Sandbox refuses a send with `Active sandbox session required to send messages` when the `to` number has no active session, and with `Re-engagement message` when the 24 hour window is closed. The route reads the delivery status after the send, so it answers `502` when WhatsApp refuses a message that Kapso accepted.
 
 ## Step 7: Verify the review path
 
@@ -396,4 +398,4 @@ A candidate with no fresh qualified offer is refused with `stale-candidate`. Run
 | Sweep publishes nothing | Check that the offers are qualified, in stock, on a piece basis, new and inside the 15 percent band. A manual row always waits for review. |
 | Discovery finds no new offers | Known URLs are skipped by exact `source_url`. Delete a stale offer or wait for the source to publish a new listing. |
 | The queue never drains | Check `fly logs`. The drainer needs `WORKER_URL`, `ADMIN_PASSWORD` and a unified key in the gateway database. |
-| The WhatsApp alert does not arrive | Check `KAPSO_ALERT_TO` and the Sandbox session for that number. A `502` carries Kapso's reason. |
+| The WhatsApp alert does not arrive | Check `KAPSO_ALERT_TO` and the Sandbox session for that number. A `502` carries Kapso's reason. `Re-engagement message` means the 24 hour window is closed. |
