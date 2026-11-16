@@ -8,7 +8,7 @@ import { adapterFor } from './adapters/index.ts';
 import { loadFxRate } from './fx.ts';
 import { configureRequestBudgets, requestReport, resetRequestState } from './http.ts';
 import { NOT_FOUND_STRIKES } from './rules.ts';
-import { offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
+import { offerKey, rebuildAndPublish, rowToPayload, selectedSources } from './run-common.ts';
 import type { OfferPayload } from './run-common.ts';
 import { isBlocked, loadWatchlist } from './watchlist.ts';
 import { WorkerClient } from './worker-client.ts';
@@ -58,6 +58,7 @@ async function main(): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
+  const sources = selectedSources(process.env.SCRAPER_SOURCES);
   const maxChecks = Number(process.env.SCRAPER_MAX_CHECKS ?? CHECK_CEILING);
   const delayMax = Number(process.env.SCRAPER_START_DELAY_MS ?? 15 * 60 * 1000);
 
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
 
   const eligible = previous.filter(
     (row) =>
+      (!sources || sources.has(row.source_site)) &&
       (row.status !== 'excluded' || row.reason_code === 'usd_rate_unavailable') &&
       isDue(row.last_checked, now),
   );

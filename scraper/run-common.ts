@@ -53,6 +53,18 @@ export function envNumber(name: string): number {
   return Number(raw);
 }
 
+// A host that cannot reach every site can crawl one source. The setting
+// names the sites, separated by commas, for example `jiji`. An empty value
+// means every source.
+export function selectedSources(value: string | undefined): Set<string> | null {
+  const wanted = (value ?? '')
+    .split(',')
+    .map((name) => name.trim().toLowerCase())
+    .filter(Boolean);
+  if (wanted.length === 0) return null;
+  return new Set(wanted);
+}
+
 export function toMergeOffer(offer: OfferPayload): MergeOffer {
   return {
     id: offerKey(offer),
