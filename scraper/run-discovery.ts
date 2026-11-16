@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { adapterFor } from './adapters/index.ts';
 import { loadFxRate } from './fx.ts';
 import { configureRequestBudgets, requestReport, resetRequestState } from './http.ts';
-import { envNumber, offerKey, rebuildAndPublish, rowToPayload } from './run-common.ts';
+import { envNumber, offerKey, rebuildAndPublish, rowToPayload, selectedSources } from './run-common.ts';
 import type { OfferPayload } from './run-common.ts';
 import { allDiscoveryPaths, isBlocked, loadWatchlist } from './watchlist.ts';
 import { WorkerClient } from './worker-client.ts';
@@ -25,6 +25,7 @@ async function main(): Promise<void> {
 
   const startedAt = new Date().toISOString();
   const runId = randomUUID();
+  const sources = selectedSources(process.env.SCRAPER_SOURCES);
   const pageBudget = envNumber('SCRAPER_PAGE_BUDGET');
   const pagesAllowed = Number.isFinite(pageBudget) ? pageBudget : PAGE_CEILING;
   const productsPerPathSetting = envNumber('SCRAPER_PRODUCTS_PER_PATH');
@@ -51,7 +52,9 @@ async function main(): Promise<void> {
       ? { jumia: overrideBudget, jiji: overrideBudget, solarshopnigeria: overrideBudget }
       : sourceBudgets,
   );
-  const paths = allDiscoveryPaths(watchlist);
+  const paths = allDiscoveryPaths(watchlist).filter(
+    (path) => !sources || sources.has(path.site),
+  );
   const known = new Set(previous.map((row) => row.source_url));
 
   const changed: OfferPayload[] = [];

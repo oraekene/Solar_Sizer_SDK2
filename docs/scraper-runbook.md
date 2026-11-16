@@ -4,13 +4,15 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 ## What exists now
 
-| Item | Where | State on 2026-11-15 |
+| Item | Where | State on 2026-11-16 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #16, the plain text alert path. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #19, the WhatsApp delivery status check. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 212 offers, 79 candidates and 191 queued images. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
-| Fly.io account and Machine | Fly.io | Not created. |
+| Fly.io command line tool | This machine | Installed at `C:\Users\rotim\.fly\bin\flyctl.exe`. The account is not created yet. |
+| `fly.toml` | Repository root | Written and committed. It holds the app name, the region, the volume and the process. |
+| Host secrets file | `C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env` | Prepared on 2026-11-16 with `ENCRYPTION_KEY`, `FREEAPI_CONFIG_JSON`, `ADMIN_PASSWORD` and `WORKER_URL`. It stays outside the repository. |
 | GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
 | Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO` are set. `KAPSO_TEMPLATE_NAME` is optional. |
 
@@ -18,11 +20,11 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
-3. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. The runner keeps Jumia and SolarShopNigeria.
+3. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
 
 ## The first live crawl
 
-The live state on 2026-11-15: three discovery runs and one sweep passed, the database holds 110 offers and 44 candidates, nothing was published and the 40 manual rows are untouched. Jiji holds no offer because the runner is refused. The weekly crawl still uses the normal budgets.
+The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers. The database holds 212 offers, 79 candidates and 191 queued images. Nothing was published and the 40 manual rows are untouched.
 
 ## A manual backfill run
 
@@ -186,6 +188,47 @@ If the deploy workflow runs first, skip this step. The workflow does the same wo
 
 The first sweep checks nothing if the database has no offers yet. Run discovery first when the offers table is empty.
 
+## Step 4b: Crawl Jiji from this machine
+
+Jiji answers the GitHub runner with a Cloudflare challenge on every path, including `robots.txt`, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji paths run here. The runner keeps Jumia and SolarShopNigeria.
+
+1. Set the source filter. `SCRAPER_SOURCES` names the sites to crawl, separated by commas, for example `jiji`. An empty value means every site.
+
+   ```powershell
+   $env:SCRAPER_SOURCES = "jiji"
+   ```
+
+2. Run one Jiji crawl by hand.
+
+   ```powershell
+   $env:WORKER_URL = "https://sdk2.solarsizer.workers.dev"
+   $env:ADMIN_PASSWORD = "<the value from Step 1>"
+   $env:SCRAPER_SOURCES = "jiji"
+   $env:SCRAPER_START_DELAY_MS = "0"
+   $env:SCRAPER_SOURCE_REQUEST_BUDGET = "600"
+   $env:SCRAPER_PAGE_BUDGET = "600"
+   $env:SCRAPER_PRODUCTS_PER_PATH = "100"
+   node --experimental-strip-types scraper/run-discovery.ts
+   ```
+
+3. The daily task runs the same crawl from this machine. The script and its secret file stay outside the repository.
+
+   | File | Purpose |
+   | --- | --- |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\run-jiji.ps1` | Runs discovery, then the sweep, then writes the log. It sends the Worker alert when a run fails. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\secrets.env` | Holds `WORKER_URL` and `ADMIN_PASSWORD`. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\jiji-scrape.log` | The run log. |
+
+4. The task runs at 23:30 local time, which is 22:30 UTC, so it finishes before the 01:00 UTC GitHub sweep. It runs as the signed in user, so it needs no administrator rights. It runs only while that user is logged on.
+
+   ```powershell
+   Get-ScheduledTask -TaskName "Solar Sizer Jiji Scrape"
+   Start-ScheduledTask -TaskName "Solar Sizer Jiji Scrape"
+   Get-Content "C:\Users\rotim\.local\solar-sizer-scraper\jiji-scrape.log" -Tail 40
+   ```
+
+   The Jiji category feed serves 20 adverts per page, and the adapter reads the first page only. The daily task therefore sees the newest 20 adverts on each Jiji path. A full walk of every category needs feed paging, which the adapter does not do yet.
+
 ## Step 5: Create the always-on host
 
 The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work from the Worker over HTTPS, so it needs no tunnel and no public service.
@@ -211,7 +254,7 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
    fly volumes create freellmapi_data --size 1 --region jnb
    ```
 
-5. Write `fly.toml` at the repository root with this content.
+5. Check `fly.toml` at the repository root. It is committed with this content, so `fly launch` writes the same file.
 
    ```toml
    app = "solar-sizer-gateway"
@@ -241,25 +284,13 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
 
    Do not add an `http_service` section. The gateway binds to the loopback interface.
 
-6. Generate the encryption key.
+6. The secrets file is already prepared on this machine at `C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env`. It holds `ENCRYPTION_KEY`, `FREEAPI_CONFIG_JSON`, `ADMIN_PASSWORD` and `WORKER_URL`. It stays outside the repository.
 
    ```powershell
-   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   fly secrets import -a solar-sizer-gateway -f "C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env"
    ```
 
-7. Write the gateway configuration to a file named `freellmapi.config.json`. Keep it out of the repository.
-
-   ```json
-   {
-     "admin": { "email": "you@example.com", "password": "a password of at least 8 characters" },
-     "keys": [ { "platform": "groq", "key": "gsk_...", "label": "main" } ],
-     "routing": { "strategy": "balanced" }
-   }
-   ```
-
-   Add one entry in `keys` for every provider you use. Write the file as one line of JSON.
-
-8. Store the host secrets. `WORKER_URL` is `https://sdk2.solarsizer.workers.dev`, and `ADMIN_PASSWORD` is the value from Step 1.
+   To build the same file by hand, generate the encryption key with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`, write the gateway configuration to `freellmapi.config.json` as one line of JSON with one `keys` entry for every provider, and import it.
 
    ```powershell
    @"
@@ -270,7 +301,7 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
    "@ | fly secrets import -a solar-sizer-gateway
    ```
 
-9. Deploy and check the Machine.
+7. Deploy and check the Machine.
 
    ```powershell
    fly deploy
@@ -281,13 +312,13 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
 
    The Machine must show as `running`, and the logs must show the gateway and the drainer starting.
 
-10. Remove the local configuration file.
+8. Remove the local configuration file.
 
     ```powershell
     Remove-Item freellmapi.config.json
     ```
 
-11. Check that the gateway holds a unified key.
+9. Check that the gateway holds a unified key.
 
     ```powershell
     fly ssh console -a solar-sizer-gateway -C "node /app/print-unified-key.mjs"
@@ -295,7 +326,7 @@ The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work f
 
     The command prints the key. The drainer reads the same value at startup, so this is a check rather than a setup step.
 
-12. Confirm the drainer loop. The Worker queue is drained every 30 seconds. A queued image gets a result, or an error that names the gateway call. If the gateway rejects the unified key, the drainer refreshes it once.
+10. Confirm the drainer loop. The Worker queue is drained every 30 seconds. A queued image gets a result, or an error that names the gateway call. If the gateway rejects the unified key, the drainer refreshes it once.
 
 ## Step 6: Connect WhatsApp through Kapso
 
