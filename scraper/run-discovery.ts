@@ -71,49 +71,59 @@ async function main(): Promise<void> {
       skipped.push({ id: path.url, reason: `no adapter for ${path.site}` });
       continue;
     }
-    if (pages >= pagesAllowed) {
-      skipped.push({ id: path.url, reason: 'the page budget was spent' });
-      continue;
-    }
-
-    const category = await adapter.crawlCategory(path.url);
-    pages += 1;
-    if (!category.value) {
-      skipped.push({ id: path.url, reason: category.error ?? `status ${category.status}` });
-      continue;
-    }
 
     let productsForPath = 0;
-    for (const listing of category.value) {
+    // A feed with more pages is walked until the path cap, the page budget
+    // or the end of the category stops it. A site with one category page is
+    // read once.
+    for (let page = 1; ; page += 1) {
       if (pages >= pagesAllowed) {
-        skipped.push({ id: listing.source_url, reason: 'the page budget was spent' });
+        skipped.push({ id: path.url, reason: 'the page budget was spent' });
         break;
       }
-      if (known.has(listing.source_url)) continue;
-      if (isBlocked(watchlist, listing.source_site, listing.source_url)) {
-        skipped.push({ id: listing.source_url, reason: 'the path is blocked by the site rules' });
-        continue;
-      }
-      // A wide category holds hundreds of listings. The cap gives the next
-      // path a turn inside the source budget, and the next run continues
-      // where this one stopped.
-      if (productsForPath >= productsPerPath) {
-        skipped.push({
-          id: path.url,
-          reason: `the path product cap of ${productsPerPath} was reached`,
-        });
+      const category = await adapter.crawlCategory(path.url, { page });
+      pages += 1;
+      if (!category.value) {
+        skipped.push({ id: path.url, reason: category.error ?? `status ${category.status}` });
         break;
+      }
+      // An empty feed page is the end of the category.
+      if (category.value.length === 0) break;
+
+      for (const listing of category.value) {
+        if (pages >= pagesAllowed) {
+          skipped.push({ id: listing.source_url, reason: 'the page budget was spent' });
+          break;
+        }
+        if (known.has(listing.source_url)) continue;
+        if (isBlocked(watchlist, listing.source_site, listing.source_url)) {
+          skipped.push({ id: listing.source_url, reason: 'the path is blocked by the site rules' });
+          continue;
+        }
+        // A wide category holds hundreds of listings. The cap gives the next
+        // path a turn inside the source budget, and the next run continues
+        // where this one stopped.
+        if (productsForPath >= productsPerPath) {
+          skipped.push({
+            id: path.url,
+            reason: `the path product cap of ${productsPerPath} was reached`,
+          });
+          break;
+        }
+
+        const result = await adapter.crawlProduct(listing.source_url, { imageUrl: listing.image_url });
+        pages += 1;
+        productsForPath += 1;
+        if (!result.value) {
+          skipped.push({ id: listing.source_url, reason: result.error ?? `status ${result.status}` });
+          continue;
+        }
+        known.add(listing.source_url);
+        changed.push(result.value);
       }
 
-      const result = await adapter.crawlProduct(listing.source_url, { imageUrl: listing.image_url });
-      pages += 1;
-      productsForPath += 1;
-      if (!result.value) {
-        skipped.push({ id: listing.source_url, reason: result.error ?? `status ${result.status}` });
-        continue;
-      }
-      known.add(listing.source_url);
-      changed.push(result.value);
+      if (productsForPath >= productsPerPath) break;
+      if (!adapter.paged) break;
     }
   }
 
