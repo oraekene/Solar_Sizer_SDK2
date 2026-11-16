@@ -217,6 +217,7 @@ Jiji answers the GitHub runner with a Cloudflare challenge on every path, includ
    | --- | --- |
    | `C:\Users\rotim\.local\solar-sizer-scraper\run-jiji.ps1` | Runs discovery, then the sweep, then writes the log. It sends the Worker alert when a run fails. |
    | `C:\Users\rotim\.local\solar-sizer-scraper\secrets.env` | Holds `WORKER_URL` and `ADMIN_PASSWORD`. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\worktree` | A Git worktree that holds the scraper code. The task moves it to the latest `main` before each run, so the job never runs a half finished branch from the development checkout. |
    | `C:\Users\rotim\.local\solar-sizer-scraper\jiji-scrape.log` | The run log. |
 
 4. The task runs at 23:30 local time, which is 22:30 UTC, so it finishes before the 01:00 UTC GitHub sweep. It runs as the signed in user, so it needs no administrator rights. It runs only while that user is logged on.
