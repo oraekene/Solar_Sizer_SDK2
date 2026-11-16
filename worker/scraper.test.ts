@@ -140,7 +140,7 @@ test('the WhatsApp alert refuses to run without its settings', async () => {
 
 test('the WhatsApp alert sends text without a template and a template with one', async () => {
   const calls: { url: string; body: any }[] = [];
-  let deliveryStatus = 'sent';
+  let deliveryStatus = 'delivered';
   const original = globalThis.fetch;
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     if (init?.method === 'POST') {
@@ -186,6 +186,8 @@ test('the WhatsApp alert sends text without a template and a template with one',
     assert.equal(calls[0].body.type, 'text');
     assert.equal(calls[0].body.text.body, 'the sweep did not run');
     assert.equal(calls[0].body.to, '2348000000000');
+    const textBody = (await textResponse?.json()) as { delivery: string };
+    assert.equal(textBody.delivery, 'delivered');
 
     const templateResponse = await alert(
       'the sweep did not run',

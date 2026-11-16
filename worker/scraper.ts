@@ -81,35 +81,50 @@ function text(value: unknown, fallback = ''): string {
 }
 
 // Kapso accepts a message before WhatsApp delivers it. A closed customer
-// service window makes WhatsApp reject the message right away, so the alert
-// route reads the delivery status before it reports success. A status that
-// is still pending is reported as sent, because only a refusal is certain.
-async function deliveryFailure(
+// service window makes WhatsApp reject the message, so the alert route reads
+// the delivery status before it reports success. The status settles a moment
+// after the send, so the route waits and reads it again. A status that never
+// settles is reported as pending, because only a refusal is certain.
+const DELIVERY_ATTEMPTS = 3;
+const DELIVERY_WAIT_MS = 1_200;
+
+async function deliveryLookup(
   sendBody: string,
   phoneNumberId: string,
   apiKey: string,
-): Promise<string | null> {
+): Promise<{ state: string; failure: string | null }> {
   const messageId = (() => {
     const parsed = parseJson(sendBody) as { messages?: { id?: string }[] };
     return parsed.messages?.[0]?.id ?? null;
   })();
-  if (!messageId) return null;
+  if (!messageId) return { state: 'no_message_id', failure: null };
 
-  try {
-    const response = await fetch(
-      `https://api.kapso.ai/meta/whatsapp/v24.0/${phoneNumberId}/messages/${encodeURIComponent(messageId)}`,
-      { headers: { 'X-API-Key': apiKey }, signal: AbortSignal.timeout(15_000) },
-    );
-    if (!response.ok) return null;
-    const data = (await response.json()) as {
-      kapso?: { status?: string; statuses?: { errors?: { message?: string }[] }[] };
-    };
-    if (data.kapso?.status !== 'failed') return null;
-    const reasons = (data.kapso.statuses ?? []).flatMap((entry) => entry.errors ?? []);
-    return reasons.map((reason) => reason.message).filter(Boolean).join('; ') || 'failed';
-  } catch {
-    return null;
+  for (let attempt = 0; attempt < DELIVERY_ATTEMPTS; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, DELIVERY_WAIT_MS));
+    try {
+      const response = await fetch(
+        `https://api.kapso.ai/meta/whatsapp/v24.0/${phoneNumberId}/messages/${encodeURIComponent(messageId)}`,
+        { headers: { 'X-API-Key': apiKey }, signal: AbortSignal.timeout(15_000) },
+      );
+      if (!response.ok) {
+        const body = (await response.text()).slice(0, 120);
+        return { state: `http_${response.status} ${body}`.trim(), failure: null };
+      }
+      const data = (await response.json()) as {
+        kapso?: { status?: string; statuses?: { errors?: { message?: string }[] }[] };
+      };
+      const state = data.kapso?.status ?? 'unknown';
+      if (state === 'failed') {
+        const reasons = (data.kapso?.statuses ?? []).flatMap((entry) => entry.errors ?? []);
+        const failure = reasons.map((reason) => reason.message).filter(Boolean).join('; ');
+        return { state, failure: failure || 'failed' };
+      }
+      if (state === 'delivered' || state === 'read') return { state, failure: null };
+    } catch {
+      return { state: 'lookup_error', failure: null };
+    }
   }
+  return { state: 'pending', failure: null };
 }
 
 function number(value: unknown): number | null {
@@ -374,12 +389,15 @@ export async function handleScraperRoute(
       return json({ error: 'Kapso refused the message.', detail: result.slice(0, 300) }, 502);
     }
 
-    const failure = await deliveryFailure(result, phoneNumberId, apiKey);
-    if (failure) {
-      return json({ error: 'WhatsApp rejected the alert.', detail: failure.slice(0, 300) }, 502);
+    const failure = await deliveryLookup(result, phoneNumberId, apiKey);
+    if (failure.failure) {
+      return json(
+        { error: 'WhatsApp rejected the alert.', detail: failure.failure.slice(0, 300) },
+        502,
+      );
     }
 
-    return json({ success: true, detail: result.slice(0, 300) });
+    return json({ success: true, delivery: failure.state, detail: result.slice(0, 300) });
   }
 
   if (pathname === '/api/scraper/offers/purge' && method === 'POST') {
