@@ -34,4 +34,7 @@ jobs:
         env:
           WORKER_URL: ${{ secrets.WORKER_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # Jiji refuses the runner, so the owner machine sweeps Jiji. See
+          # docs/scraper-runbook.md Step 4b.
+          SCRAPER_SOURCES: jumia,solarshopnigeria
         run: npm run scraper:sweep

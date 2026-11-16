@@ -166,7 +166,12 @@ async function main(): Promise<void> {
     run_id: runId,
     kind: 'sweep',
     status: skipped.length > 0 || rebuilt.publish_errors.length > 0 ? 'partial' : 'ok',
-    sources: [...new Set(due.map((row) => row.source_site))],
+    // The selected sources name the run, even when no offer was due. The
+    // watchdog reads this field to tell the runner sweeps from the Jiji
+    // sweep on the owner machine.
+    sources: sources
+      ? [...sources].sort()
+      : [...new Set(due.map((row) => row.source_site))].sort(),
     report,
     started_at: startedAt,
     finished_at: new Date().toISOString(),

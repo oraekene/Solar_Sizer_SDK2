@@ -34,8 +34,10 @@ jobs:
           # instead of stopping on a broken answer.
           HTTP=$(curl -sS -o runs.json -w '%{http_code}' -H "x-admin-key: ${ADMIN_PASSWORD}" "${WORKER_URL}/api/scraper/runs?kind=sweep&limit=5" || true)
           RUNS=$(cat runs.json 2>/dev/null || echo '{}')
-          LAST=$(echo "${RUNS}" | jq -r '[(.runs // [])[] | select(.status == "ok")][0].finished_at // empty' 2>/dev/null || echo '')
-          PARTIAL=$(echo "${RUNS}" | jq -r --arg ok "${LAST}" '[(.runs // [])[] | select(.status == "partial" and (.finished_at > $ok))][0].run_id // empty' 2>/dev/null || echo '')
+          # Only the runner sweeps count here. The Jiji sweep runs on the
+          # owner machine and sends its own alert when it fails.
+          LAST=$(echo "${RUNS}" | jq -r '[(.runs // [])[] | select(.status == "ok") | select(any(.sources[]?; . == "jumia" or . == "solarshopnigeria"))][0].finished_at // empty' 2>/dev/null || echo '')
+          PARTIAL=$(echo "${RUNS}" | jq -r --arg ok "${LAST}" '[(.runs // [])[] | select(.status == "partial" and (.finished_at > $ok)) | select(any(.sources[]?; . == "jumia" or . == "solarshopnigeria"))][0].run_id // empty' 2>/dev/null || echo '')
           NOW=$(date -u +%s)
           if [ -z "${LAST}" ]; then
             AGE=999999999
