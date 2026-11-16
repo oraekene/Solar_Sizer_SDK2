@@ -50,6 +50,9 @@ jobs:
         env:
           WORKER_URL: ${{ secrets.WORKER_URL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # Jiji refuses the runner, so the owner machine crawls Jiji. See
+          # docs/scraper-runbook.md Step 4b.
+          SCRAPER_SOURCES: jumia,solarshopnigeria
           SCRAPER_SOURCE_REQUEST_BUDGET: ${{ inputs.source_request_budget }}
           SCRAPER_PAGE_BUDGET: ${{ inputs.page_budget }}
           SCRAPER_PRODUCTS_PER_PATH: ${{ inputs.products_per_path }}

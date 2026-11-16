@@ -12,6 +12,7 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 | Kapso command line tool | This machine | Installed, not logged in. |
 | Fly.io command line tool | This machine | Installed at `C:\Users\rotim\.fly\bin\flyctl.exe`. The account is not created yet. |
 | `fly.toml` | Repository root | Written and committed. It holds the app name, the region, the volume and the process. |
+| `Solar Sizer Jiji Scrape` task | This machine | Runs every day at 23:30 local time. It crawls Jiji and writes to the Worker. |
 | Host secrets file | `C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env` | Prepared on 2026-11-16 with `ENCRYPTION_KEY`, `FREEAPI_CONFIG_JSON`, `ADMIN_PASSWORD` and `WORKER_URL`. It stays outside the repository. |
 | GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
 | Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO` are set. `KAPSO_TEMPLATE_NAME` is optional. |
@@ -191,6 +192,8 @@ The first sweep checks nothing if the database has no offers yet. Run discovery 
 ## Step 4b: Crawl Jiji from this machine
 
 Jiji answers the GitHub runner with a Cloudflare challenge on every path, including `robots.txt`, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji paths run here. The runner keeps Jumia and SolarShopNigeria.
+
+The split holds in three places. The runner workflows set `SCRAPER_SOURCES` to `jumia,solarshopnigeria`. The Windows task sets it to `jiji`. The watchdog reads the `sources` field of a run report and watches only the runner sweeps, so the Jiji job on this machine can neither hide a failed runner sweep nor raise a false alert.
 
 1. Set the source filter. `SCRAPER_SOURCES` names the sites to crawl, separated by commas, for example `jiji`. An empty value means every site.
 
