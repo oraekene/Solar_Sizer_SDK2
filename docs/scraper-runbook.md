@@ -227,7 +227,7 @@ Jiji answers the GitHub runner with a Cloudflare challenge on every path, includ
    Get-Content "C:\Users\rotim\.local\solar-sizer-scraper\jiji-scrape.log" -Tail 40
    ```
 
-   The Jiji category feed serves 20 adverts per page, and the adapter reads the first page only. The daily task therefore sees the newest 20 adverts on each Jiji path. A full walk of every category needs feed paging, which the adapter does not do yet.
+   The Jiji category feed serves 20 adverts per page, and the runner walks the pages until the path product cap, the page budget or the end of the category stops it. A daily run with a 600 request budget reads about 30 feed pages per path, so it sees roughly 600 adverts on each Jiji path.
 
 ## Step 5: Create the always-on host
 

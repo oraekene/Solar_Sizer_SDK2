@@ -57,7 +57,10 @@ export type PageResult<T> = {
 export type SourceAdapter = {
   site: string;
   crawlProduct(url: string, options?: { imageUrl?: string | null }): Promise<PageResult<ScraperOffer>>;
-  crawlCategory(url: string): Promise<PageResult<DiscoveredListing[]>>;
+  crawlCategory(url: string, options?: { page?: number }): Promise<PageResult<DiscoveredListing[]>>;
+  // A feed with more than one page. The runner walks the pages until the
+  // path cap or the page budget stops it.
+  paged?: boolean;
 };
 
 export const CRAWLER_UA = 'SolarSizerBot/0.1 (+https://solarsizer.com/bot; contact@solarsizer.com)';

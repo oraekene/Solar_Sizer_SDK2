@@ -263,8 +263,11 @@ export function buildOffer(
   };
 }
 
-export async function crawlCategory(url: string): Promise<PageResult<DiscoveredListing[]>> {
-  const response = await fetchText(listingFeedUrl(url));
+export async function crawlCategory(
+  url: string,
+  options: { page?: number } = {},
+): Promise<PageResult<DiscoveredListing[]>> {
+  const response = await fetchText(listingFeedUrl(url, options.page ?? 1));
   if (response.status !== 200) {
     return { value: null, status: response.status, error: response.error ?? `status ${response.status}` };
   }
@@ -304,4 +307,5 @@ export const jiji: SourceAdapter = {
   site: SOURCE,
   crawlProduct,
   crawlCategory,
+  paged: true,
 };
