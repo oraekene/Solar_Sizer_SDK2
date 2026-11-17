@@ -23,8 +23,9 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. See Step 5.
-3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Every write from this scraper fails until the `modelmap` sync writes less. See the daily row budget below.
+3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. See the daily row budget below.
 4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
+5. The full list of open and partly built items is in `docs/scraper-open-items.md`.
 
 ## The first live crawl
 
@@ -89,19 +90,66 @@ The other databases were measured on 2026-11-17 with `npx wrangler d1 insights <
 | `x-automation` | 0 | Nothing. |
 | `solar-sizer-sdk2` | 0 | Every write failed because the account had already used its daily rows. |
 
-So `modelmap` uses more than the whole daily budget by itself. No batch size works until its writes come down. The `modelmap` source is not on this machine, so the owner must change it in the project that runs it.
+So `modelmap` uses more than the whole daily budget by itself. No batch size works until its writes come down.
 
-Three fixes work, in the order the owner should try them.
+The first fix is already done. The `modelmap` Worker cron changed from every four hours to once a day, so its daily rows fell from about 130,000 to about 43,000 and the scraper can write again after 00:00 UTC.
 
-1. Make the `modelmap` sync write only the rows that changed. A row that is inserted with the same values still counts as a write. The sync can read the current value first and skip the write when it matches.
-2. Run the `modelmap` sync once a day instead of six times. Its four hour runs take about three minutes each and re-insert the same catalog.
-3. Move the `modelmap` database to another Cloudflare account. Each account has its own daily rows.
+```powershell
+$token = (Select-String -Path "$env:USERPROFILE\.wrangler\config\default.toml" -Pattern 'oauth_token = "(.+)"').Matches[0].Groups[1].Value
+$account = 'baadb8542499ad04ed9e0432215f3fb6'
+$body = '[{"cron": "0 3 * * *"}]'
+Invoke-RestMethod -Method Put -Uri "https://api.cloudflare.com/client/v4/accounts/$account/workers/scripts/modelmap/schedules" -Headers @{ Authorization = "Bearer $token"; 'content-type' = 'application/json' } -Body $body
+```
+
+The body must be a bare JSON array. Use `[{"cron": "0 */4 * * *"}]` to put the old schedule back and `[]` to turn the sync off.
+
+Two fixes remain for the owner.
+
+1. Make the `modelmap` sync write only the rows that changed. A row that is inserted with the same values still counts as a write. The sync can read the current value first and skip the write when it matches. This needs the `modelmap` source, which is not on this machine.
+2. Move the `modelmap` database to another Cloudflare account. Each account has its own daily rows, so the two projects never compete. The steps for that move are below.
 
 Then check the result with the same command. The other three databases must stay below 30,000 rows a day, or the batch size must shrink.
 
 ```powershell
 npx wrangler d1 insights modelmap --time-period 18h
 ```
+
+### Move this project to a second Cloudflare account
+
+The owner can create a second account at `dash.cloudflare.com` and put this project there. Every account has its own 100,000 rows a day, so the scraper never competes with `modelmap` again. The steps below move the Solar Sizer database and Worker to the new account.
+
+1. Create the account. Open `dash.cloudflare.com`, sign up with a different email address, and confirm the address.
+
+2. Create an API token in the new account. Open My Profile, then API Tokens, then Create Token, then Create Custom Token. Give it the account permissions `Workers Scripts Edit`, `D1 Edit` and `Account Settings Read`. Copy the token it shows.
+
+3. Copy the database. Run the export from the old account and the import into the new one.
+
+   ```powershell
+   $env:CLOUDFLARE_ACCOUNT_ID = 'baadb8542499ad04ed9e0432215f3fb6'
+   npx wrangler d1 export solar-sizer-sdk2 --remote --output solar-sizer-sdk2.sql
+   $env:CLOUDFLARE_ACCOUNT_ID = '<the new account id>'
+   npx wrangler d1 create solar-sizer-sdk2
+   npx wrangler d1 execute solar-sizer-sdk2 --remote --file solar-sizer-sdk2.sql
+   ```
+
+4. Put the new database id in `wrangler.jsonc` in place of `5abe0992-246a-43a9-aaf1-06c89c3d5872`.
+
+5. Store the new values in GitHub Actions.
+
+   ```powershell
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo oraekene/Solar_Sizer_SDK2
+   gh secret set CLOUDFLARE_API_TOKEN --repo oraekene/Solar_Sizer_SDK2
+   ```
+
+6. Apply the migrations on the new database and push a commit, which deploys the Worker to the new account.
+
+   ```powershell
+   npx wrangler d1 migrations apply solar-sizer-sdk2 --remote
+   ```
+
+7. Update `WORKER_URL` in GitHub Actions and in `C:\Users\rotim\.local\solar-sizer-scraper\secrets.env` to the new Worker address, and update the `Solar Sizer Jiji Scrape` and `Solar Sizer Enrichment Drainer` tasks if the new address differs.
+
+8. Leave the old database alone for a week, then delete it from the old account.
 
 ## Secret inventory
 
