@@ -38,14 +38,14 @@ test('the feed gives the listings of one category page', () => {
   assert.equal(first.image_url, 'https://pictures-nigeria.jijistatic.net/164064850_MzAwLTMwMC0zM2MwOGQ1YmYx.webp');
 });
 
-test('the feed url carries the page number', () => {
+test('the feed url carries the page number and the newest sort', () => {
   assert.equal(
     listingFeedUrl('https://jiji.ng/272-solar-batteries', 3),
-    'https://jiji.ng/api_web/v1/listing?slug=272-solar-batteries&init_page=true&page=3&webp=false',
+    'https://jiji.ng/api_web/v1/listing?slug=272-solar-batteries&init_page=true&page=3&sort=new&webp=false',
   );
   assert.equal(
     listingFeedUrl('https://jiji.ng/272-solar-batteries'),
-    'https://jiji.ng/api_web/v1/listing?slug=272-solar-batteries&init_page=true&page=1&webp=false',
+    'https://jiji.ng/api_web/v1/listing?slug=272-solar-batteries&init_page=true&page=1&sort=new&webp=false',
   );
 });
 
