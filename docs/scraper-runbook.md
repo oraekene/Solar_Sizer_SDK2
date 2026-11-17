@@ -23,12 +23,12 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. See Step 5.
-3. The free D1 plan allows 100,000 rows written a day for the whole account, and `hermes`, `x-automation` and `modelmap` share that cap. A full backfill needs the batches in the plan below.
+3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Every write from this scraper fails until the `modelmap` sync writes less. See the daily row budget below.
 4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
 
 ## The first live crawl
 
-The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers and a second added 291. The database holds 533 offers, 139 candidates and 537 queued images. Nothing was published and the 40 manual rows are untouched.
+The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers and a second added 291. The database holds 533 offers, 139 candidates and 537 queued images. Nothing was published and the 40 manual rows are untouched. Since then every write has failed because the account used its daily D1 rows, so the drainer logs a queue error every 30 seconds and keeps running.
 
 ## A manual backfill run
 
@@ -78,7 +78,30 @@ $env:SCRAPER_PRODUCTS_PER_PATH = "1600"
 
 The request budget must be twice the page budget, because every listing needs a product page and an image download.
 
-Measure the other databases before the first full batch. Open `dash.cloudflare.com`, choose Workers and Pages, then D1, then Metrics and Row Metrics. The other three databases must stay below 30,000 rows a day, or the batch size must shrink.
+### Who uses the daily rows
+
+The other databases were measured on 2026-11-17 with `npx wrangler d1 insights <name> --time-period 18h`, which counts the rows written by every query in that window.
+
+| Database | Rows written in 18 hours | What writes them |
+| --- | --- | --- |
+| `modelmap` | 130,564 | Its sync runs every four hours and re-inserts the whole model catalog each time. The `offerings` table alone took 116,403 rows across 40,500 insert statements. |
+| `hermes` | 0 | Nothing. |
+| `x-automation` | 0 | Nothing. |
+| `solar-sizer-sdk2` | 0 | Every write failed because the account had already used its daily rows. |
+
+So `modelmap` uses more than the whole daily budget by itself. No batch size works until its writes come down. The `modelmap` source is not on this machine, so the owner must change it in the project that runs it.
+
+Three fixes work, in the order the owner should try them.
+
+1. Make the `modelmap` sync write only the rows that changed. A row that is inserted with the same values still counts as a write. The sync can read the current value first and skip the write when it matches.
+2. Run the `modelmap` sync once a day instead of six times. Its four hour runs take about three minutes each and re-insert the same catalog.
+3. Move the `modelmap` database to another Cloudflare account. Each account has its own daily rows.
+
+Then check the result with the same command. The other three databases must stay below 30,000 rows a day, or the batch size must shrink.
+
+```powershell
+npx wrangler d1 insights modelmap --time-period 18h
+```
 
 ## Secret inventory
 
@@ -504,5 +527,5 @@ A candidate with no fresh qualified offer is refused with `stale-candidate`. Run
 | Sweep publishes nothing | Check that the offers are qualified, in stock, on a piece basis, new and inside the 15 percent band. A manual row always waits for review. |
 | Discovery finds no new offers | Known URLs are skipped by exact `source_url`. Delete a stale offer or wait for the source to publish a new listing. |
 | The queue never drains | Check the drainer log. The drainer needs `WORKER_URL`, `ADMIN_PASSWORD` and a unified key in the gateway database. The gateway must listen on `127.0.0.1:3001`. |
-| The Worker answers `D1_ERROR: Your account has exceeded D1's free tier daily row write limit` | The account used its 100,000 rows for the day. The cap resets at 00:00 UTC and is shared by every database on the account. |
+| The Worker answers `D1_ERROR: Your account has exceeded D1's free tier daily row write limit` | The account used its 100,000 rows for the day. On 2026-11-17 the `modelmap` sync used them all. The cap resets at 00:00 UTC and is shared by every database on the account. See the daily row budget above. |
 | The WhatsApp alert does not arrive | Check `KAPSO_ALERT_TO` and the Sandbox session for that number. A `502` carries Kapso's reason. `Re-engagement message` means the 24 hour window is closed. |
