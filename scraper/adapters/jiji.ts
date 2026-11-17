@@ -5,7 +5,11 @@
 // The feed path is /api_web/v1/listing?slug=<category slug>&page=<n>. The
 // robots file allows every path except /test, /admin, /crm and the facebook
 // auth path.
-
+//
+// The sort parameter is the one the Jiji web page uses. Without it the feed
+// answers with the relevance order, which moves between requests, so a new
+// advert can land on any page. With sort=new the feed answers newest first,
+// so a new advert is always on the first pages.
 import { fetchText } from '../http.ts';
 import { collectImageFacts } from '../image.ts';
 import { identitySpecsMissing, parseTitleSpecs, productTypeFromTitle } from '../specs.ts';
@@ -40,7 +44,7 @@ const decode = (value: string) => {
 // The feed gives the list for one category page.
 export function listingFeedUrl(categoryUrl: string, page = 1): string {
   const slug = categoryUrl.split('/').filter(Boolean).pop()?.split('?')[0] ?? '';
-  return `${SITE}/api_web/v1/listing?slug=${encodeURIComponent(slug)}&init_page=true&page=${page}&webp=false`;
+  return `${SITE}/api_web/v1/listing?slug=${encodeURIComponent(slug)}&init_page=true&page=${page}&sort=new&webp=false`;
 }
 
 type FeedAdvert = {

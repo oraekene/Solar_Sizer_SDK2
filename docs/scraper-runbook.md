@@ -6,26 +6,29 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 | Item | Where | State on 2026-11-16 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #19, the WhatsApp delivery status check. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 212 offers, 79 candidates and 191 queued images. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #24, the runner source split. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 533 offers, 139 candidates, 537 queued images and the 40 manual rows. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
-| Fly.io command line tool | This machine | Installed at `C:\Users\rotim\.fly\bin\flyctl.exe`. The account is not created yet. |
-| `fly.toml` | Repository root | Written and committed. It holds the app name, the region, the volume and the process. |
+| FreeLLMAPI gateway | This machine | Running on `127.0.0.1:3001`. The task `FreeLLMAPI Router` starts it at every logon. The drainer reads the images through it. |
+| Fly.io command line tool | This machine | Installed at `C:\Users\rotim\.fly\bin\flyctl.exe`. Not used. The owner cannot pay for a plan, so the host is this machine. |
+| `fly.toml` | Repository root | Written and committed. It holds the app name, the region, the volume and the process. It is only for a future paid plan. |
 | `Solar Sizer Jiji Scrape` task | This machine | Runs every day at 23:30 local time. It crawls Jiji and writes to the Worker. |
+| `Solar Sizer Enrichment Drainer` task | This machine | Runs the image drainer at every logon. It reads the gateway key from the local gateway database and writes the result back to the Worker. |
 | Host secrets file | `C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env` | Prepared on 2026-11-16 with `ENCRYPTION_KEY`, `FREEAPI_CONFIG_JSON`, `ADMIN_PASSWORD` and `WORKER_URL`. It stays outside the repository. |
 | GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
 | Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO` are set. `KAPSO_TEMPLATE_NAME` is optional. |
 
-## What blocks the first live run
+## What is open now
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
-2. No always-on host exists yet. The sweep and discovery can run without it, but image enrichment waits until the host is running.
-3. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
+2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. See Step 5.
+3. The free D1 plan allows 100,000 rows written a day for the whole account, and `hermes`, `x-automation` and `modelmap` share that cap. A full backfill needs the batches in the plan below.
+4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
 
 ## The first live crawl
 
-The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers. The database holds 212 offers, 79 candidates and 191 queued images. Nothing was published and the 40 manual rows are untouched.
+The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers and a second added 291. The database holds 533 offers, 139 candidates and 537 queued images. Nothing was published and the 40 manual rows are untouched.
 
 ## A manual backfill run
 
@@ -39,7 +42,43 @@ gh workflow run scraper-discovery.yml `
   -f start_delay_ms=0
 ```
 
-One request per second still applies, so 8000 requests per source takes about 2 hours 15 minutes. The job may run up to 350 minutes. The free D1 plan writes 100,000 rows a day, so a backfill of about 23,000 listings needs the paid plan or two or three daily batches.
+One request per second still applies, so 8000 requests per source takes about 2 hours 15 minutes. The job may run up to 350 minutes.
+
+### The daily row budget
+
+The free D1 plan allows 100,000 rows written a day for the whole account. The cap is shared by every database on the account, so `hermes`, `x-automation` and `modelmap` take part of it. Cloudflare counts one row for the table and one row for every index that the write touches. The index counts below were measured on the live schema.
+
+| Write | Rows written |
+| --- | --- |
+| `hardware_offers` upsert | 10, which is 1 row and 9 index rows |
+| `scraper_queue` insert | 4, which is 1 row and 3 index rows |
+| `hardware_candidates` insert | 5, which is 1 row and 4 index rows, for about one candidate in four listings |
+| `price_history` insert | 4, which is 1 row and 3 index rows, only when the price moved |
+| Draining one queued image | 14, which is 4 for the queue row and 10 for the offer row |
+
+So one new listing costs about 15 rows written, and about 29 rows over its life when the drainer reads the image.
+
+The number of batches per day does not raise the coverage. The daily row budget is the limit, so a day with three batches covers the same listings as a day with one. Three smaller batches waste less when one of them fails, so use three batches once the daily ceiling is known.
+
+### What the Jiji feed gives
+
+The feed serves 20 adverts per page and answers at most 1,000 pages for one path, so one path gives at most 20,000 adverts. The `solar-energy-products` path holds 66,220 adverts, so the feed alone cannot reach all of them. The two battery paths hold 9,979 and 10,830 adverts, so the feed reaches all of them.
+
+The feed answers with the sort order the Jiji web page uses. The adapter asks for `sort=new`, so the newest adverts are on the first pages and a new advert is always found there. Without that parameter the feed answers with the relevance order, which moves between requests.
+
+### The batch settings
+
+One batch of 1,500 listings costs about 22,500 rows for the crawl and the same again for the images, which leaves room for the sweep, the drainer and the other three databases.
+
+```powershell
+$env:SCRAPER_SOURCE_REQUEST_BUDGET = "3200"
+$env:SCRAPER_PAGE_BUDGET = "1600"
+$env:SCRAPER_PRODUCTS_PER_PATH = "1600"
+```
+
+The request budget must be twice the page budget, because every listing needs a product page and an image download.
+
+Measure the other databases before the first full batch. Open `dash.cloudflare.com`, choose Workers and Pages, then D1, then Metrics and Row Metrics. The other three databases must stay below 30,000 rows a day, or the batch size must shrink.
 
 ## Secret inventory
 
@@ -49,8 +88,8 @@ One request per second still applies, so 8000 requests per source takes about 2 
 | `CLOUDFLARE_API_TOKEN` | GitHub Actions | Deploy workflow | Needs account-level Workers Scripts edit and D1 edit. |
 | `CLOUDFLARE_ACCOUNT_ID` | GitHub Actions | Deploy workflow | The account id from the Cloudflare dashboard or `npx wrangler whoami`. |
 | `WORKER_URL` | GitHub Actions, host | Scraper, drainer | `https://sdk2.solarsizer.workers.dev`. Already set in Actions. |
-| `ENCRYPTION_KEY` | Host | FreeLLMAPI gateway | 32 random bytes as hex. Encrypts the provider keys at rest. It never leaves the host. |
-| `FREEAPI_CONFIG_JSON` | Host | FreeLLMAPI gateway | Provider keys, routing and the dashboard account. It holds plain secrets. |
+| `ENCRYPTION_KEY` | Fly.io Machine | FreeLLMAPI gateway | 32 random bytes as hex. Encrypts the provider keys at rest. It never leaves the host. The local gateway holds its own copy in `C:\Users\rotim\.local\freellmapi-data`. |
+| `FREEAPI_CONFIG_JSON` | Fly.io Machine | FreeLLMAPI gateway | Provider keys, routing and the dashboard account. It holds plain secrets. The local gateway reads its own file. |
 | `KAPSO_API_KEY` | Worker | Alert route | Sends the WhatsApp alert. Set on 2026-11-15. |
 | `KAPSO_PHONE_NUMBER_ID` | Worker | Alert route | The WhatsApp number that sends the alert. Set on 2026-11-15 to the Sandbox number `597907523413541`. |
 | `KAPSO_ALERT_TO` | Worker | Alert route | The owner number in international format, for example `2348012345678`. Set on 2026-11-16. |
@@ -233,9 +272,41 @@ The split holds in three places. The runner workflows set `SCRAPER_SOURCES` to `
 
    The Jiji category feed serves 20 adverts per page, and the runner walks the pages until the path product cap, the page budget or the end of the category stops it. A daily run with a 600 request budget reads about 30 feed pages per path, so it sees roughly 600 adverts on each Jiji path.
 
-## Step 5: Create the always-on host
+## Step 5: Run the always-on host on this machine
 
-The host runs the FreeLLMAPI gateway and the enrichment drainer. It pulls work from the Worker over HTTPS, so it needs no tunnel and no public service.
+The host runs the enrichment drainer. It pulls work from the Worker over HTTPS, so it needs no tunnel and no public service. The FreeLLMAPI gateway already runs on this machine on `127.0.0.1:3001`, so the drainer has a vision model that reads the images. The owner cannot pay for a hosting plan, so this machine is the host.
+
+1. The files live outside the repository.
+
+   | File | Purpose |
+   | --- | --- |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\run-drainer.ps1` | Reads the secret file, points the drainer at the local gateway and writes the log. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\start-drainer-hidden.vbs` | Starts the script without a console window. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\secrets.env` | Holds `WORKER_URL` and `ADMIN_PASSWORD`. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\drainer-worktree` | A Git worktree with the drainer code. The task moves it to the latest `main` before it starts. |
+   | `C:\Users\rotim\.local\solar-sizer-scraper\drainer.log` | The run log. |
+
+2. The task starts the drainer at every logon and restarts it when it stops.
+
+   ```powershell
+   Get-ScheduledTask -TaskName "Solar Sizer Enrichment Drainer"
+   Start-ScheduledTask -TaskName "Solar Sizer Enrichment Drainer"
+   Get-Content "C:\Users\rotim\.local\solar-sizer-scraper\drainer.log" -Tail 20
+   ```
+
+   The task runs as the signed in user, so it needs no administrator rights. It runs only while that user is logged on.
+
+3. The drainer needs the gateway. The task `FreeLLMAPI Router` starts it at every logon on the same loopback port.
+
+   ```powershell
+   Get-NetTCPConnection -LocalPort 3001 -State Listen
+   ```
+
+4. Confirm the drainer loop. The Worker queue is drained every 30 seconds, and the five images of one poll are read at the same time. A queued image gets a result, or an error that names the gateway call. If the gateway rejects the unified key, the drainer refreshes it once.
+
+### The paid alternative
+
+Fly.io runs the same two programs on a small Machine. It is only worth it when the owner can pay for a plan.
 
 1. Create the account at `fly.io/app/sign-up` and add a card. A personal organisation does not pay a bill under $5.
 
@@ -432,5 +503,6 @@ A candidate with no fresh qualified offer is refused with `stale-candidate`. Run
 | A source is missing from a run | Read `requests.pause_reasons` in the run report. A spent budget, a 403 or a repeated 429 or 503 pauses that source for the rest of the run. |
 | Sweep publishes nothing | Check that the offers are qualified, in stock, on a piece basis, new and inside the 15 percent band. A manual row always waits for review. |
 | Discovery finds no new offers | Known URLs are skipped by exact `source_url`. Delete a stale offer or wait for the source to publish a new listing. |
-| The queue never drains | Check `fly logs`. The drainer needs `WORKER_URL`, `ADMIN_PASSWORD` and a unified key in the gateway database. |
+| The queue never drains | Check the drainer log. The drainer needs `WORKER_URL`, `ADMIN_PASSWORD` and a unified key in the gateway database. The gateway must listen on `127.0.0.1:3001`. |
+| The Worker answers `D1_ERROR: Your account has exceeded D1's free tier daily row write limit` | The account used its 100,000 rows for the day. The cap resets at 00:00 UTC and is shared by every database on the account. |
 | The WhatsApp alert does not arrive | Check `KAPSO_ALERT_TO` and the Sandbox session for that number. A `502` carries Kapso's reason. `Re-engagement message` means the 24 hour window is closed. |
