@@ -44,7 +44,7 @@ The first backfill batch ran on 2026-11-18 from this machine, because the Jiji p
 
 The database holds 1,860 offers after the batch, with 544 candidates, 1,857 queued images and the 40 manual rows untouched.
 
-The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs about 7 hours to drain fully. About 7 percent of the attempts fail. The failures are upstream gateway timeouts and rate limits, and a few results that the Worker refuses with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
+The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs about 7 hours to drain fully. Of 1,155 attempts, 39 failed, which is 3.4 percent. The failures were image downloads that did not reach the source site, gateway errors with status 502, image reads that ran out of time, and a few results that the Worker refuses with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
 
 Run the next batch only when the queue holds no pending rows. The drain costs more rows than the crawl, so a batch that runs while the queue is full spends the day on images.
 

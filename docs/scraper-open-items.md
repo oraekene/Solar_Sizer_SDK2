@@ -60,7 +60,7 @@ The live database holds 1,860 offers, 544 candidates, 1,857 queued images with 1
 | The spot-check sampling method for the 30-offer audit | Written but not built. The sampler route does not exist, so the week-four audit needs a manual query. |
 | The estimated-specs warning in end-user quotes | Written but not built. The quote marker and the per-field list are missing. |
 | The Kapso message rate | Built and unverified live, because the 24 hour window has not been open since the last alert. |
-| The watchdog on a live schedule | Built, but the scheduled watchdog has never run on time on its own. It has been run by hand. |
+| The watchdog on a live schedule | Ran on its own on 2026-11-18 and failed, because the last sweep with the status `ok` was the one on 2026-11-16. It opened issue 25 and commented on it. The sweep on 2026-11-18 was `partial` because one Jumia listing had gone and the page answered with the category page. The adapter now counts that page as a strike, so the offer leaves the pool after three checks and the next sweep finishes clean. |
 | The Konga and CDcare phase band | Corrected in the design document. Both start after the four-week report passes. |
 | The Nigerian retailer inventory | Done. `docs/sources-inventory.md` holds every shop that was checked with its verdict and its evidence. |
 | The two small reliability items the audit left open, the queue claim race and the watchdog treating a partial sweep as healthy | Closed. The claim and the read are one statement, and a partial sweep raises the alert issue. |
@@ -165,13 +165,15 @@ The live database after the batch, measured at 22:30 local time on 2026-11-18:
 | Price history rows | 2 |
 | Database size | 5.8 MB of the 500 MB free limit |
 
-The drainer reads about 3.6 images a minute, so the first batch needs about 7 hours to drain fully. About 7 percent of the attempts failed. The failures were upstream gateway timeouts and rate limits, and a few results that the Worker refused with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
+The drainer reads about 3.6 images a minute, so the first batch needs about 7 hours to drain fully. Of 1,155 attempts, 39 failed, which is 3.4 percent. The failures were 31 image downloads that did not reach the source site, 12 gateway errors with status 502, 8 image reads that ran out of time, and 2 results that the Worker refused with status 400 because the model sent a field the validator does not allow. Every failed row was tried again, and no row is left in the failed state.
 
 ### What the daily cap allows
 
 One new listing costs about 15 rows for the crawl and about 14 more when the drainer reads the image, so 29 rows over its life. The `modelmap` sync takes 39,833 rows a day, and the daily Jiji job and sweep take about 9,000 more, so about 51,000 rows are left for listings. That is about 1,750 listings a day, and the drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
 
 The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,750 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
+
+The nightly Jiji task on 2026-11-18 ran at 23:30 local time and found 259 new listings with 349 pages and 600 requests. Its sweep checked 300 offers. The task sends its own alert when it fails, so it is not part of the watchdog.
 
 ### The daily batch
 
