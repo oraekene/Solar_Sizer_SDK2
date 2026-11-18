@@ -1,18 +1,18 @@
 # Open and partially complete items
 
-This file lists every item in the Solar Sizer scraper work that is open, partly built, blocked or deliberately deferred. Its source is the full export of the requirements session at `C:\Users\rotim\Desktop\solar-hardware-scraper-requirements-3.json`, which holds 3,091 messages from 2026-11-16 to 2026-11-17 and was read from the first message to the last. Every line was then checked against the code and the live database at `origin/main` commit `e3f245e` on 2026-11-17, so the status column says what is true now and not what the session believed then.
+This file lists every item in the Solar Sizer scraper work that is open, partly built, blocked or deliberately deferred. Its source is the full export of the requirements session at `C:\Users\rotim\Desktop\solar-hardware-scraper-requirements-3.json`, which holds 3,091 messages from 2026-11-16 to 2026-11-17 and was read from the first message to the last. Every line was then checked against the code and the live database at `origin/main` commit `c662821` on 2026-11-18. The rows that changed on that day carry the new date, and the rows that did not change keep the date from the day they were last checked.
 
-The live database holds 533 offers, 139 candidates, 537 queued images with 522 pending, 12 run reports, 40 hardware rows that are all manual, and no price history rows because nothing has been published yet.
+The live database holds 1,860 offers, 544 candidates, 1,857 queued images with 1,497 pending, 16 run reports, 40 hardware rows that are all manual, and 2 price history rows. The first backfill batch ran on 2026-11-18 and added 1,037 new listings, and the drainer is still reading their images.
 
 ## 1. What blocks the pipeline today
 
-| Blocker | What it stops | Who closes it | State on 2026-11-17 |
+| Blocker | What it stops | Who closes it | State on 2026-11-18 |
 | --- | --- | --- | --- |
-| The D1 daily write cap | Every write from the scraper and the drainer | The `modelmap` sync must write less than the account budget | Fixed today. The `modelmap` Worker cron changed from every four hours to once a day, so its daily rows fell from about 130,000 to about 43,000. The cap resets at 00:00 UTC and the first write window opens then. |
+| The D1 daily write cap | Every write from the scraper and the drainer | The `modelmap` sync must write less than the account budget | Fixed and measured. The `modelmap` Worker cron changed from every four hours to once a day, so its rows fell from 130,564 in 18 hours to 39,833 in 24 hours. The cap reset at 00:00 UTC on 2026-11-18 and the first backfill batch ran without a cap error. |
 | The Jiji crawl runs on this PC | Jiji offers stop when the PC is off or the user is signed out | The owner, or a paid host | Open by choice. Jiji refuses the GitHub runner address, so the crawl runs from the `Solar Sizer Jiji Scrape` task. |
-| The Kapso alert window | WhatsApp alerts only arrive for 24 hours after the owner replies to the Sandbox number | The owner | Open. The Sandbox number cannot have a template because it needs a production number and the Facebook login fails. The GitHub issue always works. |
-| The backfill has not run | The full list of about 23,000 listings is not in the database | The owner decides the batch size | Open. The first batch waits for the write cap. |
-| The SolarShopNigeria brand slugs | The brand filter covers only one brand | The owner confirms the slugs on the first crawl | Open. The runner reads only `jinko-solar` and the other brands stay in the watchlist as unconfirmed. |
+| The Kapso alert window | WhatsApp alerts only arrive for 24 hours after the owner replies to the Sandbox number | The owner | Open. The Sandbox number cannot have a template because it needs a production number and the Facebook login fails. The GitHub issue always works. The backfill alert on 2026-11-18 was refused with `Re-engagement message`. |
+| The backfill | The full list of about 87,000 Jiji adverts is not in the database | The owner decides the batch size | The first batch ran on 2026-11-18 and added 1,037 new listings. The next batch waits for the drainer to empty the queue, because the daily cap covers the crawl and the images together. |
+| The SolarShopNigeria brand slugs | The brand filter covers only one brand | The owner confirms the slugs on the first crawl | Measured on 2026-11-18. The shop holds 13 products and every one of them is already in the pool, so the brand paths add nothing today. |
 | The Jiji feed page limit | One path cannot be walked past 1,000 pages, so 20,000 of the 66,220 adverts on the wide path are unreachable by the feed | Nobody yet | Open and measured. The two battery paths hold fewer than 20,000 adverts each, so they are fully reachable. |
 
 ## 2. The open items in section 12 of the design document
@@ -23,8 +23,8 @@ The live database holds 533 offers, 139 candidates, 537 queued images with 522 p
 | Store the remaining secrets: the Worker `ADMIN_PASSWORD`, the GitHub Actions copies of `ADMIN_PASSWORD`, `WORKER_URL` and `FX_RATE_URL`, and the Kapso values for the alert. | Closed. The Worker and the Actions hold the same `ADMIN_PASSWORD`, the Actions hold `WORKER_URL`, the Cloudflare token and the account id, and the Worker holds `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO`. `FX_RATE_URL` is no longer read, because the code fetches the rate from NairaDaily first and open.er-api.com second. |
 | Apply the remote migrations `0010` to `0012`. | Closed on 2026-11-15. The deploy workflow applies any pending migration before it deploys. |
 | Redeploy the Worker with the current code. | Closed. Every push to `main` deploys it. |
-| Confirm the SolarShopNigeria brand filter slugs on the first crawl. | Open. Only `jinko-solar` is confirmed. |
-| Confirm that a GitHub Actions runner can read the full Jumia page. | Closed. The live crawl stored 142 Jumia offers from the runner. |
+| Confirm the SolarShopNigeria brand filter slugs on the first crawl. | Measured on 2026-11-18. The first crawl read the shop and found 13 products, and every one of them was already in the pool, so no slug is missing. The brand paths add nothing while the shop holds 13 products. |
+| Confirm that a GitHub Actions runner can read the full Jumia page. | Closed. The live crawl stored 142 Jumia offers from the runner, and the first backfill batch stored 170 more from this machine. |
 | Read Jiji from the GitHub runner. | Closed by a different route. Jiji answers every path from the runner with a Cloudflare challenge, so the crawl moved to this machine and the runner keeps Jumia and SolarShopNigeria. |
 
 ## 3. The items that were settled but not built when the session ended
@@ -48,8 +48,8 @@ The live database holds 533 offers, 139 candidates, 537 queued images with 522 p
 | No acceptance dashboard or audit sampler | The four-week gates cannot be measured without a manual query | Add a read-only report route that counts products with two offers, freshness and approvals without edits | Open. The four-week report depends on it. |
 | No archive promotion action | An excluded offer needs a new fetch before it can become a candidate | Add an admin action that copies the archived offer into a `pending_review` candidate | Open. |
 | No estimated-specs marker in the quote | The design says the quote line marks an estimated row | Read the row tag in the quote line and render the provenance in the review modal | Open. The tag is written at publish and the raw provenance is shown in the admin, but the quote line and the per-field list are not built. |
-| Empty run report fields | Trust distribution, approval counts and model calls are not recorded | Fill them when the review and enrichment paths are live | Open. The 12 stored reports carry the counts the runner knows and leave the rest empty. |
-| D1 table sizes are unmeasured | 500 checks a day could grow the tables past the plan | Measure after the first four weeks | Partly closed. The database is 1.7 MB of the 500 MB free limit, and the daily row cost is measured at about 15 rows for a new listing and about 29 rows over its life. |
+| Empty run report fields | Trust distribution, approval counts and model calls are not recorded | Fill them when the review and enrichment paths are live | Open. The 16 stored reports carry the counts the runner knows and leave the rest empty. |
+| D1 table sizes are unmeasured | 500 checks a day could grow the tables past the plan | Measure after the first four weeks | Partly closed. The database was 1.7 MB before the first backfill batch and 5.8 MB after it, against the 500 MB free limit. The daily row cost is measured at about 15 rows for a new listing and about 29 rows over its life. |
 | Local gateway vision calls fail upstream | The drainer cannot return a spec from an image | Fix the provider route or use another model | Closed. A spec table image was read correctly with status 200, and five parallel image requests answered in 34 seconds. |
 | The host is not provisioned | Image enrichment never runs | Run the drainer on this machine | Closed. The task `Solar Sizer Enrichment Drainer` runs it at every logon. |
 
@@ -124,7 +124,7 @@ The free plan allows 100,000 rows written a day for the whole account, and `mode
    curl.exe -sS -H "x-admin-key: $env:ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/queue?limit=1"
    ```
 
-6. Run the backfill before 03:00 UTC, because the `modelmap` run takes its share of the day at 03:00 UTC.
+6. Run the backfill before 03:00 UTC, because the `modelmap` run takes its share of the day at 03:00 UTC. The first batch on 2026-11-18 ran from this machine with the script `C:\Users\rotim\.local\solar-sizer-scraper\run-backfill.ps1`, because the Jiji paths refuse the GitHub runner. The runner command is below, and it covers Jumia and SolarShopNigeria only.
 
    ```powershell
    gh workflow run scraper-discovery.yml `
@@ -140,4 +140,42 @@ The free plan allows 100,000 rows written a day for the whole account, and `mode
 
 The design document sets four gates after four weeks of daily runs: 150 canonical products with two or more qualified offers, 90 percent of a 30-offer spot check correct on brand, model and price, 95 percent of published prices re-checked within 48 hours, and 80 percent of new candidates approved without edits. Two hard stops sit above them: any wrong merge of two different products counts as a defect, and any published panel whose Voc sits below the real datasheet value blocks the release.
 
-None of the gates can be measured yet, because no price has been published, the audit sampler is not built, and the backfill has not run.
+None of the gates can be measured yet, because no price has been published and the audit sampler is not built. The backfill has run once, so the pool holds 1,860 offers and 544 candidates, which gives the sampler something to measure when it is built.
+
+## 11. The first backfill batch on 2026-11-18
+
+The batch ran from this machine as the one-off task `Solar Sizer Backfill`, because the Jiji paths refuse the GitHub runner. The script is `C:\Users\rotim\.local\solar-sizer-scraper\run-backfill.ps1` and the log is `C:\Users\rotim\.local\solar-sizer-scraper\backfill.log`. It ran three legs, one per source, and each leg had its own request budget.
+
+| Leg | Requests | Pages | New listings | Run status |
+| --- | --- | --- | --- | --- |
+| Jiji | 1,800 | 941 | 867 | partial, because the request budget ran out |
+| Jumia | 358 | 188 | 170 | ok |
+| SolarShopNigeria | 4 | 4 | 0 | ok, because the shop holds 13 products and every one of them was already in the pool |
+| Total | | | 1,037 | |
+
+The live database after the batch, measured at 22:30 local time on 2026-11-18:
+
+| Item | Count |
+| --- | --- |
+| Offers | 1,860, which are 1,535 from Jiji, 312 from Jumia and 13 from SolarShopNigeria |
+| Candidates | 544 |
+| Queued images | 1,857, which are 354 done, 6 failed and 1,497 pending |
+| Run reports | 16 |
+| Manual hardware rows | 40, all of them untouched |
+| Price history rows | 2 |
+| Database size | 5.8 MB of the 500 MB free limit |
+
+The drainer reads about 3.6 images a minute, so the first batch needs about 7 hours to drain fully. About 7 percent of the attempts failed. The failures were upstream gateway timeouts and rate limits, and a few results that the Worker refused with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
+
+### What the daily cap allows
+
+One new listing costs about 15 rows for the crawl and about 14 more when the drainer reads the image, so 29 rows over its life. The `modelmap` sync takes 39,833 rows a day, and the daily Jiji job and sweep take about 9,000 more, so about 51,000 rows are left for listings. That is about 1,750 listings a day, and the drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
+
+The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,750 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
+
+### The daily batch
+
+1. The task `Solar Sizer Backfill` runs every day at 06:00 local time. It waits for the image queue to drain before it crawls, because the drain costs more rows than the crawl and the cap is counted for one day.
+2. The batch runs inside one UTC day, and the `modelmap` sync takes its share of that day at 03:00 UTC.
+3. The batch numbers are set in the task action, and the script takes them as parameters. The daily batch asks for about 1,050 new listings.
+4. The Jiji leg comes first. It gives the most new listings per request, and its feed is sorted by newest, so the newest adverts are always at the front.

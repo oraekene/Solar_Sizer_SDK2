@@ -7,7 +7,7 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 | Item | Where | State on 2026-11-16 |
 | --- | --- | --- |
 | Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #24, the runner source split. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 533 offers, 139 candidates, 537 queued images and the 40 manual rows. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 1,860 offers, 544 candidates, 1,857 queued images and the 40 manual rows. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | FreeLLMAPI gateway | This machine | Running on `127.0.0.1:3001`. The task `FreeLLMAPI Router` starts it at every logon. The drainer reads the images through it. |
@@ -23,13 +23,57 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. See Step 5.
-3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. See the daily row budget below.
+3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. The cap reset on 2026-11-18 and the first backfill batch ran without a cap error. See the daily row budget below.
 4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
 5. The full list of open and partly built items is in `docs/scraper-open-items.md`.
 
 ## The first live crawl
 
-The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers and a second added 291. The database holds 533 offers, 139 candidates and 537 queued images. Nothing was published and the 40 manual rows are untouched. Since then every write has failed because the account used its daily D1 rows, so the drainer logs a queue error every 30 seconds and keeps running.
+The live state on 2026-11-16: three GitHub discovery runs and one sweep passed, then a Jiji only run from this machine added 57 offers and a second added 291. The database held 533 offers, 139 candidates and 537 queued images. Nothing was published and the 40 manual rows are untouched. Every write then failed because the account used its daily D1 rows, so the drainer logged a queue error every 30 seconds and kept running.
+
+## The first backfill batch
+
+The first backfill batch ran on 2026-11-18 from this machine, because the Jiji paths refuse the GitHub runner. The script is `C:\Users\rotim\.local\solar-sizer-scraper\run-backfill.ps1` and the log is `C:\Users\rotim\.local\solar-sizer-scraper\backfill.log`. It runs one leg per source and each leg has its own request budget.
+
+| Leg | Requests | Pages | New listings | Run status |
+| --- | --- | --- | --- | --- |
+| Jiji | 1,800 | 941 | 867 | partial, because the request budget ran out |
+| Jumia | 358 | 188 | 170 | ok |
+| SolarShopNigeria | 4 | 4 | 0 | ok, because the shop holds 13 products and every one of them was already in the pool |
+| Total | | | 1,037 | |
+
+The database holds 1,860 offers after the batch, with 544 candidates, 1,857 queued images and the 40 manual rows untouched.
+
+The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs about 7 hours to drain fully. About 7 percent of the attempts fail. The failures are upstream gateway timeouts and rate limits, and a few results that the Worker refuses with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
+
+Run the next batch only when the queue holds no pending rows. The drain costs more rows than the crawl, so a batch that runs while the queue is full spends the day on images.
+
+### The daily backfill task
+
+The task `Solar Sizer Backfill` runs every day at 06:00 local time. It waits for the image queue to drain before it crawls, because the daily D1 row cap covers the crawl and the images together. The batch numbers are set in the task action, and the script takes them as parameters.
+
+| Parameter | Default | The daily task |
+| --- | --- | --- |
+| `-JijiRequests` | 1800 | 1600 |
+| `-JijiPages` | 2000 | 1600 |
+| `-JijiProducts` | 300 | 700 |
+| `-JumiaRequests` | 800 | 600 |
+| `-JumiaPages` | 1000 | 800 |
+| `-JumiaProducts` | 200 | 300 |
+| `-SolarShopRequests` | 400 | 100 |
+| `-SolarShopPages` | 600 | 100 |
+| `-SolarShopProducts` | 150 | 50 |
+| `-WaitMinutes` | 180 | 180 |
+
+The first batch gave 867 Jiji listings from 1,800 requests, so the daily batch of 1,600 requests gives about 770 Jiji listings and about 280 Jumia listings, which is about 1,050 listings a day.
+
+The count of pending images comes from the database through wrangler, because the Worker queue route claims the rows it returns. A count that cannot be read counts as not empty, so the batch waits rather than writing blind. The task skips the batch and sends an alert when the queue is still full after the wait.
+
+```powershell
+Get-ScheduledTask -TaskName 'Solar Sizer Backfill'
+Get-ScheduledTaskInfo -TaskName 'Solar Sizer Backfill'
+Get-Content 'C:\Users\rotim\.local\solar-sizer-scraper\backfill.log' -Tail 20
+```
 
 ## A manual backfill run
 
@@ -79,20 +123,22 @@ $env:SCRAPER_PRODUCTS_PER_PATH = "1600"
 
 The request budget must be twice the page budget, because every listing needs a product page and an image download.
 
+The daily cap covers the crawl and the images together. After `modelmap` takes 39,833 rows and the daily Jiji job and sweep take about 9,000 more, about 51,000 rows are left, which is about 1,750 listings a day. The drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
+
 ### Who uses the daily rows
 
 The other databases were measured on 2026-11-17 with `npx wrangler d1 insights <name> --time-period 18h`, which counts the rows written by every query in that window.
 
 | Database | Rows written in 18 hours | What writes them |
 | --- | --- | --- |
-| `modelmap` | 130,564 | Its sync runs every four hours and re-inserts the whole model catalog each time. The `offerings` table alone took 116,403 rows across 40,500 insert statements. |
+| `modelmap` | 130,564 | Its sync runs every four hours and re-inserts the whole model catalog each time. The `offerings` table alone took 116,403 rows across 40,500 insert statements. After the cron change it wrote 39,833 rows in 24 hours. |
 | `hermes` | 0 | Nothing. |
 | `x-automation` | 0 | Nothing. |
 | `solar-sizer-sdk2` | 0 | Every write failed because the account had already used its daily rows. |
 
 So `modelmap` uses more than the whole daily budget by itself. No batch size works until its writes come down.
 
-The first fix is already done. The `modelmap` Worker cron changed from every four hours to once a day, so its daily rows fell from about 130,000 to about 43,000 and the scraper can write again after 00:00 UTC.
+The first fix is already done. The `modelmap` Worker cron changed from every four hours to once a day, so its rows fell from 130,564 in 18 hours to 39,833 in the 24 hours after the change. The scraper can write again after 00:00 UTC.
 
 ```powershell
 $token = (Select-String -Path "$env:USERPROFILE\.wrangler\config\default.toml" -Pattern 'oauth_token = "(.+)"').Matches[0].Groups[1].Value
