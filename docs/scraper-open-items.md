@@ -8,7 +8,7 @@ The live database holds 1,860 offers, 544 candidates, 1,857 queued images with 1
 
 | Blocker | What it stops | Who closes it | State on 2026-11-18 |
 | --- | --- | --- | --- |
-| The D1 daily write cap | Every write from the scraper and the drainer | The `modelmap` sync must write less than the account budget | Fixed and measured. The `modelmap` Worker cron changed from every four hours to once a day, so its daily rows fell from about 130,000 to about 43,000. The cap reset at 00:00 UTC on 2026-11-18 and the first backfill batch ran without a cap error. |
+| The D1 daily write cap | Every write from the scraper and the drainer | The `modelmap` sync must write less than the account budget | Fixed and measured. The `modelmap` Worker cron changed from every four hours to once a day, so its rows fell from 130,564 in 18 hours to 39,833 in 24 hours. The cap reset at 00:00 UTC on 2026-11-18 and the first backfill batch ran without a cap error. |
 | The Jiji crawl runs on this PC | Jiji offers stop when the PC is off or the user is signed out | The owner, or a paid host | Open by choice. Jiji refuses the GitHub runner address, so the crawl runs from the `Solar Sizer Jiji Scrape` task. |
 | The Kapso alert window | WhatsApp alerts only arrive for 24 hours after the owner replies to the Sandbox number | The owner | Open. The Sandbox number cannot have a template because it needs a production number and the Facebook login fails. The GitHub issue always works. The backfill alert on 2026-11-18 was refused with `Re-engagement message`. |
 | The backfill | The full list of about 87,000 Jiji adverts is not in the database | The owner decides the batch size | The first batch ran on 2026-11-18 and added 1,037 new listings. The next batch waits for the drainer to empty the queue, because the daily cap covers the crawl and the images together. |
@@ -169,9 +169,9 @@ The drainer reads about 3.6 images a minute, so the first batch needs about 7 ho
 
 ### What the daily cap allows
 
-One new listing costs about 15 rows for the crawl and about 14 more when the drainer reads the image, so 29 rows over its life. The `modelmap` sync takes about 43,000 rows a day, and the daily Jiji job and sweep take about 9,000 more, so about 48,000 rows are left for listings. That is about 1,650 listings a day, and the drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
+One new listing costs about 15 rows for the crawl and about 14 more when the drainer reads the image, so 29 rows over its life. The `modelmap` sync takes 39,833 rows a day, and the daily Jiji job and sweep take about 9,000 more, so about 51,000 rows are left for listings. That is about 1,750 listings a day, and the drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
 
-The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,650 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
+The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,750 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
 
 ### The daily batch
 

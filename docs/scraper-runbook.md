@@ -123,7 +123,7 @@ $env:SCRAPER_PRODUCTS_PER_PATH = "1600"
 
 The request budget must be twice the page budget, because every listing needs a product page and an image download.
 
-The daily cap covers the crawl and the images together. After `modelmap` takes about 43,000 rows and the daily Jiji job and sweep take about 9,000 more, about 48,000 rows are left, which is about 1,650 listings a day. The drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
+The daily cap covers the crawl and the images together. After `modelmap` takes 39,833 rows and the daily Jiji job and sweep take about 9,000 more, about 51,000 rows are left, which is about 1,750 listings a day. The drainer must empty the queue in the same day because the cap resets at 00:00 UTC.
 
 ### Who uses the daily rows
 
@@ -131,14 +131,14 @@ The other databases were measured on 2026-11-17 with `npx wrangler d1 insights <
 
 | Database | Rows written in 18 hours | What writes them |
 | --- | --- | --- |
-| `modelmap` | 130,564 | Its sync runs every four hours and re-inserts the whole model catalog each time. The `offerings` table alone took 116,403 rows across 40,500 insert statements. |
+| `modelmap` | 130,564 | Its sync runs every four hours and re-inserts the whole model catalog each time. The `offerings` table alone took 116,403 rows across 40,500 insert statements. After the cron change it wrote 39,833 rows in 24 hours. |
 | `hermes` | 0 | Nothing. |
 | `x-automation` | 0 | Nothing. |
 | `solar-sizer-sdk2` | 0 | Every write failed because the account had already used its daily rows. |
 
 So `modelmap` uses more than the whole daily budget by itself. No batch size works until its writes come down.
 
-The first fix is already done. The `modelmap` Worker cron changed from every four hours to once a day, so its daily rows fell from about 130,000 to about 43,000 and the scraper can write again after 00:00 UTC.
+The first fix is already done. The `modelmap` Worker cron changed from every four hours to once a day, so its rows fell from 130,564 in 18 hours to 39,833 in the 24 hours after the change. The scraper can write again after 00:00 UTC.
 
 ```powershell
 $token = (Select-String -Path "$env:USERPROFILE\.wrangler\config\default.toml" -Pattern 'oauth_token = "(.+)"').Matches[0].Groups[1].Value
