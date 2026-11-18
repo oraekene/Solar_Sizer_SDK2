@@ -173,9 +173,9 @@ One new listing costs about 15 rows for the crawl and about 14 more when the dra
 
 The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,650 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
 
-### The order of the next batch
+### The daily batch
 
-1. Wait until the queue holds no pending rows. The drain costs more rows than the crawl, so a batch that runs while the queue is full spends the day on images.
-2. Run the batch before 03:00 UTC, because the `modelmap` sync takes its share of the day at 03:00 UTC.
-3. Keep the same script and change the three numbers in `$runs`, the request budget, the page budget and the products per path. The request budget must be twice the listing count, because every listing needs a product page and an image download.
-4. Keep the Jiji leg first. It gives the most new listings per request, and its feed is sorted by newest, so the newest adverts are always at the front.
+1. The task `Solar Sizer Backfill` runs every day at 06:00 local time. It waits for the image queue to drain before it crawls, because the drain costs more rows than the crawl and the cap is counted for one day.
+2. The batch runs inside one UTC day, and the `modelmap` sync takes its share of that day at 03:00 UTC.
+3. The batch numbers are set in the task action, and the script takes them as parameters. The daily batch asks for about 1,050 new listings.
+4. The Jiji leg comes first. It gives the most new listings per request, and its feed is sorted by newest, so the newest adverts are always at the front.

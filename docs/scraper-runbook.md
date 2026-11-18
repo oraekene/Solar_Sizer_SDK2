@@ -48,6 +48,33 @@ The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs 
 
 Run the next batch only when the queue holds no pending rows. The drain costs more rows than the crawl, so a batch that runs while the queue is full spends the day on images.
 
+### The daily backfill task
+
+The task `Solar Sizer Backfill` runs every day at 06:00 local time. It waits for the image queue to drain before it crawls, because the daily D1 row cap covers the crawl and the images together. The batch numbers are set in the task action, and the script takes them as parameters.
+
+| Parameter | Default | The daily task |
+| --- | --- | --- |
+| `-JijiRequests` | 1800 | 1600 |
+| `-JijiPages` | 2000 | 1600 |
+| `-JijiProducts` | 300 | 700 |
+| `-JumiaRequests` | 800 | 600 |
+| `-JumiaPages` | 1000 | 800 |
+| `-JumiaProducts` | 200 | 300 |
+| `-SolarShopRequests` | 400 | 100 |
+| `-SolarShopPages` | 600 | 100 |
+| `-SolarShopProducts` | 150 | 50 |
+| `-WaitMinutes` | 180 | 180 |
+
+The first batch gave 867 Jiji listings from 1,800 requests, so the daily batch of 1,600 requests gives about 770 Jiji listings and about 280 Jumia listings, which is about 1,050 listings a day.
+
+The count of pending images comes from the database through wrangler, because the Worker queue route claims the rows it returns. A count that cannot be read counts as not empty, so the batch waits rather than writing blind. The task skips the batch and sends an alert when the queue is still full after the wait.
+
+```powershell
+Get-ScheduledTask -TaskName 'Solar Sizer Backfill'
+Get-ScheduledTaskInfo -TaskName 'Solar Sizer Backfill'
+Get-Content 'C:\Users\rotim\.local\solar-sizer-scraper\backfill.log' -Tail 20
+```
+
 ## A manual backfill run
 
 The owner wants every new listing, not a sample. The weekly crawl keeps its normal ceilings, and a manual run raises them for one run. The run resumes where the last one stopped, because a listing that is already known is skipped by its exact URL.
