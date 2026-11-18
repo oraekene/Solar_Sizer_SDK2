@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
-import { buildOffer, listingIdFromUrl, parseCategoryPage, parseJsonLd, productImageUrl } from './jumia.ts';
+import { buildOffer, isGonePage, listingIdFromUrl, parseCategoryPage, parseJsonLd, productImageUrl } from './jumia.ts';
 
 const fixture = (name: string) => fs.readFileSync(new URL(`../fixtures/${name}`, import.meta.url), 'utf8');
 
@@ -163,4 +163,14 @@ test('the product image comes from the JSON-LD content URL', () => {
 test('the listing id comes from the trailing digits of the address', () => {
   assert.equal(listingIdFromUrl(PANEL_URL), '419404270');
   assert.equal(listingIdFromUrl('https://www.jumia.com.ng/100w-panel-sunshine-mpg8254192.html'), '8254192');
+});
+
+test('a dead listing answers with the category page', () => {
+  const gone =
+    '<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"CollectionPage","mainEntity":{"@type":"ItemList","itemListElement":[{"@type":"ListItem","item":{"@type":"Product","name":"Duravolt 4 in 1 Solar Rechargeable Pack"}}]}}]}</script>';
+
+  assert.equal(isGonePage(gone), true);
+  // A live product page and a page with no JSON-LD at all are not gone.
+  assert.equal(isGonePage(fixture('jumia-product.html')), false);
+  assert.equal(isGonePage('<html><body>Just a moment...</body></html>'), false);
 });
