@@ -97,16 +97,23 @@ type JsonLdProduct = {
   additionalProperty?: Array<{ name?: string; value?: string }>;
 };
 
-export function parseJsonLd(html: string): JsonLdProduct | null {
-  const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
-  for (const block of blocks) {
+// The JSON-LD blocks of a page. Each block holds a graph of nodes.
+function jsonLdGraphs(html: string): unknown[][] {
+  const graphs: unknown[][] = [];
+  for (const block of [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(block[1]);
     } catch {
       continue;
     }
-    const graph = (parsed as { '@graph'?: unknown[] })['@graph'] ?? [parsed];
+    graphs.push((parsed as { '@graph'?: unknown[] })['@graph'] ?? [parsed]);
+  }
+  return graphs;
+}
+
+export function parseJsonLd(html: string): JsonLdProduct | null {
+  for (const graph of jsonLdGraphs(html)) {
     for (const node of graph) {
       const product = node as JsonLdProduct;
       if (product['@type'] === 'Product' || (product as { '@type'?: string })['@type'] === undefined) {
@@ -115,6 +122,18 @@ export function parseJsonLd(html: string): JsonLdProduct | null {
     }
   }
   return null;
+}
+
+// A dead listing answers with the category page. The top level of the JSON-LD
+// then holds a CollectionPage and no Product, so the listing is gone and the
+// sweep can count a strike. A page with no JSON-LD at all is left alone,
+// because that can be a block instead of a gone listing.
+export function isGonePage(html: string): boolean {
+  for (const graph of jsonLdGraphs(html)) {
+    const types = graph.map((node) => (node as { '@type'?: unknown })['@type']);
+    if (types.includes('CollectionPage') && !types.includes('Product')) return true;
+  }
+  return false;
 }
 
 function conditionFrom(itemCondition: string | undefined): string {
@@ -240,7 +259,16 @@ export async function crawlProduct(url: string): Promise<PageResult<ScraperOffer
     return { value: null, status: response.status, error: response.error ?? `status ${response.status}` };
   }
   const product = parseJsonLd(response.html);
-  if (!product) return { value: null, status: response.status, error: 'the page has no JSON-LD product' };
+  if (!product) {
+    // A gone listing counts as a strike, so the offer leaves the pool after
+    // three checks. A page that cannot be read is only skipped.
+    const gone = isGonePage(response.html);
+    return {
+      value: null,
+      status: gone ? 404 : response.status,
+      error: gone ? 'the listing is gone' : 'the page has no JSON-LD product',
+    };
+  }
   const offer = buildOffer(product, url);
   const image = await collectImageFacts(response.html, url, SOURCE, productImageUrl(product));
   return {
