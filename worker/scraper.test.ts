@@ -6,6 +6,8 @@ import {
   REASON_CODES,
   TRUST_TIERS,
   buildDescription,
+  candidateUnchanged,
+  candidateValues,
   handleScraperRoute,
   isCandidateStatus,
   isOfferStatus,
@@ -112,6 +114,45 @@ test('a price inside 15 percent publishes itself', () => {
 
 test('an offer id carries the source site', () => {
   assert.equal(offerId('jumia', 'L-123'), 'jumia:L-123');
+});
+
+test('a candidate that did not change is not written again', () => {
+  const candidate = {
+    id: 'candidate:one',
+    canonical_id: 'canonical:one',
+    bucket_key: 'bucket:one',
+    current_hardware_row: 'panel:one',
+    product_type: 'panel',
+    status: 'new',
+    proposed_data: { watts: 450 },
+    proposed_price: 75015,
+    current_price: 70000,
+    offer_ids: ['jumia:1'],
+    source_urls: ['https://www.jumia.com.ng/one.html'],
+    provenance: [{ kind: 'page' }],
+    risk_flags: [],
+  };
+  const values = candidateValues(candidate);
+
+  // A row that does not exist yet must be written.
+  assert.equal(candidateUnchanged(null, values), false);
+
+  // The same values as the stored row need no write.
+  const stored = { id: 'candidate:one', ...values };
+  assert.equal(candidateUnchanged(stored, values), true);
+
+  // A changed price needs a write.
+  assert.equal(candidateUnchanged({ ...stored, proposed_price: 70000 }, values), false);
+
+  // A decision that a human made is kept, so the same values need no write.
+  assert.equal(candidateUnchanged({ ...stored, status: 'rejected' }, values), true);
+  assert.equal(
+    candidateUnchanged(
+      { ...stored, status: 'rejected' },
+      candidateValues({ ...candidate, proposed_price: 70000 }),
+    ),
+    false,
+  );
 });
 
 test('the row description states the seller count, the price and the sites', () => {
