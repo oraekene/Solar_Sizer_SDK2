@@ -285,6 +285,31 @@ test('an enrichment result accepts known fields and drops empty readings', () =>
   assert.throws(() => validateEnrichmentResult({ invented: 3 }), /unknown field/);
 });
 
+test('an enrichment result drops the zeros that the model reads for a hidden value', () => {
+  // The model writes zero for a value it cannot see, so a battery picture
+  // comes back with zero watts and zero efficiency. Zero is not a reading.
+  assert.deepEqual(
+    validateEnrichmentResult({
+      watts: 0,
+      voc: 0,
+      isc: 0,
+      voltage_v: 25.6,
+      capacity_ah: 176,
+      capacity_kwh: 4.5,
+      battery_type: 'lithium',
+      cell_type: 'LiFePO4',
+      efficiency_pct: 0,
+    }),
+    {
+      voltage_v: 25.6,
+      capacity_ah: 176,
+      capacity_kwh: 4.5,
+      battery_type: 'lithium',
+      cell_type: 'LiFePO4',
+    },
+  );
+});
+
 test('only a fresh qualified offer can support a published price', () => {
   const now = Date.parse('2026-11-14T00:00:00.000Z');
   const support = {

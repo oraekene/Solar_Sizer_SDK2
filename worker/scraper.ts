@@ -198,9 +198,13 @@ export function validateEnrichmentResult(value: unknown): Record<string, unknown
     }
     if (raw === null || raw === undefined) continue;
     if (ENRICHMENT_NUMERIC_FIELDS.has(field)) {
-      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) {
         throw new Error(`The enrichment field ${field} must be a positive number.`);
       }
+      // The model writes zero for a value it cannot see. Zero is not a
+      // reading, so it is dropped like a missing value and the other fields
+      // of the answer are kept.
+      if (raw === 0) continue;
       result[field] = raw;
       continue;
     }

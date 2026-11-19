@@ -42,7 +42,9 @@ async function worker(path, init = {}) {
     signal: init.signal ?? AbortSignal.timeout(30_000),
   });
   if (!response.ok) {
-    throw new Error(`Worker ${path} failed with status ${response.status}.`);
+    // The Worker explains the refusal in the body, so it is kept in the log.
+    const detail = (await response.text()).slice(0, 200);
+    throw new Error(`Worker ${path} failed with status ${response.status}. ${detail}`);
   }
   return response.json();
 }
