@@ -1,8 +1,8 @@
 # Open and partially complete items
 
-This file lists every item in the Solar Sizer scraper work that is open, partly built, blocked or deliberately deferred. Its source is the full export of the requirements session at `C:\Users\rotim\Desktop\solar-hardware-scraper-requirements-3.json`, which holds 3,091 messages from 2026-11-16 to 2026-11-17 and was read from the first message to the last. Every line was then checked against the code and the live database at `origin/main` commit `c2dfad6` on 2026-11-19. The rows that changed on a day carry the new date, and the rows that did not change keep the date from the day they were last checked.
+This file lists every item in the Solar Sizer scraper work that is open, partly built, blocked or deliberately deferred. Its source is the full export of the requirements session at `C:\Users\rotim\Desktop\solar-hardware-scraper-requirements-3.json`, which holds 3,091 messages from 2026-11-16 to 2026-11-17 and was read from the first message to the last. Every line was then checked against the code and the live database at `origin/main` commit `7e954ef` on 2026-11-19. The rows that changed on a day carry the new date, and the rows that did not change keep the date from the day they were last checked.
 
-The live database holds 2,118 offers, 645 candidates, 1,857 queued images with 314 pending, 19 run reports, 40 hardware rows that are all manual, and 2 price history rows. The first backfill batch ran on 2026-11-18 and added 1,037 new listings, the nightly Jiji job added 259 more, and the drainer is still reading their images.
+The live database holds 2,903 offers, 962 candidates, 2,898 queued images, 22 run reports, 40 hardware rows that are all manual, and 2 price history rows. The first backfill batch ran on 2026-11-18 and added 1,037 new listings, the nightly Jiji job added 259 more, and the daily backfill on 2026-11-19 added 785. The image queue is empty and no row is left in the failed state.
 
 ## 1. What blocks the pipeline today
 
@@ -11,7 +11,7 @@ The live database holds 2,118 offers, 645 candidates, 1,857 queued images with 3
 | The D1 daily write cap | Every write from the scraper and the drainer | The `modelmap` sync must write less than the account budget | Fixed and measured. The `modelmap` Worker cron changed from every four hours to once a day, so its rows fell from 130,564 in 18 hours to 39,833 in 24 hours. The cap reset at 00:00 UTC on 2026-11-18 and the first backfill batch ran without a cap error. The Worker now writes only the candidates that changed, which removes about 12,000 rows a day. |
 | The Jiji crawl runs on this PC | Jiji offers stop when the PC is off or the user is signed out | The owner, or a paid host | Open by choice. Jiji refuses the GitHub runner address, so the crawl runs from the `Solar Sizer Jiji Scrape` task. The task only runs while the owner is signed on. |
 | The Kapso alert window | WhatsApp alerts only arrive for 24 hours after the owner replies to the Sandbox number | The owner | Open. The Sandbox number cannot have a template because it needs a production number and the Facebook login fails. The GitHub issue always works. The backfill alert on 2026-11-18 was refused with `Re-engagement message`. |
-| The backfill | The full list of about 87,000 Jiji adverts is not in the database | The owner decides the batch size | The first batch ran on 2026-11-18 and added 1,037 new listings, and the nightly Jiji job added 259 more. The next batch waits for the drainer to empty the queue, because the daily cap covers the crawl and the images together. |
+| The backfill | The full list of about 87,000 Jiji adverts is not in the database | The owner decides the batch size | The first batch ran on 2026-11-18 and added 1,037 new listings, the nightly Jiji job added 259 more, and the daily backfill on 2026-11-19 added 785. The next batch waits for the drainer to empty the queue, because the daily cap covers the crawl and the images together. |
 | The SolarShopNigeria brand slugs | The brand filter covers only one brand | The owner confirms the slugs on the first crawl | Measured on 2026-11-18. The shop holds 13 products and every one of them is already in the pool, so the brand paths add nothing today. |
 | The Jiji feed page limit | One path cannot be walked past 1,000 pages, so 20,000 of the 66,220 adverts on the wide path are unreachable by the feed | Nobody yet | Open and measured. The two battery paths hold fewer than 20,000 adverts each, so they are fully reachable. |
 
@@ -140,7 +140,7 @@ The free plan allows 100,000 rows written a day for the whole account, and `mode
 
 The design document sets four gates after four weeks of daily runs: 150 canonical products with two or more qualified offers, 90 percent of a 30-offer spot check correct on brand, model and price, 95 percent of published prices re-checked within 48 hours, and 80 percent of new candidates approved without edits. Two hard stops sit above them: any wrong merge of two different products counts as a defect, and any published panel whose Voc sits below the real datasheet value blocks the release.
 
-None of the gates can be measured yet, because no price has been published and the audit sampler is not built. The backfill has run once and the nightly Jiji job has run once, so the pool holds 2,118 offers and 645 candidates, which gives the sampler something to measure when it is built.
+None of the gates can be measured yet, because no price has been published and the audit sampler is not built. The backfill has run twice and the nightly Jiji job has run once, so the pool holds 2,903 offers and 962 candidates, which gives the sampler something to measure when it is built.
 
 ## 11. The first backfill batch on 2026-11-18
 
@@ -153,19 +153,25 @@ The batch ran from this machine as the one-off task `Solar Sizer Backfill`, beca
 | SolarShopNigeria | 4 | 4 | 0 | ok, because the shop holds 13 products and every one of them was already in the pool |
 | Total | | | 1,037 | |
 
-The live database after the batch, measured at 22:30 local time on 2026-11-18, and again at 11:15 local time on 2026-11-19:
+The live database after the batch, measured at 22:30 local time on 2026-11-18, and again at 16:40 local time on 2026-11-19 after the second batch drained:
 
 | Item | Count |
 | --- | --- |
-| Offers | 1,860 after the batch, which are 1,535 from Jiji, 312 from Jumia and 13 from SolarShopNigeria. The pool holds 2,118 on 2026-11-19. |
-| Candidates | 544 after the batch, and 645 on 2026-11-19 |
-| Queued images | 1,857, which are 354 done, 6 failed and 1,497 pending. On 2026-11-19 they are 1,574 done, 0 failed and 314 pending. |
-| Run reports | 16 after the batch, and 19 on 2026-11-19 |
+| Offers | 1,860 after the batch, which are 1,535 from Jiji, 312 from Jumia and 13 from SolarShopNigeria. The pool holds 2,903 on 2026-11-19. |
+| Candidates | 544 after the batch, and 962 on 2026-11-19 |
+| Queued images | 1,857, which are 354 done, 6 failed and 1,497 pending. On 2026-11-19 they are 2,898 done, 0 failed and 0 pending. |
+| Run reports | 16 after the batch, and 22 on 2026-11-19 |
 | Manual hardware rows | 40, all of them untouched |
 | Price history rows | 2 |
 | Database size | 5.8 MB of the 500 MB free limit |
 
 The drainer reads about 3.6 images a minute, so the first batch needs about 7 hours to drain fully. Of 1,155 attempts, 39 failed, which is 3.4 percent. The failures were 31 image downloads that did not reach the source site, 12 gateway errors with status 502, 8 image reads that ran out of time, and 2 results that the Worker refused with status 400 because the model sent a field the validator does not allow. Every failed row was tried again, and no row is left in the failed state.
+
+### The zero that the model gives for a hidden value
+
+On 2026-11-19 the daily batch added 785 new listings, and 41 image reads failed with status 400. The reason was the same for every one of them. The model writes zero for a value it cannot see in the picture, so a battery picture came back with zero watts and zero efficiency, and the Worker refused any zero. The drainer read the same picture three times and gave up, and 25 rows were left in the failed state.
+
+The validator now drops a zero the way it drops a missing value, so the other readings of the answer are kept, and the drainer keeps the refusal message of the Worker in its log so a refusal can be read instead of guessed. The 25 rows were put back to pending so the fixed Worker could read them again, and the queue drained to zero failed rows.
 
 ### What the daily cap allows
 
@@ -174,6 +180,8 @@ One new listing costs about 15 rows for the crawl and about 14 more when the dra
 The Jiji paths hold 87,029 adverts, and the feed reaches 40,809 of them at most because the wide path stops at 1,000 pages. At 1,750 listings a day the reachable adverts need about 24 days, and all of them need about 50 days.
 
 The nightly Jiji task on 2026-11-18 ran at 23:30 local time and found 259 new listings with 349 pages and 600 requests. Its sweep checked 300 offers. The task sends its own alert when it fails, so it is not part of the watchdog.
+
+The daily backfill task on 2026-11-19 waited for the queue to drain until 12:03, then crawled. Its Jiji leg used 1,600 requests for 854 pages and found 752 new listings, its Jumia leg used 84 requests for 51 pages and found 33, and its SolarShopNigeria leg used 4 requests for 4 pages and found none. The pool holds 2,903 offers and 962 candidates after it.
 
 ### The candidate write saving
 

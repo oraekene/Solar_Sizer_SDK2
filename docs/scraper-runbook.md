@@ -4,10 +4,10 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 ## What exists now
 
-| Item | Where | State on 2026-11-16 |
+| Item | Where | State on 2026-11-19 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #32, the candidate write saving. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 2,118 offers, 645 candidates, 1,857 queued images and the 40 manual rows. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #34, the zero reading fix. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 2,903 offers, 962 candidates, 2,898 queued images and the 40 manual rows. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | FreeLLMAPI gateway | This machine | Running on `127.0.0.1:3001`. The task `FreeLLMAPI Router` starts it at every logon. The drainer reads the images through it. |
@@ -44,7 +44,26 @@ The first backfill batch ran on 2026-11-18 from this machine, because the Jiji p
 
 The database holds 2,118 offers after the batch and the nightly Jiji job, with 645 candidates, 1,857 queued images and the 40 manual rows untouched.
 
+## The second backfill batch
+
+The daily backfill task ran the second batch on 2026-11-19. The task waits for the image queue to drain before it crawls, because the daily D1 row cap covers the crawl and the images together. The queue was empty at 12:03 local time, and the task crawled after that.
+
+| Leg | Requests | Pages | New listings | Run status |
+| --- | --- | --- | --- | --- |
+| Jiji | 1,600 | 854 | 752 | partial, because the request budget ran out |
+| Jumia | 84 | 51 | 33 | ok |
+| SolarShopNigeria | 4 | 4 | 0 | ok, because the shop holds 13 products and every one of them was already in the pool |
+| Total | | | 785 | |
+
+The database holds 2,903 offers, 962 candidates, 2,898 queued images, 22 run reports and the 40 manual rows untouched. The image queue is empty and no row is left in the failed state.
+
 The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs about 7 hours to drain fully. Of 1,155 attempts, 39 failed, which is 3.4 percent. The failures were image downloads that did not reach the source site, gateway errors with status 502, image reads that ran out of time, and a few results that the Worker refuses with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
+
+### The zero that the model gives for a hidden value
+
+On 2026-11-19 the daily batch added 785 new listings, and 41 image reads failed with status 400. Every one of them had the same cause. The model writes zero for a value it cannot see in the picture, so a battery picture came back with zero watts and zero efficiency, and the Worker refused any zero. The drainer read the same picture three times and gave up, and 25 rows were left in the failed state.
+
+The validator now drops a zero the way it drops a missing value, so the other readings of the answer are kept. The drainer also keeps the refusal message of the Worker in its log, so a refusal can be read instead of guessed. The 25 rows were put back to pending so the fixed Worker could read them again, and the queue drained to zero failed rows.
 
 Run the next batch only when the queue holds no pending rows. The drain costs more rows than the crawl, so a batch that runs while the queue is full spends the day on images.
 
