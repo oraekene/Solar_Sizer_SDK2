@@ -6,8 +6,8 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 | Item | Where | State on 2026-11-16 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #24, the runner source split. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 1,860 offers, 544 candidates, 1,857 queued images and the 40 manual rows. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #32, the candidate write saving. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 2,118 offers, 645 candidates, 1,857 queued images and the 40 manual rows. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | FreeLLMAPI gateway | This machine | Running on `127.0.0.1:3001`. The task `FreeLLMAPI Router` starts it at every logon. The drainer reads the images through it. |
@@ -22,7 +22,7 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 ## What is open now
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
-2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. See Step 5.
+2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. It runs only while the owner is signed on, so the image queue grows when the PC is off. See Step 5.
 3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. The cap reset on 2026-11-18 and the first backfill batch ran without a cap error. See the daily row budget below.
 4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
 5. The full list of open and partly built items is in `docs/scraper-open-items.md`.
@@ -42,7 +42,7 @@ The first backfill batch ran on 2026-11-18 from this machine, because the Jiji p
 | SolarShopNigeria | 4 | 4 | 0 | ok, because the shop holds 13 products and every one of them was already in the pool |
 | Total | | | 1,037 | |
 
-The database holds 1,860 offers after the batch, with 544 candidates, 1,857 queued images and the 40 manual rows untouched.
+The database holds 2,118 offers after the batch and the nightly Jiji job, with 645 candidates, 1,857 queued images and the 40 manual rows untouched.
 
 The drainer reads about 3.6 images a minute, so a batch of 1,000 listings needs about 7 hours to drain fully. Of 1,155 attempts, 39 failed, which is 3.4 percent. The failures were image downloads that did not reach the source site, gateway errors with status 502, image reads that ran out of time, and a few results that the Worker refuses with status 400 because the model sent a field the validator does not allow. A failed row is tried again up to three times.
 
@@ -68,6 +68,8 @@ The task `Solar Sizer Backfill` runs every day at 06:00 local time. It waits for
 The first batch gave 867 Jiji listings from 1,800 requests, so the daily batch of 1,600 requests gives about 770 Jiji listings and about 280 Jumia listings, which is about 1,050 listings a day.
 
 The count of pending images comes from the database through wrangler, because the Worker queue route claims the rows it returns. A count that cannot be read counts as not empty, so the batch waits rather than writing blind. The task skips the batch and sends an alert when the queue is still full after the wait.
+
+On 2026-11-19 the task started at 10:17 instead of 06:00, because the PC was off while the drainer could not run. It waited for the queue, which fell from 704 pending images to 314 over the first hour.
 
 ```powershell
 Get-ScheduledTask -TaskName 'Solar Sizer Backfill'
@@ -102,6 +104,8 @@ The free D1 plan allows 100,000 rows written a day for the whole account. The ca
 | Draining one queued image | 14, which is 4 for the queue row and 10 for the offer row |
 
 So one new listing costs about 15 rows written, and about 29 rows over its life when the drainer reads the image.
+
+Every run used to send every candidate to the Worker, and the upsert wrote the row again even when the values were the same. The free plan counts that as a write, so one candidate cost about 3.3 rows every time. With about six runs a day and about 600 candidates, that was about 12,000 rows a day, and it grew as the pool grew. The route now reads the stored rows first and writes only the candidates whose values changed, so an unchanged candidate costs nothing. A candidate that a human decided is kept, so a rejected, duplicate, approved or published row is not changed by a later run.
 
 The number of batches per day does not raise the coverage. The daily row budget is the limit, so a day with three batches covers the same listings as a day with one. Three smaller batches waste less when one of them fails, so use three batches once the daily ceiling is known.
 
@@ -413,6 +417,8 @@ The host runs the enrichment drainer. It pulls work from the Worker over HTTPS, 
 
    The task runs as the signed in user, so it needs no administrator rights. It runs only while that user is logged on.
 
+The drainer therefore stops when the PC is off or the owner signs out, and the image queue grows. The PC was switched off at 09:57 on 2026-11-19, and the queue grew by about 700 rows before the task started again at 10:18. The daily backfill task waits for the queue to drain, so it skipped the 06:00 run on that day and started waiting at 10:17 instead. A paid host that never sleeps removes this limit.
+
 3. The drainer needs the gateway. The task `FreeLLMAPI Router` starts it at every logon on the same loopback port.
 
    ```powershell
@@ -599,6 +605,8 @@ A candidate with no fresh qualified offer is refused with `stale-candidate`. Run
 2. Send the Worker alert once with the test in Step 6. This proves the Kapso path without waiting for a stale sweep.
 
 3. If a real stale sweep happens, the watchdog creates one issue titled `Scraper sweep did not run`, adds a comment on later failures, sends the WhatsApp alert and exits red. It never closes the issue automatically; close it by hand after recovery.
+
+The watchdog failed on 2026-11-18 because the last sweep with the status `ok` was the one on 2026-11-16. It opened issue 25. The cause was one Jumia listing that had gone: its page answers with the category page, so the sweep skipped it and every later sweep was `partial`. The adapter now reports that page as status 404, which counts as a strike, and the sweep on 2026-11-19 finished with the status `ok`, so issue 25 was closed by hand.
 
 ## Rotating a secret
 
