@@ -246,6 +246,27 @@ async function main() {
   assert.equal(stale.body.error, 'stale-candidate');
   pass('a candidate without offers cannot publish');
 
+  // A candidate that did not change is not written again, because the daily
+  // row budget counts a row that holds the same values as a write.
+  const skipCandidate = { ...candidate, id: 'candidate:route-check-skip' };
+  const firstWrite = await api('/api/scraper/candidates', {
+    method: 'POST',
+    body: JSON.stringify({ candidates: [skipCandidate] }),
+  });
+  assert.equal(firstWrite.status, 200);
+  assert.equal(firstWrite.body.written, 1, 'a new candidate must be written');
+  const secondWrite = await api('/api/scraper/candidates', {
+    method: 'POST',
+    body: JSON.stringify({ candidates: [skipCandidate] }),
+  });
+  assert.equal(secondWrite.body.written, 0, 'the same candidate must not be written again');
+  const changedWrite = await api('/api/scraper/candidates', {
+    method: 'POST',
+    body: JSON.stringify({ candidates: [{ ...skipCandidate, proposed_price: 110_000 }] }),
+  });
+  assert.equal(changedWrite.body.written, 1, 'a changed candidate must be written');
+  pass('a candidate that did not change is not written again');
+
   console.log(`\n${checks.length} checks passed against ${WORKER_URL}.`);
 }
 

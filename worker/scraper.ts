@@ -131,6 +131,51 @@ function number(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+// The status of a candidate that a human has already decided. The upsert
+// keeps it.
+const KEPT_CANDIDATE_STATUSES = ['rejected', 'duplicate', 'approved', 'published'];
+
+// The values that the candidate upsert writes. The free plan counts a row
+// that holds the same values as a write, and every run sends every candidate,
+// so the route compares these with the stored row before it writes.
+export function candidateValues(candidate: Record<string, unknown>): Record<string, unknown> {
+  return {
+    canonical_id: text(candidate.canonical_id) || null,
+    bucket_key: text(candidate.bucket_key) || null,
+    current_hardware_row: text(candidate.current_hardware_row) || null,
+    product_type: text(candidate.product_type, 'panel'),
+    status: text(candidate.status, 'new'),
+    proposed_data: JSON.stringify(parseJson(candidate.proposed_data)),
+    proposed_price: number(candidate.proposed_price),
+    current_price: number(candidate.current_price),
+    offer_ids: JSON.stringify(Array.isArray(candidate.offer_ids) ? candidate.offer_ids : []),
+    source_urls: JSON.stringify(Array.isArray(candidate.source_urls) ? candidate.source_urls : []),
+    provenance: JSON.stringify(Array.isArray(candidate.provenance) ? candidate.provenance : []),
+    risk_flags: JSON.stringify(Array.isArray(candidate.risk_flags) ? candidate.risk_flags : []),
+  };
+}
+
+// True when the stored row already holds the values that the upsert would
+// write, so the row does not need to be written again.
+export function candidateUnchanged(
+  before: Record<string, unknown> | null,
+  values: Record<string, unknown>,
+): boolean {
+  if (!before) return false;
+  const storedStatus = text(before.status);
+  const keptStatus = KEPT_CANDIDATE_STATUSES.includes(storedStatus) ? storedStatus : null;
+  for (const [field, value] of Object.entries(values)) {
+    const expected = field === 'status' && keptStatus ? keptStatus : value;
+    const stored = before[field];
+    if (stored === null || stored === undefined) {
+      if (expected !== null && expected !== undefined) return false;
+      continue;
+    }
+    if (String(stored) !== String(expected)) return false;
+  }
+  return true;
+}
+
 const ENRICHMENT_NUMERIC_FIELDS = new Set([
   'watts',
   'voc',
@@ -622,6 +667,27 @@ export async function handleScraperRoute(
     if (candidates.length === 0) return badRequest('No candidates in the request.');
     if (candidates.length > 40) return badRequest('A candidate request can hold at most 40 items.');
 
+    // The stored rows are read first, so a candidate that did not change is
+    // not written again.
+    const ids = candidates
+      .map((raw) => text((raw as Record<string, unknown>).id))
+      .filter(Boolean);
+    const stored = new Map<string, Record<string, unknown>>();
+    if (ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      const rows = await env.DB
+        .prepare(
+          `SELECT id, canonical_id, bucket_key, current_hardware_row, product_type, status,
+                  proposed_data, proposed_price, current_price, offer_ids, source_urls,
+                  provenance, risk_flags
+           FROM hardware_candidates WHERE id IN (${placeholders})`,
+        )
+        .bind(...ids)
+        .all<Record<string, unknown>>();
+      for (const row of rows.results ?? []) stored.set(text(row.id), row);
+    }
+
+    let written = 0;
     for (const raw of candidates) {
       const candidate = raw as Record<string, unknown>;
       const id = text(candidate.id);
@@ -629,6 +695,9 @@ export async function handleScraperRoute(
 
       const status = text(candidate.status, 'new');
       if (!isCandidateStatus(status)) return badRequest(`Unknown candidate status: ${status}`);
+
+      const values = candidateValues(candidate);
+      if (candidateUnchanged(stored.get(id) ?? null, values)) continue;
 
       await env.DB
         .prepare(
@@ -658,27 +727,28 @@ export async function handleScraperRoute(
         )
         .bind(
           id,
-          text(candidate.canonical_id) || null,
-          text(candidate.bucket_key) || null,
-          text(candidate.current_hardware_row) || null,
-          text(candidate.product_type, 'panel'),
-          status,
-          JSON.stringify(parseJson(candidate.proposed_data)),
-          number(candidate.proposed_price),
-          number(candidate.current_price),
-          JSON.stringify(Array.isArray(candidate.offer_ids) ? candidate.offer_ids : []),
-          JSON.stringify(Array.isArray(candidate.source_urls) ? candidate.source_urls : []),
-          JSON.stringify(Array.isArray(candidate.provenance) ? candidate.provenance : []),
-          JSON.stringify(Array.isArray(candidate.risk_flags) ? candidate.risk_flags : []),
+          values.canonical_id,
+          values.bucket_key,
+          values.current_hardware_row,
+          values.product_type,
+          values.status,
+          values.proposed_data,
+          values.proposed_price,
+          values.current_price,
+          values.offer_ids,
+          values.source_urls,
+          values.provenance,
+          values.risk_flags,
           text(candidate.rejected_with_reason) || null,
           text(candidate.reviewer) || null,
           candidate.reviewed_at == null ? null : text(candidate.reviewed_at),
           text(candidate.published_hardware_id) || null,
         )
         .run();
+      written += 1;
     }
 
-    return json({ success: true, count: candidates.length });
+    return json({ success: true, count: candidates.length, written });
   }
 
   if (pathname === '/api/scraper/candidates' && method === 'GET') {
