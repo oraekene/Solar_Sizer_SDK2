@@ -147,23 +147,25 @@ async function readSpecs(dataUrl) {
 }
 
 async function handle(item) {
+  // The picture facts are read before the model call, because reading a hash
+  // needs no provider. A gateway failure then costs only the specs, and the
+  // hash and the thumbnail still reach the Worker.
+  let facts = { phash: '', thumb: '' };
+  let dataUrl = null;
   try {
-    const { bytes, dataUrl } = await fetchImage(item.image_url);
-    const result = await readSpecs(dataUrl);
-    // The hash and the thumbnail are a bonus. A host without Pillow still
-    // sends the specifications.
-    let phash = '';
-    let thumb = '';
+    const image = await fetchImage(item.image_url);
+    dataUrl = image.dataUrl;
     try {
-      const facts = await readImageFacts(bytes);
-      phash = facts.phash;
-      thumb = facts.thumb;
+      facts = await readImageFacts(image.bytes);
     } catch (error) {
+      // A host without Pillow still reads the specs.
       console.log(`queue ${item.id} has no image hash: ${error instanceof Error ? error.message : String(error)}`);
     }
+
+    const result = await readSpecs(dataUrl);
     await worker(`/api/scraper/queue/${encodeURIComponent(item.id)}`, {
       method: 'POST',
-      body: JSON.stringify({ status: 'done', result, phash, thumb }),
+      body: JSON.stringify({ status: 'done', result, ...facts }),
     });
     console.log(`queue ${item.id} done`);
   } catch (error) {
@@ -171,7 +173,7 @@ async function handle(item) {
     try {
       await worker(`/api/scraper/queue/${encodeURIComponent(item.id)}`, {
         method: 'POST',
-        body: JSON.stringify({ status: 'failed', error: message }),
+        body: JSON.stringify({ status: 'failed', error: message, ...facts }),
       });
     } catch {
       // The Worker is down, so the queue row keeps its state and the next
