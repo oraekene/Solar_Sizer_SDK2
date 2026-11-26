@@ -28,6 +28,7 @@ export type OfferPayload = {
   raw_payload_at?: string | null;
   image_url?: string | null;
   image_hash?: string | null;
+  image_phash?: string | null;
   price_ngn?: number | null;
   price_ngn_rounded?: number | null;
   fx_rate?: number | null;
@@ -78,6 +79,7 @@ export function toMergeOffer(offer: OfferPayload): MergeOffer {
     trust_tier: offer.trust_tier,
     seller_id: offer.seller_id,
     image_hash: offer.image_hash ?? null,
+    image_phash: offer.image_phash ?? null,
     unit_basis: offer.unit_basis,
     unit_quantity: offer.unit_quantity,
     condition: offer.condition,
@@ -109,6 +111,7 @@ export function rowToPayload(row: WorkerOfferRow): OfferPayload {
     raw_payload: row.raw_payload ?? {},
     raw_payload_at: row.raw_payload_at,
     image_hash: row.image_hash,
+    image_phash: row.image_phash,
     image_url: typeof row.trading_signals.image_url === 'string' ? row.trading_signals.image_url : null,
     price_ngn: row.price_ngn,
     price_ngn_rounded: row.price_ngn_rounded,
@@ -198,11 +201,13 @@ export async function rebuildAndPublish(
   },
 ): Promise<RebuildResult> {
   const hardware = await client.listHardware();
+  const thresholds = await client.thresholds();
   const convertedPool = options.pool.map((offer) => applyFxRate(offer, options.fx));
   const convertedChanged = options.changed.map((offer) => applyFxRate(offer, options.fx));
   const { proposals, excluded, cross_posts } = proposeCandidates(convertedPool.map(toMergeOffer), {
     aliases: options.aliases,
     hardware,
+    thresholds,
   });
   const crossPostSignals = applyCrossPostSignals(convertedPool, cross_posts);
   const finalPool = crossPostSignals.pool;

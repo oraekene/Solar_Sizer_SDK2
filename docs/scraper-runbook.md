@@ -4,17 +4,18 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 ## What exists now
 
-| Item | Where | State on 2026-11-19 |
+| Item | Where | State on 2026-11-26 |
 | --- | --- | --- |
-| Worker | `https://sdk2.solarsizer.workers.dev` | Running the current scraper code. Every push to `main` deploys it. The last code change was PR #34, the zero reading fix. |
-| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0012` applied on 2026-11-15. It holds 2,903 offers, 962 candidates, 2,898 queued images and the 40 manual rows. |
+| Worker | `https://sdk2.solarsizer.workers.dev` | Running the code of 2026-11-26, which holds the trust thresholds, the dashboard, the archive promotion and the image hash. Every push to `main` deploys it. |
+| D1 database | `solar-sizer-sdk2`, id `5abe0992-246a-43a9-aaf1-06c89c3d5872` | Migrations `0001` to `0013` applied. `0013` was applied by hand on 2026-11-26, because the daily row write cap blocked the deploy workflow. The tables were measured on 2026-11-26: 3,796 offers, 1,239 candidates, 3,485 queued images, 32 price rows, 40 manual rows, 19 products and 54 devices. |
 | `scraper-alert` label | `oraekene/Solar_Sizer_SDK2` | Created. |
 | Kapso command line tool | This machine | Installed, not logged in. |
 | FreeLLMAPI gateway | This machine | Running on `127.0.0.1:3001`. The task `FreeLLMAPI Router` starts it at every logon. The drainer reads the images through it. |
 | Fly.io command line tool | This machine | Installed at `C:\Users\rotim\.fly\bin\flyctl.exe`. Not used. The owner cannot pay for a plan, so the host is this machine. |
 | `fly.toml` | Repository root | Written and committed. It holds the app name, the region, the volume and the process. It is only for a future paid plan. |
 | `Solar Sizer Jiji Scrape` task | This machine | Runs every day at 23:30 local time. It crawls Jiji and writes to the Worker. |
-| `Solar Sizer Enrichment Drainer` task | This machine | Runs the image drainer at every logon. It reads the gateway key from the local gateway database and writes the result back to the Worker. |
+| `Solar Sizer Enrichment Drainer` task | This machine | Runs the image drainer at every logon. It reads the gateway key from the local gateway database and writes the result back to the Worker. It also runs the image hash script in Step 5. |
+| Pillow 13.0.0 | This machine | Installed in Python 3.14 on 2026-11-17. `scraper/host/image_hash.py` uses it to compute the difference hash and the thumbnail of one picture. |
 | Host secrets file | `C:\Users\rotim\AppData\Local\Temp\opencode\host-secrets.env` | Prepared on 2026-11-16 with `ENCRYPTION_KEY`, `FREEAPI_CONFIG_JSON`, `ADMIN_PASSWORD` and `WORKER_URL`. It stays outside the repository. |
 | GitHub Actions secrets | `oraekene/Solar_Sizer_SDK2` | `WORKER_URL`, `ADMIN_PASSWORD`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are set. The deploy workflow passed on 2026-11-15. |
 | Worker secrets | Cloudflare | `ADMIN_PASSWORD` holds the owner's value. `KAPSO_API_KEY`, `KAPSO_PHONE_NUMBER_ID` and `KAPSO_ALERT_TO` are set. `KAPSO_TEMPLATE_NAME` is optional. |
@@ -23,9 +24,11 @@ This runbook lists the accounts, secrets and checks that the hardware scraper ne
 
 1. The WhatsApp alert can only reach the owner inside the 24 hour window that a reply to the Sandbox number opens. The GitHub issue always works. See Step 6.
 2. The host is this machine. The task `Solar Sizer Enrichment Drainer` starts the drainer at every logon, and it calls the local gateway on `127.0.0.1:3001`. It runs only while the owner is signed on, so the image queue grows when the PC is off. See Step 5.
-3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. The cap reset on 2026-11-18 and the first backfill batch ran without a cap error. See the daily row budget below.
+3. The free D1 plan allows 100,000 rows written a day for the whole account, and `modelmap` alone used 130,564 rows in 18 hours on 2026-11-17. Its cron now runs once a day, so the scraper can write again after 00:00 UTC. The owner chose two or three daily batches inside that cap, so no paid plan is bought. See the plan below.
 4. Jiji answers the GitHub runner with a Cloudflare challenge on every path, so the runner holds no Jiji offer. This machine reaches Jiji, so the Jiji crawl runs here. See Step 4b.
-5. The full list of open and partly built items is in `docs/scraper-open-items.md`.
+5. Migration `0013` was applied by hand on 2026-11-26, so it is no longer waiting on the cap. A future migration still waits for the cap to reset.
+6. The four internet prices below were chosen from the catalogue and are not from a confirmed price list. Confirm them in the Hardware DB.
+7. The full list of open and partly built items is in `docs/scraper-open-items.md`.
 
 ## The first live crawl
 
@@ -126,7 +129,7 @@ So one new listing costs about 15 rows written, and about 29 rows over its life 
 
 Every run used to send every candidate to the Worker, and the upsert wrote the row again even when the values were the same. The free plan counts that as a write, so one candidate cost about 3.3 rows every time. With about six runs a day and about 600 candidates, that was about 12,000 rows a day, and it grew as the pool grew. The route now reads the stored rows first and writes only the candidates whose values changed, so an unchanged candidate costs nothing. A candidate that a human decided is kept, so a rejected, duplicate, approved or published row is not changed by a later run.
 
-The number of batches per day does not raise the coverage. The daily row budget is the limit, so a day with three batches covers the same listings as a day with one. Three smaller batches waste less when one of them fails, so use three batches once the daily ceiling is known.
+The number of batches per day does not raise the coverage. The daily row budget is the limit, so a day with three batches covers the same listings as a day with one. Three smaller batches waste less when one of them fails, so use three batches once the daily ceiling is known. The owner chose on 2026-11-17 to run three batches a day instead of buying a paid D1 plan.
 
 ### What the Jiji feed gives
 
@@ -136,7 +139,7 @@ The feed answers with the sort order the Jiji web page uses. The adapter asks fo
 
 ### The batch settings
 
-One batch of 1,500 listings costs about 22,500 rows for the crawl and the same again for the images, which leaves room for the sweep, the drainer and the other three databases.
+One batch of 1,500 listings costs about 22,500 rows for the crawl and the same again for the images, which leaves room for the sweep, the drainer and the other three databases. Split the batch across three runs a day, because the cap is per day and not per run.
 
 ```powershell
 $env:SCRAPER_SOURCE_REQUEST_BUDGET = "3200"
@@ -307,13 +310,27 @@ npm run build
 npx wrangler deploy
 ```
 
-The three pending migrations are:
+The four pending migrations are:
 
 | Migration | What it adds |
 | --- | --- |
 | `0010_scraper_fx.sql` | `price_ngn`, `price_ngn_rounded`, `fx_rate`, `fx_rate_date` and `fx_source` on `hardware_offers`. |
 | `0011_scraper_payload_retention.sql` | `raw_payload_at`, backfilled from `scraped_at` or `created_at`. |
 | `0012_scraper_price_currency.sql` | A currency column on `price_history`, so an offer change keeps its quoted currency. |
+| `0013_scraper_thresholds_and_images.sql` | The `image_phash` and `image_thumb` columns on `hardware_offers`, the `scraper_thresholds` row in the settings table, the four device prices below, and the deletion of the four duplicate seeded products. |
+
+### The device prices migration 0013 writes
+
+The owner chose these values on 2026-11-17. They come from the catalogue and not from a confirmed price list, so confirm them and edit them in the Hardware DB.
+
+| Device | id | Price |
+| --- | --- | --- |
+| Wi-Fi Router | `d5` | 35,000 |
+| Cudy LT700 | `d17` | 65,000 |
+| Starlink Gen 2 | `d20` | 1,200,000 |
+| Starlink Gen 3 | `d21` | 1,800,000 |
+
+The migration also deletes the four duplicate internet products `p_int_1`, `p_int_4`, `p_h_7` and `p_h_8`. Their rows now live in the Internet Devices row of the Hardware DB, so a fresh database does not re-create them.
 
 If the deploy workflow runs first, skip this step. The workflow does the same work.
 
@@ -367,6 +384,41 @@ If the deploy workflow runs first, skip this step. The workflow does the same wo
    ```
 
 The first sweep checks nothing if the database has no offers yet. Run discovery first when the offers table is empty.
+
+### The trust thresholds
+
+The trust and review numbers live in the settings table under the key `scraper_thresholds`, so they change without a deploy. The Worker reads them and the runner reads them before a merge. A wrong value keeps the code default, so a bad setting cannot break a run.
+
+| Number | Default | What it decides |
+| --- | --- | --- |
+| `price_band` | 0.15 | A price inside this share of the current price publishes itself. |
+| `price_outlier_share` | 0.6 | A price below this share of the median is a bait price. |
+| `not_found_strikes` | 3 | The not-found checks that remove a listing. |
+| `unverified_after_days` | 14 | The days without a check after which an offer is unverified. |
+| `perceptual_hash_distance` | 8 | The Hamming distance at which two image hashes are the same picture. |
+
+```powershell
+curl.exe -sS -H "x-admin-key: $env:ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/thresholds"
+curl.exe -sS -X POST -H "x-admin-key: $env:ADMIN_PASSWORD" -H "content-type: application/json" `
+  -d '{"price_band":0.2}' "https://sdk2.solarsizer.workers.dev/api/scraper/thresholds"
+```
+
+### The dashboard
+
+The route reports the four-week gates without a manual query: coverage, freshness, the approval counts and a stratified audit sample.
+
+```powershell
+curl.exe -sS -H "x-admin-key: $env:ADMIN_PASSWORD" "https://sdk2.solarsizer.workers.dev/api/scraper/dashboard?sample=30"
+```
+
+### The archive promotion
+
+An archived offer with an ambiguity code can become a candidate again without a new fetch.
+
+```powershell
+curl.exe -sS -X POST -H "x-admin-key: $env:ADMIN_PASSWORD" -H "content-type: application/json" `
+  -d '{"offer_id":"<the offer id>"}' "https://sdk2.solarsizer.workers.dev/api/scraper/offers/promote"
+```
 
 ## Step 4b: Crawl Jiji from this machine
 
@@ -445,6 +497,24 @@ The drainer therefore stops when the PC is off or the owner signs out, and the i
    ```
 
 4. Confirm the drainer loop. The Worker queue is drained every 30 seconds, and the five images of one poll are read at the same time. A queued image gets a result, or an error that names the gateway call. If the gateway rejects the unified key, the drainer refreshes it once.
+
+### The image hash and the thumbnail
+
+Each drained image also gives the Worker a difference hash and a small JPEG thumbnail. The Worker stores them in `image_phash` and `image_thumb`. The hash lets the merge rules collapse a re-encoded copy of one photo, and the thumbnail lets the review screen show a picture of the offer. The merge collapses a copy only for the same seller on the same site, because two sellers often reuse a manufacturer photo.
+
+The hash needs Python with Pillow on this machine. It was installed on 2026-11-17 with this command.
+
+```powershell
+python -m pip install pillow
+```
+
+Verify the script with any image file. The same picture saved again gives the same hash, and a different picture gives a different hash.
+
+```powershell
+python scraper\host\image_hash.py <image file>
+```
+
+The drainer runs the script for every drained image. A missing Pillow costs only the hash and the thumbnail, so the enrichment still runs and the log line names the failure.
 
 ### The paid alternative
 

@@ -10,15 +10,16 @@
 
 import {
   buildDescription,
+  DEFAULT_THRESHOLDS,
   isCandidateStatus,
   isOfferStatus,
   isReasonCode,
   isTrustTier,
   missingSpecs,
-  NOT_FOUND_STRIKES,
   offerId,
-  UNVERIFIED_AFTER_DAYS,
+  readThresholds,
 } from '../scraper/rules.ts';
+import type { Thresholds } from '../scraper/rules.ts';
 
 export {
   CANDIDATE_STATUSES,
@@ -296,6 +297,7 @@ type PublishSupport = {
 export function isQualifiedPublishSupport(
   offer: PublishSupport,
   now = Date.now(),
+  thresholds: Thresholds = DEFAULT_THRESHOLDS,
 ): boolean {
   if (offer.status !== 'qualified' || offer.in_stock !== 'true') return false;
   if (offer.unit_basis !== 'piece' && offer.unit_basis !== 'derived') return false;
@@ -304,7 +306,15 @@ export function isQualifiedPublishSupport(
   const checked = Date.parse(offer.last_checked ?? '');
   if (Number.isNaN(checked)) return false;
   const age = now - checked;
-  return age >= -24 * 60 * 60 * 1000 && age <= UNVERIFIED_AFTER_DAYS * 24 * 60 * 60 * 1000;
+  return age >= -24 * 60 * 60 * 1000 && age <= thresholds.unverified_after_days * 24 * 60 * 60 * 1000;
+}
+
+/** The trust and review numbers, stored in the settings table. */
+async function loadThresholds(db: D1Database): Promise<Thresholds> {
+  const row = await db
+    .prepare("SELECT value FROM settings WHERE key = 'scraper_thresholds'")
+    .first<{ value: string | null }>();
+  return readThresholds(row?.value ? parseJson(row.value) : null);
 }
 
 export async function handleScraperRoute(
@@ -322,6 +332,28 @@ export async function handleScraperRoute(
     const startedAt = text(body.started_at, new Date().toISOString());
     const finishedAt = text(body.finished_at, new Date().toISOString());
 
+    // The report also carries the trust spread, the review counts and the
+    // enrichment queue, so the four-week gates can be read without a query.
+    const trustRows = await env.DB
+      .prepare('SELECT trust_tier, COUNT(*) AS count FROM hardware_offers GROUP BY trust_tier')
+      .all<{ trust_tier: string; count: number }>();
+    const approvalRows = await env.DB
+      .prepare('SELECT status, COUNT(*) AS count FROM hardware_candidates GROUP BY status')
+      .all<{ status: string; count: number }>();
+    const queueRows = await env.DB
+      .prepare('SELECT status, COUNT(*) AS count FROM scraper_queue GROUP BY status')
+      .all<{ status: string; count: number }>();
+
+    const report = {
+      ...(typeof body.report === 'object' && body.report ? body.report : {}),
+      trust: Object.fromEntries((trustRows.results ?? []).map((row) => [row.trust_tier, row.count])),
+      approvals: Object.fromEntries((approvalRows.results ?? []).map((row) => [row.status, row.count])),
+      enrichment: {
+        queue: Object.fromEntries((queueRows.results ?? []).map((row) => [row.status, row.count])),
+        model_calls: (queueRows.results ?? []).reduce((sum, row) => sum + row.count, 0),
+      },
+    };
+
     await env.DB
       .prepare(
         `INSERT INTO run_report (run_id, kind, status, sources, report, started_at, finished_at)
@@ -338,7 +370,7 @@ export async function handleScraperRoute(
         kind,
         status,
         JSON.stringify(sources),
-        JSON.stringify(body.report ?? {}),
+        JSON.stringify(report),
         startedAt,
         finishedAt,
       )
@@ -449,6 +481,160 @@ export async function handleScraperRoute(
     return json({ success: true, delivery: failure.state, detail: result.slice(0, 300) });
   }
 
+  // The four-week gates, read straight from the tables so no manual query is
+  // needed. The sample is a stratified draw the owner scores by hand.
+  if (pathname === '/api/scraper/dashboard' && method === 'GET') {
+    const url = new URL(request.url);
+    const sampleSize = Math.min(Number(url.searchParams.get('sample') ?? 30) || 30, 100);
+
+    const coverage = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN offers >= 2 THEN 1 ELSE 0 END) AS with_two_offers
+         FROM (SELECT canonical_id, COUNT(*) AS offers
+               FROM hardware_offers
+               WHERE canonical_id IS NOT NULL AND status = 'qualified'
+               GROUP BY canonical_id)`,
+      )
+      .first<{ total: number; with_two_offers: number }>();
+
+    const freshness = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN julianday('now') - julianday(replace(substr(last_checked, 1, 19), 'T', ' ')) <= 2 THEN 1 ELSE 0 END) AS fresh
+         FROM hardware_offers WHERE status = 'qualified'`,
+      )
+      .first<{ total: number; fresh: number }>();
+
+    const approvalRows = await env.DB
+      .prepare(
+        `SELECT status, COUNT(*) AS count,
+                SUM(CASE WHEN risk_flags = '[]' THEN 1 ELSE 0 END) AS without_risk_flags
+         FROM hardware_candidates GROUP BY status`,
+      )
+      .all<{ status: string; count: number; without_risk_flags: number }>();
+
+    const strata = await env.DB
+      .prepare(
+        `SELECT source_site, trust_tier, COUNT(*) AS count
+         FROM hardware_offers WHERE status = 'qualified'
+         GROUP BY source_site, trust_tier`,
+      )
+      .all<{ source_site: string; trust_tier: string; count: number }>();
+
+    // The stratified draw: every source and every trust tier gets a share of
+    // the sample, so one busy source cannot fill it alone.
+    const sample: Record<string, unknown>[] = [];
+    const groups = strata.results ?? [];
+    const totalOffers = groups.reduce((sum, group) => sum + group.count, 0);
+    for (const group of groups) {
+      if (sample.length >= sampleSize) break;
+      const take = Math.min(
+        sampleSize - sample.length,
+        Math.max(1, Math.round((group.count / Math.max(1, totalOffers)) * sampleSize)),
+      );
+      const rows = await env.DB
+        .prepare(
+          `SELECT id, source_site, source_listing_id, source_url, trust_tier, price, currency,
+                  canonical_id, stated_specs, last_checked
+           FROM hardware_offers
+           WHERE source_site = ? AND trust_tier = ? AND status = 'qualified'
+           ORDER BY RANDOM() LIMIT ?`,
+        )
+        .bind(group.source_site, group.trust_tier, take)
+        .all<Record<string, unknown>>();
+      for (const row of rows.results ?? []) {
+        sample.push({ ...row, stated_specs: parseJson(row.stated_specs) });
+      }
+    }
+
+    return json({
+      coverage: {
+        products: coverage?.total ?? 0,
+        products_with_two_offers: coverage?.with_two_offers ?? 0,
+      },
+      freshness: {
+        checked: freshness?.total ?? 0,
+        fresh_within_48h: freshness?.fresh ?? 0,
+        percent: freshness?.total ? Math.round(((freshness.fresh ?? 0) / freshness.total) * 100) : 0,
+      },
+      approvals: (approvalRows.results ?? []).map((row) => ({
+        status: row.status,
+        count: row.count,
+        without_risk_flags: row.without_risk_flags ?? 0,
+      })),
+      sample,
+    });
+  }
+
+  // An archived offer can be promoted into the review queue without a new
+  // crawl, so a listing that was held back is not lost.
+  if (pathname === '/api/scraper/offers/promote' && method === 'POST') {
+    const body = await readBody(request);
+    const offerId = text(body.offer_id);
+    if (!offerId) return badRequest('An offer id is required.');
+
+    const offer = await env.DB
+      .prepare('SELECT * FROM hardware_offers WHERE id = ?')
+      .bind(offerId)
+      .first<Record<string, unknown>>();
+    if (!offer) return badRequest('No offer with that id.');
+
+    const stated = parseJson(offer.stated_specs) as Record<string, unknown>;
+    const productType = stated.capacity_ah !== undefined || stated.battery_type !== undefined ? 'battery' : 'panel';
+    const candidateId = `sc-${offerId}`;
+
+    await env.DB
+      .prepare(
+        `INSERT INTO hardware_candidates (
+           id, canonical_id, bucket_key, current_hardware_row, product_type, status,
+           proposed_data, proposed_price, current_price, offer_ids, source_urls,
+           provenance, risk_flags
+         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(id) DO UPDATE SET
+           status = CASE
+             WHEN hardware_candidates.status IN ('rejected', 'duplicate', 'approved', 'published')
+               THEN hardware_candidates.status
+             ELSE 'pending_review'
+           END,
+           proposed_data = excluded.proposed_data,
+           offer_ids = excluded.offer_ids,
+           source_urls = excluded.source_urls,
+           risk_flags = excluded.risk_flags,
+           updated_at = datetime('now')`,
+      )
+      .bind(
+        candidateId,
+        text(offer.canonical_id) || null,
+        text(offer.bucket_key) || null,
+        null,
+        productType,
+        'pending_review',
+        JSON.stringify(stated),
+        number(offer.price),
+        number(offer.price),
+        JSON.stringify([offerId]),
+        JSON.stringify([offer.source_url]),
+        JSON.stringify([
+          { source: offer.source_site, listing_id: offer.source_listing_id, promoted: true },
+        ]),
+        JSON.stringify(['promoted_from_archive']),
+      )
+      .run();
+
+    // The offer leaves the archive, so the next sweep does not hold it back.
+    await env.DB
+      .prepare(
+        `UPDATE hardware_offers
+         SET status = 'qualified', reason_code = NULL, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .bind(offerId)
+      .run();
+
+    return json({ success: true, candidate_id: candidateId });
+  }
+
   if (pathname === '/api/scraper/offers/purge' && method === 'POST') {
     const result = await env.DB
       .prepare(
@@ -462,11 +648,34 @@ export async function handleScraperRoute(
     return json({ success: true, purged: result.meta?.changes ?? 0 });
   }
 
+  // The trust and review numbers live in the settings table, so the owner can
+  // change them without a deploy.
+  if (pathname === '/api/scraper/thresholds' && method === 'GET') {
+    return json(await loadThresholds(env.DB));
+  }
+
+  if (pathname === '/api/scraper/thresholds' && method === 'POST') {
+    const body = await readBody(request);
+    const thresholds = readThresholds(body.value ?? body);
+    await env.DB
+      .prepare(
+        `INSERT INTO settings (key, value, updated_at)
+         VALUES ('scraper_thresholds', ?, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET
+           value = excluded.value,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(JSON.stringify(thresholds))
+      .run();
+    return json(thresholds);
+  }
+
   if (pathname === '/api/scraper/offers' && method === 'GET') {
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get('limit') ?? 500) || 500, 5000);
     const offset = Math.max(Number(url.searchParams.get('offset') ?? 0) || 0, 0);
     const source = url.searchParams.get('source');
+    const thresholds = await loadThresholds(env.DB);
 
     // An offer with no successful check inside the staleness window leaves
     // the quoted set.
@@ -478,14 +687,15 @@ export async function handleScraperRoute(
            AND (last_checked IS NULL
              OR julianday(replace(substr(last_checked, 1, 19), 'T', ' ')) < julianday('now', ?))`,
       )
-      .bind(`-${UNVERIFIED_AFTER_DAYS} days`)
+      .bind(`-${thresholds.unverified_after_days} days`)
       .run();
 
     const columns =
       `id, source_site, source_listing_id, source_url, seller_id, seller_name, price, currency,
        price_ngn, price_ngn_rounded, fx_rate, fx_rate_date, fx_source,
        price_kind, unit_basis, unit_quantity, condition, in_stock, trust_tier, stated_specs,
-       trading_signals, raw_payload, raw_payload_at, image_hash, status, reason_code, not_found_strikes, last_checked,
+       trading_signals, raw_payload, raw_payload_at, image_hash, image_phash, image_thumb,
+       status, reason_code, not_found_strikes, last_checked,
        canonical_id,
        (SELECT COUNT(*) FROM hardware_offers duplicate
         WHERE duplicate.source_site = hardware_offers.source_site
@@ -524,6 +734,7 @@ export async function handleScraperRoute(
     const offers = Array.isArray(body.offers) ? body.offers : [];
     if (offers.length === 0) return badRequest('No offers in the request.');
     if (offers.length > 12) return badRequest('An offer request can hold at most 12 items.');
+    const thresholds = await loadThresholds(env.DB);
 
     for (const raw of offers) {
       const offer = raw as Record<string, unknown>;
@@ -542,9 +753,9 @@ export async function handleScraperRoute(
         return badRequest(`Unknown reason code: ${givenReason}`);
       }
 
-      // Three genuine not-found checks remove the listing from the catalogue.
+      // The not-found checks that remove the listing.
       const strikes = Math.max(0, number(offer.not_found_strikes) ?? 0);
-      const delisted = strikes >= NOT_FOUND_STRIKES;
+      const delisted = strikes >= thresholds.not_found_strikes;
       const status = delisted ? 'excluded' : givenStatus;
       const reasonCode = delisted ? 'listing_not_found' : givenReason;
 
@@ -563,8 +774,8 @@ export async function handleScraperRoute(
              seller_id, seller_name, price, currency, price_ngn, price_ngn_rounded,
              fx_rate, fx_rate_date, fx_source, price_kind, unit_basis, unit_quantity,
              condition, in_stock, trust_tier, stated_specs, trading_signals, raw_payload, raw_payload_at,
-             image_hash, status, reason_code, not_found_strikes, last_checked, scraped_at, updated_at
-           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             image_hash, image_phash, status, reason_code, not_found_strikes, last_checked, scraped_at, updated_at
+           ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(source_site, source_listing_id) DO UPDATE SET
              canonical_id = COALESCE(excluded.canonical_id, hardware_offers.canonical_id),
              bucket_key = COALESCE(excluded.bucket_key, hardware_offers.bucket_key),
@@ -586,6 +797,7 @@ export async function handleScraperRoute(
              raw_payload = excluded.raw_payload,
              raw_payload_at = excluded.raw_payload_at,
              image_hash = COALESCE(excluded.image_hash, hardware_offers.image_hash),
+             image_phash = COALESCE(excluded.image_phash, hardware_offers.image_phash),
              status = excluded.status,
              reason_code = excluded.reason_code,
              not_found_strikes = excluded.not_found_strikes,
@@ -620,6 +832,7 @@ export async function handleScraperRoute(
           JSON.stringify(parseJson(offer.raw_payload)),
           text(offer.raw_payload_at) || text(offer.scraped_at, new Date().toISOString()) || null,
           text(offer.image_hash) || null,
+          text(offer.image_phash) || null,
           status,
           reasonCode,
           strikes,
@@ -913,11 +1126,16 @@ export async function handleScraperRoute(
         last_checked: string | null;
       }>();
 
+    const thresholds = await loadThresholds(env.DB);
     const supportingOffers = (offers.results ?? []).filter((offer) =>
-      isQualifiedPublishSupport({
-        ...offer,
-        price: offer.price_ngn_rounded ?? offer.price,
-      }),
+      isQualifiedPublishSupport(
+        {
+          ...offer,
+          price: offer.price_ngn_rounded ?? offer.price,
+        },
+        Date.now(),
+        thresholds,
+      ),
     );
 
     // A candidate with no fresh qualified offer has no current price evidence.
@@ -1071,16 +1289,20 @@ export async function handleScraperRoute(
   if (pathname === '/api/scraper/queue' && method === 'GET') {
     const url = new URL(request.url);
     const limit = Math.min(Number(url.searchParams.get('limit') ?? 10) || 10, 50);
+    // The read uses the same rules as the claim below. A row that used every
+    // attempt is never offered again, so a full batch of exhausted rows
+    // cannot fill the limit and starve the rows that can still be claimed.
+    const claimable = `attempts < ?
+            AND (status = 'pending'
+                 OR (status = 'processing'
+                     AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
+                 OR (status = 'failed'
+                     AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes')))`;
     const rows = await env.DB
       .prepare(
         `SELECT id, offer_id, image_url, image_hash, attempts
          FROM scraper_queue
-         WHERE status = 'pending'
-            OR (status = 'processing'
-                AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
-            OR (status = 'failed'
-                AND attempts < ?
-                AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
+         WHERE ${claimable}
          ORDER BY created_at ASC
          LIMIT ?`,
       )
@@ -1098,12 +1320,7 @@ export async function handleScraperRoute(
         `UPDATE scraper_queue
          SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now')
          WHERE id IN (${placeholders})
-           AND attempts < ?
-           AND (status = 'pending'
-                OR (status = 'processing'
-                    AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes'))
-                OR (status = 'failed'
-                    AND julianday(updated_at) < julianday('now', '-${QUEUE_RETRY_WAIT_MINUTES} minutes')))
+           AND ${claimable}
          RETURNING id, offer_id, image_url, image_hash, attempts`,
       )
       .bind(...items.map((item) => item.id), MAX_QUEUE_ATTEMPTS)
@@ -1122,9 +1339,9 @@ export async function handleScraperRoute(
     }
 
     const item = await env.DB
-      .prepare('SELECT id, image_hash FROM scraper_queue WHERE id = ?')
+      .prepare('SELECT id, image_hash, offer_id FROM scraper_queue WHERE id = ?')
       .bind(queueId)
-      .first<{ id: string; image_hash: string }>();
+      .first<{ id: string; image_hash: string; offer_id: string }>();
     if (!item) return json({ error: 'Queue item not found.' }, 404);
 
     let result: Record<string, unknown> = {};
@@ -1153,6 +1370,24 @@ export async function handleScraperRoute(
 
     if (status === 'done') {
       await applyEnrichmentToHash(env.DB, item.image_hash, result);
+    }
+
+    // The host also sends the perceptual hash and a small thumbnail of the
+    // picture, so a re-encoded copy collapses and the review screen shows the
+    // image without opening the seller's page.
+    const phash = text(body.phash).toLowerCase();
+    const thumb = text(body.thumb);
+    if (phash || thumb) {
+      await env.DB
+        .prepare(
+          `UPDATE hardware_offers
+           SET image_phash = COALESCE(NULLIF(?, ''), image_phash),
+               image_thumb = COALESCE(NULLIF(?, ''), image_thumb),
+               updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .bind(phash, thumb, item.offer_id)
+        .run();
     }
     return json({ success: true });
   }

@@ -10,6 +10,12 @@ interface InteractiveBridgeProps {
   onChange?: (adjusted: Device[], deficit: number) => void;
 }
 
+/** The hours a window covers. A window that ends where it starts is empty. */
+const windowHours = (start: number, end: number): number => {
+  if (end === start) return 0;
+  return end > start ? end - start : 24 - start + end;
+};
+
 export default function InteractiveBridge({ devices, initialDeficit, onClose, onChange }: InteractiveBridgeProps) {
   // Local state for adjusted ranges
   const [adjustedDevices, setAdjustedDevices] = useState<Device[]>(() => 
@@ -23,11 +29,7 @@ export default function InteractiveBridge({ devices, initialDeficit, onClose, on
       const hourlyWh = orig.watts * orig.qty;
 
       const getHours = (ranges: TimeRange[]) => {
-        return ranges.reduce((acc, r) => {
-          const start = r.start;
-          const end = r.end;
-          return acc + (end > start ? end - start : 24 - start + end);
-        }, 0);
+        return ranges.reduce((acc, r) => acc + windowHours(r.start, r.end), 0);
       };
 
       const origHours = getHours(orig.ranges);
@@ -116,7 +118,7 @@ export default function InteractiveBridge({ devices, initialDeficit, onClose, on
                       className="absolute h-1.5 bg-emerald-500 rounded-full my-auto"
                       style={{
                         left: `${(range.start / 24) * 100}%`,
-                        width: `${((range.end >= range.start ? range.end - range.start : 24 - range.start + range.end) / 24) * 100}%`
+                        width: `${(windowHours(range.start, range.end) / 24) * 100}%`
                       }}
                     />
 

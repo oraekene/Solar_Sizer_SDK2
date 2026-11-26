@@ -7,12 +7,20 @@
 // docs/scraper-runbook.md.
 
 import { readUnifiedKey } from './unified-key.mjs';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const WORKER_URL = (process.env.WORKER_URL ?? '').replace(/\/$/, '');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD ?? '';
 const GATEWAY_URL = process.env.GATEWAY_URL ?? 'http://127.0.0.1:3001';
 const POLL_MS = Number(process.env.DRAINER_POLL_MS ?? 30000);
 const MODEL = process.env.DRAINER_MODEL ?? 'auto';
+// The Python that reads the picture for its perceptual hash and thumbnail.
+const PYTHON = process.env.IMAGE_HASH_PYTHON ?? 'python';
+const IMAGE_HASH_SCRIPT = fileURLToPath(new URL('./image_hash.py', import.meta.url));
 
 if (!WORKER_URL || !ADMIN_PASSWORD) {
   console.error('WORKER_URL and ADMIN_PASSWORD must be set.');
@@ -50,7 +58,7 @@ async function worker(path, init = {}) {
 }
 
 // The image becomes a data URL so the gateway does not fetch it again.
-async function imageAsDataUrl(imageUrl) {
+async function fetchImage(imageUrl) {
   const response = await fetch(imageUrl, {
     headers: { 'user-agent': 'SolarSizerBot/0.1 (+https://solarsizer.com/bot)' },
     signal: AbortSignal.timeout(30_000),
@@ -58,7 +66,35 @@ async function imageAsDataUrl(imageUrl) {
   if (!response.ok) throw new Error(`the image could not be fetched (status ${response.status})`);
   const type = response.headers.get('content-type') ?? 'image/jpeg';
   const bytes = Buffer.from(await response.arrayBuffer());
-  return `data:${type.split(';')[0]};base64,${bytes.toString('base64')}`;
+  return { bytes, dataUrl: `data:${type.split(';')[0]};base64,${bytes.toString('base64')}` };
+}
+
+/**
+ * The perceptual hash and the small thumbnail of the picture. The host has
+ * Python with Pillow for this. A missing Pillow only costs the hash, so the
+ * enrichment still runs.
+ */
+async function readImageFacts(bytes) {
+  const path = join(tmpdir(), `solar-image-${process.pid}-${Date.now()}.bin`);
+  try {
+    await writeFile(path, bytes);
+    const output = await new Promise((resolve, reject) => {
+      const child = spawn(PYTHON, [IMAGE_HASH_SCRIPT, path], { windowsHide: true });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve(stdout);
+        else reject(new Error(`image_hash.py failed with status ${code}: ${stderr.slice(0, 200)}`));
+      });
+    });
+    const parsed = JSON.parse(output);
+    return { phash: parsed.phash ?? '', thumb: parsed.thumb ?? '' };
+  } finally {
+    await unlink(path).catch(() => {});
+  }
 }
 
 // The model may wrap the JSON in a code block, so the braces are taken out.
@@ -70,13 +106,12 @@ function parseAnswer(content) {
   return JSON.parse(text.slice(start, end + 1));
 }
 
-async function readSpecs(imageUrl) {
+async function readSpecs(dataUrl) {
   if (!unifiedKey) {
     unifiedKey = readUnifiedKey();
     if (!unifiedKey) throw new Error('the gateway has no unified key yet');
   }
 
-  const dataUrl = await imageAsDataUrl(imageUrl);
   const response = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${unifiedKey}`, 'content-type': 'application/json' },
@@ -113,10 +148,22 @@ async function readSpecs(imageUrl) {
 
 async function handle(item) {
   try {
-    const result = await readSpecs(item.image_url);
+    const { bytes, dataUrl } = await fetchImage(item.image_url);
+    const result = await readSpecs(dataUrl);
+    // The hash and the thumbnail are a bonus. A host without Pillow still
+    // sends the specifications.
+    let phash = '';
+    let thumb = '';
+    try {
+      const facts = await readImageFacts(bytes);
+      phash = facts.phash;
+      thumb = facts.thumb;
+    } catch (error) {
+      console.log(`queue ${item.id} has no image hash: ${error instanceof Error ? error.message : String(error)}`);
+    }
     await worker(`/api/scraper/queue/${encodeURIComponent(item.id)}`, {
       method: 'POST',
-      body: JSON.stringify({ status: 'done', result }),
+      body: JSON.stringify({ status: 'done', result, phash, thumb }),
     });
     console.log(`queue ${item.id} done`);
   } catch (error) {

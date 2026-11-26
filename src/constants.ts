@@ -212,7 +212,7 @@ export const WIRING: WiringItem[] = [
     description: "Flexible copper cable for small inverter battery runs.",
     tooltip: "Carries DC power from battery to inverter. Sized for small 12V/24V systems up to ~1kVA.",
     price: 8500,
-    specs: { gauge: "4mm²", length: 5, type: "Copper" }
+    specs: { gauge: "4mm²", length: 5, type: "Copper", amps: 60 }
   },
   {
     id: "w-11",
@@ -222,7 +222,7 @@ export const WIRING: WiringItem[] = [
     description: "Heavier copper cable for 1kVA to 3kVA inverter battery connections.",
     tooltip: "Standard battery cable for 1kVA–3kVA inverters on 24V/48V banks. Handles ~60–80A.",
     price: 16500,
-    specs: { gauge: "10mm²", length: 5, type: "Copper" }
+    specs: { gauge: "10mm²", length: 5, type: "Copper", amps: 80 }
   },
   {
     id: "w-33",
@@ -232,7 +232,7 @@ export const WIRING: WiringItem[] = [
     description: "Battery cable for 3kVA to 5kVA inverters on 48V banks.",
     tooltip: "For 3kVA–5kVA inverters. Thicker copper reduces voltage drop on high-current 48V banks.",
     price: 24000,
-    specs: { gauge: "16mm²", length: 5, type: "Copper" }
+    specs: { gauge: "16mm²", length: 5, type: "Copper", amps: 100 }
   },
   {
     id: "w-34",
@@ -242,7 +242,7 @@ export const WIRING: WiringItem[] = [
     description: "Battery cable for 5kVA inverters drawing over 100A.",
     tooltip: "Required for 5kVA+ inverters pulling >100A. Minimizes loss and heat on battery cables.",
     price: 33000,
-    specs: { gauge: "25mm²", length: 5, type: "Copper" }
+    specs: { gauge: "25mm²", length: 5, type: "Copper", amps: 140 }
   },
   {
     id: "w-35",
@@ -252,7 +252,7 @@ export const WIRING: WiringItem[] = [
     description: "Heavy battery cable for 5kVA to 8kVA inverter banks.",
     tooltip: "Heavy-duty cable for 5–8kVA systems. Keeps voltage drop under 2% at full load.",
     price: 45000,
-    specs: { gauge: "35mm²", length: 5, type: "Copper" }
+    specs: { gauge: "35mm²", length: 5, type: "Copper", amps: 167 }
   },
   {
     id: "w-36",
@@ -262,7 +262,7 @@ export const WIRING: WiringItem[] = [
     description: "Heavy battery cable for 8kVA to 10kVA inverter banks.",
     tooltip: "For 8–10kVA parallel inverter banks. Thick copper for 150A+ continuous current.",
     price: 62000,
-    specs: { gauge: "50mm²", length: 5, type: "Copper" }
+    specs: { gauge: "50mm²", length: 5, type: "Copper", amps: 208 }
   },
   {
     id: "w-37",
@@ -272,7 +272,7 @@ export const WIRING: WiringItem[] = [
     description: "Largest battery cable for parallel inverter banks above 10kVA.",
     tooltip: "Maximum gauge for large commercial banks >10kVA. Handles 200A+ with minimal drop.",
     price: 84000,
-    specs: { gauge: "70mm²", length: 5, type: "Copper" }
+    specs: { gauge: "70mm²", length: 5, type: "Copper", amps: 250 }
   },
   {
     id: "w-2",
@@ -282,7 +282,7 @@ export const WIRING: WiringItem[] = [
     description: "UV-resistant solar cable for PV connections. Rated for outdoor installation.",
     tooltip: "Connects solar panels to charge controller. UV-rated for rooftop exposure. Good for <15A strings.",
     price: 12000,
-    specs: { gauge: "6mm²", length: 10, type: "PV Wire" }
+    specs: { gauge: "6mm²", length: 10, type: "PV Wire", amps: 15 }
   },
   {
     id: "w-38",
@@ -292,7 +292,7 @@ export const WIRING: WiringItem[] = [
     description: "Larger PV cable for multi-string arrays feeding one controller.",
     tooltip: "Thicker PV cable for parallel panel strings or longer runs. Handles up to ~25A.",
     price: 19000,
-    specs: { gauge: "10mm²", length: 10, type: "PV Wire" }
+    specs: { gauge: "10mm²", length: 10, type: "PV Wire", amps: 25 }
   },
   {
     id: "w-39",
@@ -302,7 +302,7 @@ export const WIRING: WiringItem[] = [
     description: "PV cable for long high-current array runs to the charge controller.",
     tooltip: "For large arrays or long distances (>20m) from panels to controller. Reduces voltage drop.",
     price: 27000,
-    specs: { gauge: "16mm²", length: 10, type: "PV Wire" }
+    specs: { gauge: "16mm²", length: 10, type: "PV Wire", amps: 40 }
   },
   {
     id: "w-12",
@@ -312,7 +312,7 @@ export const WIRING: WiringItem[] = [
     description: "Twin and earth cable for AC distribution from the inverter to wall sockets.",
     tooltip: "Standard house wiring cable for inverter output circuits. Good for loads up to ~15A.",
     price: 7500,
-    specs: { gauge: "2.5mm²", length: 10, type: "Twin & Earth" }
+    specs: { gauge: "2.5mm²", length: 10, type: "Twin & Earth", amps: 15 }
   },
   {
     id: "w-40",
@@ -322,7 +322,7 @@ export const WIRING: WiringItem[] = [
     description: "AC cable for 3kVA inverter output feeding a small distribution board.",
     tooltip: "For 3kVA inverter feeding a DB. Handles up to ~20A continuous AC load.",
     price: 11500,
-    specs: { gauge: "4mm²", length: 10, type: "Twin & Earth" }
+    specs: { gauge: "4mm²", length: 10, type: "Twin & Earth", amps: 20 }
   },
   {
     id: "w-41",
@@ -332,7 +332,7 @@ export const WIRING: WiringItem[] = [
     description: "AC cable for 5kVA inverter output feeding a distribution board.",
     tooltip: "Required for 5kVA inverter output. Carries up to ~25A to the distribution board.",
     price: 15500,
-    specs: { gauge: "6mm²", length: 10, type: "Twin & Earth" }
+    specs: { gauge: "6mm²", length: 10, type: "Twin & Earth", amps: 25 }
   },
   {
     id: "w-42",
@@ -342,7 +342,7 @@ export const WIRING: WiringItem[] = [
     description: "AC cable for 8kVA to 10kVA inverter output.",
     tooltip: "Heavy AC cable for 8–10kVA inverter output. Feeds main distribution board at ~35–45A.",
     price: 24000,
-    specs: { gauge: "10mm²", length: 10, type: "Twin & Earth" }
+    specs: { gauge: "10mm²", length: 10, type: "Twin & Earth", amps: 45 }
   },
   // Breakers - Mandatory. Amperage ladder drives per-system selection.
   {
@@ -673,6 +673,7 @@ export const WIRING_SPEC_FIELDS: Record<WiringCategory, { key: string; label: st
   cables: [
     { key: "gauge", label: "Gauge", type: "text", options: [] },
     { key: "length", label: "Length", type: "number" },
+    { key: "amps", label: "Current Rating (A)", type: "number" },
     { key: "type", label: "Cable Type", type: "select", options: ["Copper", "PV Wire", "Twin & Earth", "Aluminium"] }
   ],
   breakers: [

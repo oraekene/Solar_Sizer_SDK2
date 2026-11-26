@@ -4,7 +4,13 @@
 
 import { canonicalId, compareIdentity, identityFromHardwareData, identityOf } from './identity.ts';
 import type { AliasTable, Identity, ProductType } from './identity.ts';
-import { PRICE_OUTLIER_SHARE, medianPrice, withinBand } from './rules.ts';
+import {
+  DEFAULT_THRESHOLDS,
+  hashDistance,
+  medianPrice,
+  withinBand,
+} from './rules.ts';
+import type { Thresholds } from './rules.ts';
 
 export type MergeOffer = {
   id: string;
@@ -21,6 +27,8 @@ export type MergeOffer = {
   unit_quantity: number | null;
   condition: string;
   image_hash?: string | null;
+  /** The perceptual hash of the same picture, so a re-encoded copy collapses. */
+  image_phash?: string | null;
   stated_specs: Record<string, unknown>;
   trading_signals?: Record<string, unknown>;
   last_checked: string | null;
@@ -148,8 +156,12 @@ function provenanceKind(
 }
 
 // Two ads from the same seller on the same platform are one offer when the
-// price and the photo match. A different price is a different offer.
-function collapseIdenticalOffers(offers: MergeOffer[]): {
+// price and the photo match. A different price is a different offer. The
+// perceptual hash catches a re-encoded copy of the same photo.
+function collapseIdenticalOffers(
+  offers: MergeOffer[],
+  thresholds: Thresholds = DEFAULT_THRESHOLDS,
+): {
   kept: MergeOffer[];
   duplicates: MergeOffer[];
   crossPosts: CrossPost[];
@@ -161,6 +173,14 @@ function collapseIdenticalOffers(offers: MergeOffer[]): {
   const crossPosts: CrossPost[] = [];
   const quoteKey = (offer: MergeOffer) =>
     [offer.raw_price ?? offer.price, (offer.currency ?? '').toUpperCase()].join('|');
+  // The same picture under a different byte hash. Only one seller may claim
+  // it, because two sellers often reuse the photo of the manufacturer.
+  const samePicture = (left: MergeOffer, right: MergeOffer): boolean => {
+    if (!left.image_phash || !right.image_phash) return false;
+    if (left.source_site !== right.source_site) return false;
+    if (left.seller_id !== right.seller_id) return false;
+    return hashDistance(left.image_phash, right.image_phash) <= thresholds.perceptual_hash_distance;
+  };
   for (const offer of offers) {
     if (!offer.image_hash || !offer.seller_id || typeof offer.price !== 'number') {
       kept.push(offer);
@@ -174,14 +194,22 @@ function collapseIdenticalOffers(offers: MergeOffer[]): {
 
     const photoKey = [offer.source_site, offer.seller_id, offer.image_hash].join('|');
     const first = firstByPhoto.get(photoKey);
-    if (first && quoteKey(first) !== quoteKey(offer)) {
+    const samePhoto = first ?? kept.find((entry) => samePicture(entry, offer));
+    if (samePhoto && quoteKey(samePhoto) !== quoteKey(offer)) {
       crossPosts.push({
         offer_id: offer.id,
-        existing_offer_id: first.id,
-        image_hash: offer.image_hash,
+        existing_offer_id: samePhoto.id,
+        image_hash: offer.image_hash ?? '',
       });
     } else if (!first) {
       firstByPhoto.set(photoKey, offer);
+    }
+
+    if (samePhoto && quoteKey(samePhoto) === quoteKey(offer)) {
+      // The same seller, the same price and the same picture is one listing
+      // that was saved twice.
+      duplicates.push(offer);
+      continue;
     }
 
     seen.add(key);
@@ -192,13 +220,16 @@ function collapseIdenticalOffers(offers: MergeOffer[]): {
 
 // The median is checked twice. The second pass uses the median after the
 // first set of bait prices has been removed.
-function removePriceOutliers(offers: MergeOffer[]): { kept: MergeOffer[]; outliers: MergeOffer[] } {
+function removePriceOutliers(
+  offers: MergeOffer[],
+  thresholds: Thresholds = DEFAULT_THRESHOLDS,
+): { kept: MergeOffer[]; outliers: MergeOffer[] } {
   let kept = offers;
   const outliers = new Map<string, MergeOffer>();
   for (let pass = 0; pass < 2; pass += 1) {
     const reference = medianPrice(kept);
     if (reference.price === null) break;
-    const floor = reference.price * PRICE_OUTLIER_SHARE;
+    const floor = reference.price * thresholds.price_outlier_share;
     const next = kept.filter((offer) => {
       const isOutlier = (offer.price as number) < floor;
       if (isOutlier) outliers.set(offer.id, offer);
@@ -233,8 +264,9 @@ function peerTable(offers: MergeOffer[]): Map<string, PanelPeers> {
 
 export function proposeCandidates(
   offers: MergeOffer[],
-  options: { aliases: AliasTable; hardware: HardwareRow[] },
+  options: { aliases: AliasTable; hardware: HardwareRow[]; thresholds?: Thresholds },
 ): MergeResult {
+  const thresholds = options.thresholds ?? DEFAULT_THRESHOLDS;
   const excluded: Array<{ offer_id: string; reason_code: string }> = [];
   const crossPosts: CrossPost[] = [];
   const proposals: Proposal[] = [];
@@ -262,13 +294,13 @@ export function proposeCandidates(
 
   for (const group of groups.values()) {
     const qualified = group.offers.filter(isQualified);
-    const collapsed = collapseIdenticalOffers(qualified);
+    const collapsed = collapseIdenticalOffers(qualified, thresholds);
     crossPosts.push(...collapsed.crossPosts);
     for (const offer of collapsed.duplicates) {
       excluded.push({ offer_id: offer.id, reason_code: 'duplicate_of_existing_offer' });
     }
 
-    const pricePool = removePriceOutliers(collapsed.kept);
+    const pricePool = removePriceOutliers(collapsed.kept, thresholds);
     for (const offer of pricePool.outliers) {
       excluded.push({ offer_id: offer.id, reason_code: 'price_outlier' });
     }
@@ -390,11 +422,11 @@ export function proposeCandidates(
       if (isManual) {
         status = 'pending_review';
         riskFlags.push('manual price');
-      } else if (currentPrice !== null && withinBand(median.price, currentPrice)) {
+      } else if (currentPrice !== null && withinBand(median.price, currentPrice, thresholds.price_band)) {
         status = 'suggested';
       } else {
         status = 'pending_review';
-        riskFlags.push('price outside the 15% band');
+        riskFlags.push(`price outside the ${Math.round(thresholds.price_band * 100)}% band`);
       }
     }
     if (

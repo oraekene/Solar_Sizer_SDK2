@@ -255,6 +255,36 @@ test('two ads with the same seller, price and image count once', () => {
   assert.equal(proposals[0].low_confidence, false);
 });
 
+test('a re-encoded copy of one photo collapses for the same seller', () => {
+  const offers = [
+    panel({
+      id: 'a',
+      seller_id: 'seller-1',
+      price: 100_000,
+      image_hash: 'photo-1',
+      image_phash: '0000000000000000',
+    }),
+    panel({
+      id: 'b',
+      seller_id: 'seller-1',
+      price: 100_000,
+      image_hash: 'photo-2',
+      image_phash: '000000000000000f',
+    }),
+    // Another seller with the same picture is a real second offer.
+    panel({
+      id: 'c',
+      seller_id: 'seller-2',
+      price: 100_000,
+      image_hash: 'photo-3',
+      image_phash: '0000000000000000',
+    }),
+  ];
+
+  const { excluded } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.deepEqual(excluded, [{ offer_id: 'b', reason_code: 'duplicate_of_existing_offer' }]);
+});
+
 test('an official product page wins over a seller statement and the conflict is flagged', () => {
   const offers = [
     panel({

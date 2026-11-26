@@ -143,6 +143,67 @@ export const NOT_FOUND_STRIKES = 3;
 // An offer with no successful check for this many days is unverified.
 export const UNVERIFIED_AFTER_DAYS = 14;
 
+/** The trust and review numbers, stored in the settings table. */
+export type Thresholds = {
+  /** A price inside this share of the current price publishes itself. */
+  price_band: number;
+  /** A price below this share of the median is a bait price. */
+  price_outlier_share: number;
+  /** The not-found checks that remove a listing. */
+  not_found_strikes: number;
+  /** The days without a check after which an offer is unverified. */
+  unverified_after_days: number;
+  /** The Hamming distance at which two image hashes are the same picture. */
+  perceptual_hash_distance: number;
+};
+
+export const DEFAULT_THRESHOLDS: Thresholds = {
+  price_band: 0.15,
+  price_outlier_share: PRICE_OUTLIER_SHARE,
+  not_found_strikes: NOT_FOUND_STRIKES,
+  unverified_after_days: UNVERIFIED_AFTER_DAYS,
+  perceptual_hash_distance: 8,
+};
+
+/**
+ * Reads the stored thresholds over the defaults. A wrong value keeps the
+ * default, so a bad setting can never break a run.
+ */
+export function readThresholds(value: unknown): Thresholds {
+  const stored = (value ?? {}) as Record<string, unknown>;
+  const pick = (key: keyof Thresholds, min: number, max: number): number => {
+    const raw = stored[key];
+    if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_THRESHOLDS[key];
+    // A value outside the safe range is a mistake, so the default stays.
+    if (raw < min || raw > max) return DEFAULT_THRESHOLDS[key];
+    return raw;
+  };
+  return {
+    price_band: pick('price_band', 0.01, 1),
+    price_outlier_share: pick('price_outlier_share', 0.05, 1),
+    not_found_strikes: Math.round(pick('not_found_strikes', 1, 20)),
+    unverified_after_days: Math.round(pick('unverified_after_days', 1, 365)),
+    perceptual_hash_distance: Math.round(pick('perceptual_hash_distance', 0, 32)),
+  };
+}
+
+/** The number of differing bits between two hexadecimal hashes. */
+export function hashDistance(a: string, b: string): number {
+  if (!a || !b || a.length !== b.length) return Number.POSITIVE_INFINITY;
+  let distance = 0;
+  for (let i = 0; i < a.length; i += 1) {
+    const left = parseInt(a[i], 16);
+    const right = parseInt(b[i], 16);
+    if (Number.isNaN(left) || Number.isNaN(right)) return Number.POSITIVE_INFINITY;
+    let bits = left ^ right;
+    while (bits) {
+      distance += bits & 1;
+      bits >>= 1;
+    }
+  }
+  return distance;
+}
+
 // A published row must carry every field the calculator reads. A candidate
 // that misses one waits for a human instead of going live with a blank value.
 export const REQUIRED_SPECS: Record<string, string[]> = {

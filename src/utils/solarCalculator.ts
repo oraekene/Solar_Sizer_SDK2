@@ -461,7 +461,7 @@ export function buildCombinations(
       product_name: prod.name,
       product_description: prod.description,
       // The kit needs its real hardware, or its PV cable and connectors are lost.
-      ...productHardware(prod, data, safeHardware.panels),
+      ...productHardware(prod, data, safeHardware.panels, safeHardware.batteries),
     });
 
     allLogs.push(prodLog);

@@ -75,7 +75,7 @@ import {
 import { buildCombinations, calculateUserNeeds, estimateBundleSplit } from "./utils/solarCalculator";
 import { productHardware, isAllInOneProduct } from "./utils/productHardware";
 import { INVERTERS as DEFAULT_INVERTERS, PANELS as DEFAULT_PANELS, BATTERIES as DEFAULT_BATTERIES, POWERSTATIONS, CHARGE_CONTROLLERS, WIRING as DEFAULT_WIRING, WIRING_CATEGORY_LABELS, WIRING_SPEC_FIELDS, WIRING_OPTIONAL_BY_DEFAULT, PRODUCT_TYPE_FILTERS, INTERNET_DEVICE_CLASSES, INTERNET_DEVICE_CLASS_LABELS } from "./constants";
-import { sizeWiring, normalizeWiringSpecs, specNumber, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
+import { sizeWiring, normalizeWiringSpecs, specNumber, flattenSpec, PV_ONLY_CATEGORIES } from "./utils/wiringSizer";
 import InteractiveBridge from "./components/InteractiveBridge";
 import ScraperReview from "./components/ScraperReview";
 import { sdk } from "./sdk";
@@ -581,6 +581,27 @@ const INTERNET_CLASS_FIELDS: Record<string, string[]> = {
   enterprise_router: ["peak_watts", "duty_cycle", "poe_budget_w", "ports", "uplink", "bands", "operating_temp_c"],
 };
 
+/**
+ * The hover card that explains an item. It follows the pointer and sits above
+ * the modal, because the scrolling body would otherwise clip a tooltip that
+ * hangs above a card.
+ */
+const TipLayer = ({ tip }: { tip: { text: string; x: number; y: number } | null }) => {
+  if (!tip) return null;
+  const width = typeof window === "undefined" ? 1000 : window.innerWidth;
+  const left = Math.max(10, Math.min(tip.x + 14, width - 300));
+  const top = Math.max(10, tip.y - 90);
+  return (
+    <div
+      className="fixed z-[60] pointer-events-none bg-stone-900 text-white text-xs leading-relaxed px-3 py-2 rounded-lg shadow-xl w-72"
+      style={{ left, top }}
+      role="tooltip"
+    >
+      {tip.text}
+    </div>
+  );
+};
+
 const DEFAULT_PDF_SETTINGS: PDFSettings = {
   quoteTitle: "SOLARSIZER PRO QUOTE",
   quotePrefix: "QT",
@@ -649,7 +670,11 @@ const powerstationAsProduct = (ps: Powerstation, price = ps.price, name = ps.nam
   },
 });
 
-const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): SystemCombination => {
+const buildProductDetails = (
+  product: Product,
+  panelCatalogue: Panel[] = [],
+  batteryCatalogue: Battery[] = []
+): SystemCombination => {
     if (product.combination_data) {
       const cd = product.combination_data;
       // A powerstation kit has its inverter and battery built in, so its DC
@@ -668,7 +693,7 @@ const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): Sy
         product_description: product.description,
         component_specs: cd.component_specs ?? [],
         all_in_one: isAllInOne,
-        ...productHardware(product, cd, panelCatalogue),
+        ...productHardware(product, cd, panelCatalogue, batteryCatalogue),
       };
     }
 
@@ -688,7 +713,7 @@ const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): Sy
           product_name: product.name,
           product_description: product.description,
           is_preconfigured: true,
-          ...productHardware(product, psData, panelCatalogue),
+          ...productHardware(product, psData, panelCatalogue, batteryCatalogue),
         };
       }
     }
@@ -708,15 +733,32 @@ const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): Sy
       ? "battery"
       : "inverter";
 
-    return {
+    // A lone panel or battery takes its real numbers from the catalogue row of
+    // the same name, so its cable is sized instead of guessed.
+    const panelMatch =
+      role === "panel"
+        ? panelCatalogue.find((p) => sourceKey(p.name) === sourceKey(product.name))
+        : undefined;
+    const batteryMatch =
+      role === "battery"
+        ? batteryCatalogue.find((b) => sourceKey(b.name) === sourceKey(product.name))
+        : undefined;
+    const batteryWh = batteryMatch ? batteryMatch.voltage * batteryMatch.capacity_ah : 0;
+
+    const standalone: SystemCombination = {
       inverter: role === "inverter" || role === "powerstation" ? product.name : "",
       inverter_price: role === "inverter" || role === "powerstation" ? product.price : 0,
       battery_config: role === "battery" ? product.name : "",
       battery_price: role === "battery" ? product.price : 0,
+      battery_wh: batteryWh,
+      battery_total_wh: batteryWh,
+      battery_voltage: batteryMatch?.voltage ?? 0,
+      battery_ah: batteryMatch?.capacity_ah ?? 0,
+      battery_type: batteryMatch?.type,
       panel_config: role === "panel" ? product.name : "",
       panel_price: role === "panel" ? product.price : 0,
-      array_size_w: 0,
-      battery_total_wh: 0,
+      panel_w: panelMatch?.watts ?? 0,
+      array_size_w: panelMatch?.watts ?? 0,
       total_price: product.price,
       daily_yield: 0,
       deficit: 0,
@@ -741,6 +783,9 @@ const buildProductDetails = (product: Product, panelCatalogue: Panel[] = []): Sy
         },
       ],
     };
+
+    // The hardware objects carry the numbers the sizer reads.
+    return { ...standalone, ...productHardware(product, standalone, panelCatalogue, batteryCatalogue) };
   };
 
 /** Classes that need a router or CPE to reach the internet. */
@@ -1692,6 +1737,13 @@ export default function App() {
   }>({ inverter: true, panels: true, batteries: true });
   // Track expanded state for Available Optional Items
   const [showOptionalItems, setShowOptionalItems] = useState(false);
+  // The hover card that explains an item, and the pointer position that places it.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
+  const showTip = (e: React.MouseEvent) => {
+    const text = (e.currentTarget as HTMLElement).dataset.tip;
+    if (text) setTip({ text, x: e.clientX, y: e.clientY });
+  };
+  const hideTip = () => setTip(null);
   const [optionalSearch, setOptionalSearch] = useState("");
 
   // Internal Logs State
@@ -2606,7 +2658,7 @@ export default function App() {
           startY: 35,
           head: [[`${sys.inverter} - Wiring & Installation`]],
           body: wiringItems.map(w => [
-            `${w.name} (${w.specs.category}, ${w.specs.type})\n${Object.entries(w.specs).filter(([k]) => !['category', 'type', 'price', 'description'].includes(k)).map(([k, v]) => `${k}: ${v}`).join(', ')}\nPrice: ₦${w.specs.price?.toLocaleString() || 0}`
+            `${w.name} (${w.specs.category}, ${w.specs.type})\n${Object.entries(w.specs).filter(([k]) => !['category', 'type', 'price', 'description'].includes(k)).flatMap(([k, v]) => flattenSpec(k, v)).map((line) => line.trim()).join(', ')}\nPrice: ₦${w.specs.price?.toLocaleString() || 0}`
           ]),
           theme: 'striped',
           headStyles: { fillColor: [16, 185, 129] },
@@ -3105,11 +3157,11 @@ export default function App() {
     content += `| Category | Item Type | Name | Specs | Price (₦) |\n`;
     content += `| :--- | :--- | :--- | :--- | :--- |\n`;
     wiring.forEach(w => {
+      // Nested specs are stored as they are and flattened for display, so the
+      // export stays readable and searchable.
       const specs = Object.entries(w.specs ?? {})
-        .map(([k, v]) => {
-          if (typeof v === "object" && v !== null) return `${k}: ${JSON.stringify(v)}`;
-          return `${k}: ${v}`;
-        })
+        .flatMap(([k, v]) => flattenSpec(k, v))
+        .map((line) => line.trim())
         .join(", ");
       content += `| ${WIRING_CATEGORY_LABELS[w.category]?.label ?? w.category} | ${w.type === "mandatory" ? "Required" : "Optional"} | ${w.name} | ${specs} | ${w.price.toLocaleString()} |\n`;
     });
@@ -3547,6 +3599,13 @@ export default function App() {
     }
 
     costs.push(["", "TOTAL INVESTMENT", "", `N${Math.round(safePrice(sys.total_price)).toLocaleString()}`]);
+
+    // A row published from a scraped listing can carry estimated specs, so the
+    // quote says so instead of presenting an estimate as a measurement.
+    const quotedProduct = sys.product_id ? products.find((p) => p.id === sys.product_id) : undefined;
+    if (quotedProduct?.tags?.includes("estimated-specs")) {
+      costs.push(["", "Estimated specs", "", "Some values were derived from the product class, not read from the seller's page"]);
+    }
 
     const vatPercent = safeNumber(pdfSettings.vatPercent, 7.5);
     autoTable(doc, {
@@ -3998,7 +4057,7 @@ const liveWiringPrice = liveSizing
             powerstations={powerstations}
             products={products}
             routers={masterDevices}
-            onBuy={(product) => startBachsCheckout(buildProductDetails(product, panels))}
+            onBuy={(product) => startBachsCheckout(buildProductDetails(product, panels, batteries))}
             onBuyDevice={(device) => startDeviceCheckout(device)}
             onClose={() => { setSelectedInternetDevice(null); setSelectedInternetProduct(null); }}
           />
@@ -4908,10 +4967,10 @@ const liveWiringPrice = liveSizing
                           setSelectedInternetProduct(product);
                         } else {
                           setDetailSource("catalog");
-                          setSelectedSystemDetails(buildProductDetails(product, panels));
+                          setSelectedSystemDetails(buildProductDetails(product, panels, batteries));
                         }
                       }}
-                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels))}
+                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels, batteries))}
                     >
                       {product.combination_data && (
                         <div className="space-y-2.5 p-4 bg-stone-50 rounded-2xl border border-stone-100 mt-5">
@@ -5023,7 +5082,7 @@ const liveWiringPrice = liveSizing
                         setShowInteractiveBridge(false);
                         setSelectedInternetProduct(product);
                       }}
-                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels))}
+                      onBuy={() => startBachsCheckout(buildProductDetails(product, panels, batteries))}
                       badge={
                         <span className="px-3 py-1 bg-blue-50 text-blue-600 text-[10px] font-black uppercase rounded-full border border-blue-100">
                           {product.tags.find((t) => t.startsWith("tier-"))?.replace("tier-", "Tier ") || "Kit"}
@@ -6139,6 +6198,7 @@ const liveWiringPrice = liveSizing
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                <TipLayer tip={tip} />
                 <div className="p-4 rounded-2xl flex items-start gap-3 border transition-colors bg-stone-50 border-stone-100">
                   {selectedSystemDetails.status === "Optimal" ? (
                     <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0 mt-0.5" />
@@ -6336,6 +6396,9 @@ const liveWiringPrice = liveSizing
                                 <>
                                   <strong>Pick what you need.</strong> This product is sold on its own, so every extra
                                   item is optional. Sizes come from the product specs, so check the gauge before you order.
+                                  {selectedSystemDetails.battery_data && !selectedSystemDetails.inverter_data && (
+                                    <> A battery on its own is sized for half of its amp-hour rating, which is a rule of thumb, so confirm the cable with your installer.</>
+                                  )}
                                 </>
                               ) : (
                                 <>
@@ -6382,13 +6445,13 @@ const liveWiringPrice = liveSizing
                                       }`}
                                     >
                                       {/* Tooltip on hover - wrapper for group hover */}
-                                      <div className="relative group">
-                                        {tooltipText && (
-                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                            {tooltipText}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                          </div>
-                                        )}
+                                      <div
+                                        className="relative group"
+                                        data-tip={tooltipText}
+                                        onMouseEnter={showTip}
+                                        onMouseMove={showTip}
+                                        onMouseLeave={hideTip}
+                                      >
 
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
@@ -6508,13 +6571,13 @@ const liveWiringPrice = liveSizing
                                           : "bg-white border-dashed border-stone-200 opacity-70"
                                       }`}
                                     >
-                                      <div className="relative group">
-                                        {tooltipText && (
-                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                            {tooltipText}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                          </div>
-                                        )}
+                                      <div
+                                        className="relative group"
+                                        data-tip={tooltipText}
+                                        onMouseEnter={showTip}
+                                        onMouseMove={showTip}
+                                        onMouseLeave={hideTip}
+                                      >
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
                                             <p className="font-bold text-stone-900 break-words">{item.name}</p>
@@ -6593,13 +6656,13 @@ const liveWiringPrice = liveSizing
                                       title={cc.description ?? cc.name}
                                       className="p-4 rounded-2xl border bg-cyan-50 border-cyan-100 transition-all relative group"
                                     >
-                                      <div className="relative group">
-                                        {(cc.description ?? cc.name) && (
-                                          <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                            {cc.description ?? cc.name}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                          </div>
-                                        )}
+                                      <div
+                                        className="relative group"
+                                        data-tip={cc.description ?? cc.name}
+                                        onMouseEnter={showTip}
+                                        onMouseMove={showTip}
+                                        onMouseLeave={hideTip}
+                                      >
                                         <div className="flex items-start justify-between gap-3">
                                           <div className="flex-1 min-w-0">
                                             <p className="font-bold text-stone-900 break-words">{cc.name}</p>
@@ -6644,6 +6707,7 @@ const liveWiringPrice = liveSizing
 
                         <p className="text-xs text-stone-500 mt-2">
                           * Only the correctly sized cable gauge is included. Different gauges serve different current requirements.
+                          The gauge table uses safe free-air ratings, so it errs on the cautious side.
                           {partialMode && " In partial mode, cable sizing is disabled — verify gauge matches your system."}
                         </p>
 
@@ -6689,13 +6753,12 @@ const liveWiringPrice = liveSizing
                                     {items.map(item => (
                                       <div
                                         key={item.id}
-                                        title={item.tooltip ?? item.description}
+                                        data-tip={item.tooltip ?? item.description}
+                                        onMouseEnter={showTip}
+                                        onMouseMove={showTip}
+                                        onMouseLeave={hideTip}
                                         className="p-4 rounded-2xl border bg-amber-50 border-amber-100 transition-all relative group cursor-pointer hover:bg-amber-100"
                                       >
-                                        <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                          {item.tooltip ?? item.description}
-                                          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                        </div>
                                         <div className="flex items-center justify-between gap-3">
                                           <div className="flex-1 min-w-0">
                                             <p className="font-bold text-stone-900 break-words">{item.name}</p>
@@ -6752,18 +6815,22 @@ const liveWiringPrice = liveSizing
                               <span className="text-xs text-stone-500">{optionalChargeControllers.length} item{optionalChargeControllers.length === 1 ? "" : "s"}</span>
                             </summary>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 pt-0">
+                              <p className="col-span-full text-xs text-stone-500 mb-2">
+                                A catalogue add-on. The list is filtered to the controllers that fit your inverter and
+                                its PV array, but a controller never changes the sizing, so add one only when you
+                                want more PV input than the inverter takes.
+                              </p>
                               {optionalChargeControllers.map(cc => {
                                 const isSelected = selectedChargeControllerIds.has(cc.id);
                                 return (
                                   <div
                                     key={cc.id}
-                                    title={cc.description ?? cc.name}
+                                    data-tip={cc.description ?? cc.name}
+                                    onMouseEnter={showTip}
+                                    onMouseMove={showTip}
+                                    onMouseLeave={hideTip}
                                     className={`p-4 rounded-2xl border transition-all relative group ${isSelected ? "bg-cyan-100 border-cyan-300" : "bg-cyan-50 border-cyan-100 hover:bg-cyan-100"}`}
                                   >
-                                    <div className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 bg-stone-900 text-white text-xs px-3 py-2 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-normal pointer-events-none">
-                                      {cc.description ?? cc.name}
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-4 border-transparent border-t-stone-900" />
-                                    </div>
                                     <div className="flex items-center justify-between gap-3">
                                       <div className="flex-1 min-w-0">
                                         <p className="font-bold text-stone-900 break-words">{cc.name}</p>

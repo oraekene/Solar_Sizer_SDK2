@@ -6,7 +6,10 @@ import type { Inverter, Panel, WiringCategory, WiringItem } from "../types";
  * catalogue the admin already maintains, so no part is invented here.
  */
 
-// Copper conductor ampacity in free air, two loaded conductors.
+// Copper conductor ampacity in free air, two loaded conductors. These are the
+// safe free-air values, so the table stays on the cautious side of the
+// insulated-cable numbers. An installer with a cooler or shorter run can use
+// the next size down, and the gauge can be edited in the Hardware DB.
 const GAUGE_AMPS: { mm2: number; amps: number }[] = [
   { mm2: 1.5, amps: 14 },
   { mm2: 2.5, amps: 20 },
@@ -26,6 +29,12 @@ const GAUGE_AMPS: { mm2: number; amps: number }[] = [
 export const gaugeForAmps = (amps: number): number => {
   const hit = GAUGE_AMPS.find((g) => g.amps >= amps);
   return hit ? hit.mm2 : GAUGE_AMPS[GAUGE_AMPS.length - 1].mm2;
+};
+
+/** The current a gauge of this size carries, from the ampacity table. */
+export const ampsForGauge = (mm2: number): number => {
+  const row = GAUGE_AMPS.filter((g) => g.mm2 <= mm2).pop();
+  return row ? row.amps : 0;
 };
 
 /** Reads the first number out of a spec value such as "4mm²", "63A" or 4. */
@@ -157,6 +166,16 @@ export const sizeWiring = (
     const specKey = SIZED_SPEC[category]!;
     const groups = new Map<string, WiringItem[]>();
 
+    // A cable carries a current, so its own rating decides the fit. A breaker
+    // already carries an amperage spec, and a cable with no rating falls back
+    // to the ampacity of its gauge.
+    const ratingOf = (item: WiringItem): number => {
+      const amps = specNumber(item.specs.amps);
+      if (amps > 0) return amps;
+      if (specKey === "gauge") return ampsForGauge(specNumber(item.specs.gauge));
+      return specNumber(item.specs[specKey]);
+    };
+
     for (const item of items) {
       if (item.category !== category || item.type !== "mandatory") continue;
       if (specNumber(item.specs[specKey]) <= 0) continue; // accessory, always kept
@@ -198,10 +217,9 @@ export const sizeWiring = (
       }
 
       const sorted = [...candidates].sort(
-        (a, b) =>
-          specNumber(a.specs[specKey]) - specNumber(b.specs[specKey]) || a.price - b.price
+        (a, b) => ratingOf(a) - ratingOf(b) || a.price - b.price
       );
-      const pick = sorted.find((i) => specNumber(i.specs[specKey]) >= target) ?? sorted[sorted.length - 1];
+      const pick = sorted.find((i) => ratingOf(i) >= target) ?? sorted[sorted.length - 1];
       if (pick) winners.add(pick.id);
     }
   }

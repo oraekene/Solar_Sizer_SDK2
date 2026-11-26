@@ -37,6 +37,7 @@ type Offer = {
   status: string;
   reason_code: string | null;
   collapsed_count: number;
+  image_thumb?: string | null;
   trading_signals: Record<string, unknown>;
 };
 
@@ -253,6 +254,10 @@ export default function ScraperReview({
 
   // The calculator reads these fields, so a row without them never goes live.
   const selectedMissing = selected ? missingSpecs(selected.product_type, selected.proposed_data) : [];
+  // Every value that was derived instead of read from the seller, with its source.
+  const estimatedFields = (selected?.provenance ?? []).filter(
+    (entry) => entry.kind !== 'stated' && entry.kind !== 'datasheet',
+  );
 
   const bulkApprove = async () => {
     if (checked.length === 0) return;
@@ -465,6 +470,30 @@ export default function ScraperReview({
                 </div>
               )}
 
+              {estimatedFields.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-sm mb-2">Estimated specifications</h4>
+                  <p className="text-xs text-stone-500 mb-2">
+                    These values were not read from the seller&apos;s page. Each one names where it came from,
+                    so you can replace it with the datasheet value before the row goes live.
+                  </p>
+                  <div className="space-y-1.5">
+                    {estimatedFields.map((entry) => (
+                      <div
+                        key={`${entry.field}-${String(entry.source)}`}
+                        className="flex items-center justify-between gap-3 p-2 bg-amber-50 border border-amber-100 rounded-lg text-xs"
+                      >
+                        <span className="font-bold text-amber-900">{String(entry.field)}</span>
+                        <span className="text-stone-600">{String(entry.value ?? '')}</span>
+                        <span className="text-amber-700 font-semibold">
+                          {String(entry.source)} · {String(entry.confidence)} confidence
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <h4 className="font-bold text-sm mb-2">Offers</h4>
                 <div className="space-y-2">
@@ -473,6 +502,15 @@ export default function ScraperReview({
                       key={offer.id}
                       className="flex items-center gap-3 text-sm bg-stone-50 rounded-xl px-3 py-2 flex-wrap"
                     >
+                      {offer.image_thumb ? (
+                        <img
+                          src={offer.image_thumb}
+                          alt=""
+                          className="w-10 h-10 rounded-lg object-cover border border-stone-200"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg border border-dashed border-stone-300" />
+                      )}
                       <div className="font-bold w-28">{naira(offer.price)}</div>
                       <div className="text-stone-600 w-40 truncate">{offer.seller_name ?? 'Unknown seller'}</div>
                       <div className="text-stone-500">{offer.source_site}</div>

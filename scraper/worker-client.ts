@@ -2,6 +2,8 @@
 // in the x-admin-key header, the same header the browser review screen uses.
 
 import type { HardwareRow } from './merge.ts';
+import { DEFAULT_THRESHOLDS, readThresholds } from './rules.ts';
+import type { Thresholds } from './rules.ts';
 
 export type WorkerOfferRow = {
   id: string;
@@ -28,6 +30,7 @@ export type WorkerOfferRow = {
   raw_payload: Record<string, unknown>;
   raw_payload_at: string | null;
   image_hash: string | null;
+  image_phash: string | null;
   status: string;
   reason_code: string | null;
   not_found_strikes: number;
@@ -69,6 +72,16 @@ export class WorkerClient {
       throw new Error(`Worker ${path} failed with status ${response.status}. ${body}`);
     }
     return response.json();
+  }
+
+  /** The trust and review numbers, stored in the Worker settings. */
+  async thresholds(): Promise<Thresholds> {
+    try {
+      return readThresholds(await this.request('/api/scraper/thresholds'));
+    } catch {
+      // A Worker that does not know the route keeps the code defaults.
+      return DEFAULT_THRESHOLDS;
+    }
   }
 
   async listOffers(pageSize = 1000): Promise<WorkerOfferRow[]> {
