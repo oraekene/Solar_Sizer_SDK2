@@ -105,7 +105,9 @@ export function modelFromName(
     .replace(/\b(?:full )?pallet(?: of \d+)?\b/g, ' ')
     .replace(/\bbulk pack\b/g, ' ')
     .replace(/\b\d+ (?:pieces|units|pcs)\b/g, ' ')
-    .replace(/\b(?:solar panel|solar module|solar battery|panel|module|battery|solar)\b/g, ' ')
+    // The plural forms count as the same word, so "Lithium Ion Batteries"
+    // and "Lithium Ion Battery" land on one model.
+    .replace(/\b(?:solar panels?|solar modules?|solar batter(?:y|ies)|panels?|modules?|batter(?:y|ies)|solar)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 

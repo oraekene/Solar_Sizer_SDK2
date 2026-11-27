@@ -3,7 +3,7 @@
 // behind the price, and the actions approve, reject, edit, merge and publish.
 // See docs/scraper-design.md section 6.2.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Check, ClipboardList, Link2, Pencil, RefreshCw, X } from 'lucide-react';
 import { missingSpecs, REQUIRED_SPECS } from '../../scraper/rules.ts';
 
@@ -21,6 +21,7 @@ type Candidate = {
   source_urls: string[];
   provenance: Array<Record<string, unknown>>;
   risk_flags: string[];
+  updated_at: string;
 };
 
 type Offer = {
@@ -73,7 +74,7 @@ export default function ScraperReview({
   onPublished?: () => void;
 }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
+  const [selectedOffers, setSelectedOffers] = useState<Offer[]>([]);
   const [filter, setFilter] = useState('pending_review');
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Candidate | null>(null);
@@ -85,27 +86,39 @@ export default function ScraperReview({
 
   const load = useCallback(async () => {
     const headers = { 'x-admin-key': adminKey };
-    const [candidateResponse, offerResponse] = await Promise.all([
-      fetch('/api/scraper/candidates?limit=500', { headers }),
-      fetch('/api/scraper/offers?limit=500', { headers }),
-    ]);
-    if (!candidateResponse.ok || !offerResponse.ok) {
+    const candidateResponse = await fetch('/api/scraper/candidates?limit=2000', { headers });
+    if (!candidateResponse.ok) {
       setMessage('The Worker refused the request. Unlock admin mode again.');
       return;
     }
     setCandidates(await candidateResponse.json());
-    setOffers(await offerResponse.json());
   }, [adminKey]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const offersById = useMemo(() => {
-    const map = new Map<string, Offer>();
-    for (const offer of offers) map.set(offer.id, offer);
-    return map;
-  }, [offers]);
+  // The offers of the open candidate are fetched by id when it opens. A
+  // whole-pool fetch carried every payload and left most candidates without
+  // their offers, because only a window of the pool fit in one response.
+  const loadOffers = useCallback(
+    async (candidate: Candidate) => {
+      const ids = candidate.offer_ids.slice(0, 200);
+      if (ids.length === 0) {
+        setSelectedOffers([]);
+        return;
+      }
+      const response = await fetch(`/api/scraper/offers?ids=${encodeURIComponent(ids.join(','))}`, {
+        headers: { 'x-admin-key': adminKey },
+      });
+      if (!response.ok) {
+        setSelectedOffers([]);
+        return;
+      }
+      setSelectedOffers(await response.json());
+    },
+    [adminKey],
+  );
 
   const pending = candidates.filter((candidate) => candidate.status === 'pending_review');
   const visible = filter === 'all' ? candidates : candidates.filter((candidate) => candidate.status === filter);
@@ -244,13 +257,20 @@ export default function ScraperReview({
     if (saved) setMessage(`The candidate now points at ${mergeId}.`);
   };
 
-  const selectedOfferRows = selected
-    ? selected.offer_ids.map((id) => offersById.get(id)).filter((offer): offer is Offer => Boolean(offer))
-    : [];
-  const representatives = selectedOfferRows.filter(
+  const representatives = selectedOffers.filter(
     (offer) => offer.reason_code !== 'duplicate_of_existing_offer',
   );
-  const selectedOffers = representatives.length > 0 ? representatives : selectedOfferRows;
+  const modalOffers = representatives.length > 0 ? representatives : selectedOffers;
+  // The proposed price is the median of the qualified offers, so the modal
+  // names the pool the number came from instead of showing a bare figure.
+  const qualifiedPrices = modalOffers
+    .filter((offer) => offer.status === 'qualified' && typeof offer.price === 'number')
+    .map((offer) => offer.price as number);
+  const priceSellers = new Set(
+    modalOffers
+      .filter((offer) => offer.status === 'qualified')
+      .map((offer) => offer.seller_name ?? offer.id),
+  ).size;
 
   // The calculator reads these fields, so a row without them never goes live.
   const selectedMissing = selected ? missingSpecs(selected.product_type, selected.proposed_data) : [];
@@ -352,15 +372,15 @@ export default function ScraperReview({
               </thead>
               <tbody>
                 {visible.map((candidate) => {
-                  const candidateOffers = candidate.offer_ids
-                    .map((id) => offersById.get(id))
-                    .filter((offer): offer is Offer => Boolean(offer));
-                  const sources = [...new Set(candidateOffers.map((offer) => offer.source_site))];
-                  const checkedAt = candidateOffers
-                    .map((offer) => offer.last_checked)
-                    .filter((value): value is string => Boolean(value))
-                    .sort()
-                    .pop();
+                  // The sites come from the stored source urls, so the column
+                  // never depends on an offer lookup that can miss.
+                  const sources = [...new Set(candidate.source_urls.map((url) => {
+                    try {
+                      return new URL(url).hostname.replace(/^www\./, '');
+                    } catch {
+                      return url;
+                    }
+                  }))];
                   return (
                     <tr key={candidate.id} className="border-t border-stone-100">
                       <td className="p-3">
@@ -385,7 +405,7 @@ export default function ScraperReview({
                       <td className="p-3 text-stone-600">{specLine(candidate.proposed_data)}</td>
                       <td className="p-3 font-bold">{naira(candidate.proposed_price)}</td>
                       <td className="p-3 text-stone-600">{sources.join(', ') || '-'}</td>
-                      <td className="p-3 text-stone-600">{ago(checkedAt)}</td>
+                      <td className="p-3 text-stone-600">{ago(candidate.updated_at)}</td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
                           {(candidate.risk_flags ?? []).map((flag) => (
@@ -403,6 +423,7 @@ export default function ScraperReview({
                           onClick={() => {
                             startEdit(candidate);
                             setSelected(candidate);
+                            loadOffers(candidate);
                           }}
                           className="px-3 py-1.5 rounded-lg bg-stone-100 text-stone-700 text-xs font-bold hover:bg-stone-200 transition-all"
                         >
@@ -456,6 +477,31 @@ export default function ScraperReview({
                 </div>
               </div>
 
+              <p className="text-xs text-stone-600">
+                {qualifiedPrices.length > 0
+                  ? `The proposed price is the median of ${qualifiedPrices.length} qualified offer${qualifiedPrices.length === 1 ? '' : 's'} from ${priceSellers} seller${priceSellers === 1 ? '' : 's'}, whose prices run ${naira(Math.min(...qualifiedPrices))} to ${naira(Math.max(...qualifiedPrices))}.`
+                  : 'No qualified offer of this candidate could be loaded, so the price evidence below may be incomplete.'}
+              </p>
+
+              {selected.source_urls?.length > 0 && (
+                <div>
+                  <h4 className="font-bold text-sm mb-2">Sources</h4>
+                  <div className="space-y-1">
+                    {selected.source_urls.map((url) => (
+                      <a
+                        key={url}
+                        href={url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block text-xs text-emerald-700 hover:text-emerald-800 break-all"
+                      >
+                        {url}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {selected.risk_flags?.length > 0 && (
                 <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-xl p-3 text-sm text-amber-800">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -497,7 +543,7 @@ export default function ScraperReview({
               <div>
                 <h4 className="font-bold text-sm mb-2">Offers</h4>
                 <div className="space-y-2">
-                  {selectedOffers.map((offer) => (
+                  {modalOffers.map((offer) => (
                     <div
                       key={offer.id}
                       className="flex items-center gap-3 text-sm bg-stone-50 rounded-xl px-3 py-2 flex-wrap"
@@ -547,7 +593,7 @@ export default function ScraperReview({
                       </a>
                     </div>
                   ))}
-                  {selectedOffers.length === 0 && (
+                  {modalOffers.length === 0 && (
                     <p className="text-sm text-stone-500">No offer is linked to this candidate.</p>
                   )}
                 </div>

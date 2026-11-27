@@ -1627,7 +1627,13 @@ export default function App() {
       // If local storage is empty, fall back to the global defaults.
       const mergeById = <T extends { id: string }>(local: T[], globalItems: T[]): T[] => {
         if (local.length === 0) return globalItems;
-        const merged = [...local];
+        // The local seed lists and the Worker seed rows describe the same
+        // devices under different ids (p-1 here, h1 there), so an id-only
+        // merge shows every device twice. The server copy is the golden
+        // record, so a local row whose name matches a server row is dropped.
+        const norm = (value: unknown) => String(value ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+        const globalNames = new Set(globalItems.map(i => norm((i as any).name)));
+        const merged = local.filter(i => !globalNames.has(norm((i as any).name)));
         for (const item of globalItems) {
           const idx = merged.findIndex(m => m.id === item.id);
           if (idx >= 0) merged[idx] = item;
@@ -2197,6 +2203,14 @@ export default function App() {
   const [showAddHardware, setShowAddHardware] = useState<HardwareType | null>(null);
   const [editingHardware, setEditingHardware] = useState<{ type: HardwareType, id: string, item?: any } | null>(null);
   const [wiringCategoryForAdd, setWiringCategoryForAdd] = useState<WiringCategory>("cables");
+  // The category the wiring form shows spec fields for. It follows the
+  // Category select, so a new MC4 Connector no longer renders cable fields.
+  const [wiringCategoryDraft, setWiringCategoryDraft] = useState<WiringCategory>("cables");
+  useEffect(() => {
+    if (showAddHardware !== "wiring") return;
+    const item = editingHardware?.item ?? wiring.find(w => w.id === editingHardware?.id);
+    setWiringCategoryDraft(((item as WiringItem | undefined)?.category as WiringCategory) ?? wiringCategoryForAdd);
+  }, [showAddHardware, editingHardware]);
 
   const [showAddMasterDevice, setShowAddMasterDevice] = useState(false);
   const [editingMasterDevice, setEditingMasterDevice] = useState<MasterDevice | null>(null);
@@ -7481,7 +7495,13 @@ const liveWiringPrice = liveSizing
                       editingHardware.type
                     )
                     : null;
-                  
+                  // The qty and length-override inputs belong to cable rows.
+                  // A wiring form follows the Category select; every other
+                  // form keeps the old fallback so nothing else changes.
+                  const wiringQtyCategory: WiringCategory = showAddHardware === "wiring"
+                    ? wiringCategoryDraft
+                    : ((currentItem?.category || "cables") as WiringCategory);
+
                   return (
                     <div className="space-y-4">
                       <div>
@@ -7556,7 +7576,12 @@ const liveWiringPrice = liveSizing
                           <>
                             <div className="col-span-2">
                               <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Category</label>
-                              <select name="category" defaultValue={currentItem?.category || wiringCategoryForAdd} className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl">
+                              <select
+                                name="category"
+                                value={wiringCategoryDraft}
+                                onChange={(e) => setWiringCategoryDraft(e.target.value as WiringCategory)}
+                                className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl"
+                              >
                                 {(Object.keys(WIRING_CATEGORY_LABELS) as WiringCategory[]).map((category) => (
                                   <option key={category} value={category}>{WIRING_CATEGORY_LABELS[category].label}</option>
                                 ))}
@@ -7572,7 +7597,7 @@ const liveWiringPrice = liveSizing
                           </>
                         )}
                         {showAddHardware === "wiring" && (() => {
-                          const selectedCategory = (currentItem?.category || "cables") as WiringCategory;
+                          const selectedCategory = wiringCategoryDraft;
                           const fields = WIRING_SPEC_FIELDS[selectedCategory] || [];
                           return fields.map((field) => {
                             if (field.type === "number") {
@@ -7619,7 +7644,7 @@ const liveWiringPrice = liveSizing
                           });
                         })()}
                         <div className="col-span-2 sm:col-span-1"><label className="block text-xs font-bold uppercase text-stone-500 mb-1">Retail Price (₦)</label><input name="price" type="number" step="any" defaultValue={currentItem?.price} required className="w-full px-4 py-2 bg-stone-50 border border-stone-200 rounded-xl" /></div>
-                        {((currentItem?.category || "cables") as WiringCategory) === "cables" && (
+                        {wiringQtyCategory === "cables" && (
                           <>
                             <div className="col-span-2 sm:col-span-1">
                               <label className="block text-xs font-bold uppercase text-stone-500 mb-1">Quantity</label>
