@@ -285,6 +285,32 @@ test('an enrichment result accepts known fields and drops empty readings', () =>
   assert.throws(() => validateEnrichmentResult({ invented: 3 }), /unknown field/);
 });
 
+test('an enrichment result accepts the battery parallel limit and the C-rate', () => {
+  // A battery label carries the parallel limit and the C-rate, so a battery row
+  // can publish on a read value instead of waiting forever for a human.
+  assert.deepEqual(
+    validateEnrichmentResult({
+      voltage_v: 51.2,
+      capacity_ah: 314,
+      battery_type: 'lithium',
+      max_parallel_strings: 4,
+      min_c_rate: 0.5,
+    }),
+    {
+      voltage_v: 51.2,
+      capacity_ah: 314,
+      battery_type: 'lithium',
+      max_parallel_strings: 4,
+      min_c_rate: 0.5,
+    },
+  );
+  // A zero is a hidden value, not a reading, so a zero C-rate is dropped.
+  assert.deepEqual(
+    validateEnrichmentResult({ voltage_v: 12, min_c_rate: 0 }),
+    { voltage_v: 12 },
+  );
+});
+
 test('an enrichment result drops the zeros that the model reads for a hidden value', () => {
   // The model writes zero for a value it cannot see, so a battery picture
   // comes back with zero watts and zero efficiency. Zero is not a reading.

@@ -177,6 +177,9 @@ export function candidateUnchanged(
   return true;
 }
 
+// Every field the calculator reads. A label can carry any of them, so the
+// enrichment answer may name any of them and a battery answer must be able to
+// name the parallel limit and the C-rate, or a battery row can never publish.
 const ENRICHMENT_NUMERIC_FIELDS = new Set([
   'watts',
   'voc',
@@ -185,6 +188,8 @@ const ENRICHMENT_NUMERIC_FIELDS = new Set([
   'capacity_ah',
   'capacity_kwh',
   'efficiency_pct',
+  'max_parallel_strings',
+  'min_c_rate',
 ]);
 const ENRICHMENT_TEXT_FIELDS = new Set(['battery_type', 'cell_type']);
 

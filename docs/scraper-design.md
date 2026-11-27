@@ -261,10 +261,12 @@ Datasheets are looked up by manufacturer + model family, starting with the brand
 
 For each new listing:
 
-1. Download the primary product image through the shared paced client and compute a SHA-256 content hash. Phase one does not decode images, so a re-encoded copy of the same photo receives a different hash. Perceptual hashing and CLIP fallback remain later work.
-2. **Hash hit** → two ads from the same seller on the same platform with the same price and the same content hash count once. A different price is a different offer. The collapsed ad stays in the archive with `duplicate_of_existing_offer`.
+1. Download the primary product image through the shared paced client and compute a SHA-256 content hash. The enrichment host also decodes the same picture for a difference hash and a small JPEG thumbnail, so a re-encoded copy of one photo collapses for the same seller on the same site. Both are computed on the host by `scraper/host/image_hash.py` and are smaller than the picture, so neither counts as a stored image. CLIP fallback remains later work.
+2. **Hash hit, and a near hash hit** → two ads from the same seller on the same platform with the same price and the same content hash or the same difference hash within the configured distance count once. A different price is a different offer. The collapsed ad stays in the archive with `duplicate_of_existing_offer`.
 3. **Hash miss** → continue the enrichment ladder.
-4. **Stored assets:** the content-addressed hash persists. Full images are fetched on demand by the enrichment host and are not stored in D1 or R2. A small thumbnail is later work.
+4. **Stored assets:** the content-addressed hash, the difference hash and the small thumbnail persist. Full images are fetched on demand by the enrichment host and are not stored in D1 or R2.
+
+The enrichment answer must be able to name every field the calculator reads. The drainer prompt asks for `watts`, `voc`, `isc`, `voltage_v`, `capacity_ah`, `capacity_kwh`, `battery_type`, `cell_type`, `efficiency_pct`, `max_parallel_strings` and `min_c_rate`, and the Worker accepts the same list. The last two are the battery parallel limit and the C-rate, which a label prints as "max parallel" and "C-rate", and without them a battery row can never pass its publish bar.
 
 ---
 

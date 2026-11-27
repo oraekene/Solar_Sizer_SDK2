@@ -29,12 +29,18 @@ if (!WORKER_URL || !ADMIN_PASSWORD) {
 
 // The prompt asks for one JSON object and nothing else, so the answer can be
 // stored as the specs of the offer without a second pass.
+//
+// The key list covers every field the calculator reads. A battery label rarely
+// prints the names exactly, so the two fields it never prints plainly are named
+// with the phrasings the labels do use.
 const PROMPT = [
   'Read the specification table in this image of a solar panel or a battery.',
   'Reply with one JSON object and nothing else.',
-  'Use these keys: watts, voc, isc, voltage_v, capacity_ah, capacity_kwh, battery_type, cell_type, efficiency_pct.',
+  'Use these keys: watts, voc, isc, voltage_v, capacity_ah, capacity_kwh, battery_type, cell_type, efficiency_pct, max_parallel_strings, min_c_rate.',
   'Use a number when the value is visible and null when it is not.',
   'battery_type is "lithium" or "lead-acid".',
+  'max_parallel_strings is the largest number of battery modules that may be wired in parallel, printed as "max parallel", "parallel units" or "max parallel connection".',
+  'min_c_rate is the smallest charge or discharge rate the battery allows, in C, printed as "C-rate", "charge rate" or "C".',
 ].join(' ');
 
 let unifiedKey = null;
