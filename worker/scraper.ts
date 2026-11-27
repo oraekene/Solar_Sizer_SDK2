@@ -675,6 +675,13 @@ export async function handleScraperRoute(
     const limit = Math.min(Number(url.searchParams.get('limit') ?? 500) || 500, 5000);
     const offset = Math.max(Number(url.searchParams.get('offset') ?? 0) || 0, 0);
     const source = url.searchParams.get('source');
+    // The review screen asks for the offers of one candidate by id, because a
+    // full-pool page carries every payload and is too heavy for a browser.
+    const ids = (url.searchParams.get('ids') ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 200);
     const thresholds = await loadThresholds(env.DB);
 
     // An offer with no successful check inside the staleness window leaves
@@ -705,19 +712,26 @@ export async function handleScraperRoute(
           AND duplicate.image_hash = hardware_offers.image_hash
           AND duplicate.status = 'excluded'
           AND duplicate.reason_code = 'duplicate_of_existing_offer') AS collapsed_count`;
-    const rows = source
+    const rows = ids.length > 0
       ? await env.DB
           .prepare(
-            `SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
+            `SELECT ${columns} FROM hardware_offers WHERE id IN (${ids.map(() => '?').join(',')})`,
           )
-          .bind(source, limit, offset)
+          .bind(...ids)
           .all<Record<string, unknown>>()
-      : await env.DB
-          .prepare(
-            `SELECT ${columns} FROM hardware_offers ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
-          )
-          .bind(limit, offset)
-          .all<Record<string, unknown>>();
+      : source
+        ? await env.DB
+            .prepare(
+              `SELECT ${columns} FROM hardware_offers WHERE source_site = ? ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
+            )
+            .bind(source, limit, offset)
+            .all<Record<string, unknown>>()
+        : await env.DB
+            .prepare(
+              `SELECT ${columns} FROM hardware_offers ORDER BY COALESCE(last_checked, '') ASC, id ASC LIMIT ? OFFSET ?`,
+            )
+            .bind(limit, offset)
+            .all<Record<string, unknown>>();
 
     return json(
       (rows.results ?? []).map((row) => ({
@@ -971,7 +985,9 @@ export async function handleScraperRoute(
   if (pathname === '/api/scraper/candidates' && method === 'GET') {
     const url = new URL(request.url);
     const status = url.searchParams.get('status');
-    const limit = Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 500);
+    // The review screen loads the whole queue, so the cap follows the pool
+    // size instead of the 500 the screen was written against.
+    const limit = Math.min(Number(url.searchParams.get('limit') ?? 100) || 100, 2000);
     const rows = status
       ? await env.DB
           .prepare('SELECT * FROM hardware_candidates WHERE status = ? ORDER BY created_at DESC LIMIT ?')

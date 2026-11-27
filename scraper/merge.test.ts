@@ -349,6 +349,81 @@ test('a battery keeps the shape that src/types.ts expects', () => {
   assert.equal(data.voltage_v, undefined);
 });
 
+test('a singular and a plural title are one battery, not two candidates', () => {
+  // The Felicity pair the owner saw: two Jiji titles that differ only by the
+  // trailing word landed on two canonical ids and two review rows.
+  const singular: MergeOffer[] = [
+    {
+      ...panel({ id: 'jiji:singular', source_site: 'jiji' }),
+      stated_specs: {
+        name: '17.5kwh 48v Felicity Lithium Ion Battery',
+        brand: 'felicity',
+        voltage_v: 48,
+        capacity_ah: 350,
+        battery_type: 'lithium',
+      },
+    },
+  ];
+  const plural: MergeOffer[] = [
+    {
+      ...panel({ id: 'jiji:plural', source_site: 'jiji', seller_id: 'jiji:seller:b', price: 105_000 }),
+      stated_specs: {
+        name: '17.5kwh 48v Felicity Lithium Ion Batteries',
+        brand: 'felicity',
+        voltage_v: 48,
+        capacity_ah: 350,
+        battery_type: 'lithium',
+      },
+    },
+  ];
+
+  const together = proposeCandidates([...singular, ...plural], { aliases, hardware: [] });
+  assert.equal(together.proposals.length, 1);
+  assert.equal(together.proposals[0].offer_ids.length, 2);
+
+  // The two shapes must also agree when they are proposed on different days,
+  // so the second run updates the stored candidate instead of adding one.
+  const alone = proposeCandidates(plural, { aliases, hardware: [] });
+  assert.equal(alone.proposals[0].canonical_id, together.proposals[0].canonical_id);
+});
+
+test('same family and different models are flagged as possible duplicates on both sides', () => {
+  const offers: MergeOffer[] = [
+    {
+      ...panel({ id: 'a', source_site: 'jiji' }),
+      stated_specs: {
+        name: 'Felicity 48V 350Ah Lithium Ion Battery',
+        brand: 'felicity',
+        voltage_v: 48,
+        capacity_ah: 350,
+        battery_type: 'lithium',
+      },
+    },
+    {
+      ...panel({ id: 'b', source_site: 'jumia', seller_id: 'jumia:seller:b', price: 105_000 }),
+      stated_specs: {
+        name: 'Felicity Solar 17.5kWh 48V 350Ah Lithium Ion Solar Storage Battery With High Energy Capacity',
+        brand: 'felicity',
+        voltage_v: 48,
+        capacity_ah: 350,
+        battery_type: 'lithium',
+      },
+    },
+  ];
+
+  const { proposals, possible_duplicates } = proposeCandidates(offers, { aliases, hardware: [] });
+  assert.equal(proposals.length, 2);
+  assert.equal(possible_duplicates.length, 1);
+  const ids = proposals.map((proposal) => proposal.canonical_id);
+  assert.ok(
+    proposals.every((proposal) =>
+      proposal.risk_flags.some((flag) =>
+        ids.some((id) => flag === `possible duplicate of ${id}` && id !== proposal.canonical_id),
+      ),
+    ),
+  );
+});
+
 test('a cross-post signal is removed when the current pool no longer has the pair', () => {
   const offer = (id: string): OfferPayload => ({
     source_site: 'jumia',

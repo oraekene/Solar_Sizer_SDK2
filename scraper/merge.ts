@@ -291,8 +291,9 @@ export function proposeCandidates(
     .filter((entry): entry is { row: HardwareRow; identity: Identity } => entry.identity !== null);
 
   const peersByWatts = peerTable(offers);
+  const proposalByGroup = new Map<string, Proposal>();
 
-  for (const group of groups.values()) {
+  for (const [groupKey, group] of groups) {
     const qualified = group.offers.filter(isQualified);
     const collapsed = collapseIdenticalOffers(qualified, thresholds);
     crossPosts.push(...collapsed.crossPosts);
@@ -449,7 +450,7 @@ export function proposeCandidates(
       status = 'pending_review';
     }
 
-    proposals.push({
+    const proposal: Proposal = {
       id: `candidate:${canonical}`,
       canonical_id: canonical,
       bucket_key: group.identity.family_key,
@@ -464,19 +465,32 @@ export function proposeCandidates(
       provenance,
       low_confidence: median.low_confidence,
       risk_flags: riskFlags,
-    });
+    };
+    proposals.push(proposal);
+    proposalByGroup.set(groupKey, proposal);
   }
 
   // Two groups that share a brand and a family are a possible duplicate. The
-  // review screen shows them side by side.
+  // design says a weaker match is never merged on its own, so both sides
+  // carry the flag and a human decides. The pair list is also returned for
+  // the run report.
   const possibleDuplicates: Array<{ left: string; right: string }> = [];
   const entries = [...groups.entries()];
   for (let a = 0; a < entries.length; a += 1) {
     for (let b = a + 1; b < entries.length; b += 1) {
       const left = entries[a][1];
       const right = entries[b][1];
-      if (compareIdentity(left.identity, right.identity) === 'possible_duplicate') {
-        possibleDuplicates.push({ left: entries[a][0], right: entries[b][0] });
+      if (compareIdentity(left.identity, right.identity) !== 'possible_duplicate') continue;
+      possibleDuplicates.push({ left: entries[a][0], right: entries[b][0] });
+      const leftProposal = proposalByGroup.get(entries[a][0]);
+      const rightProposal = proposalByGroup.get(entries[b][0]);
+      if (leftProposal && rightProposal) {
+        if (!leftProposal.risk_flags.includes(`possible duplicate of ${rightProposal.canonical_id}`)) {
+          leftProposal.risk_flags.push(`possible duplicate of ${rightProposal.canonical_id}`);
+        }
+        if (!rightProposal.risk_flags.includes(`possible duplicate of ${leftProposal.canonical_id}`)) {
+          rightProposal.risk_flags.push(`possible duplicate of ${leftProposal.canonical_id}`);
+        }
       }
     }
   }
